@@ -60,7 +60,7 @@ export function ProspectsPage() {
       return data[0] as Prospect
     },
     onSuccess: () => {
-      queryClient.invalidateQueries(['/prospects'])
+      queryClient.invalidateQueries({ queryKey: ['/prospects'] })
     },
   })
 
@@ -75,7 +75,7 @@ export function ProspectsPage() {
       return data[0] as Prospect
     },
     onSuccess: () => {
-      queryClient.invalidateQueries(['/prospects'])
+      queryClient.invalidateQueries({ queryKey: ['/prospects'] })
     },
   })
 
@@ -85,7 +85,7 @@ export function ProspectsPage() {
       if (error) throw error
     },
     onSuccess: () => {
-      queryClient.invalidateQueries(['/prospects'])
+      queryClient.invalidateQueries({ queryKey: ['/prospects'] })
     },
   })
 

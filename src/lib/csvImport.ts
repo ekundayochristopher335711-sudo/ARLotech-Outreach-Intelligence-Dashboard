@@ -84,7 +84,7 @@ async function importCsvInternal(
     if (error) throw error
 
     // Refresh the prospects list
-    await queryClient.invalidateQueries(['/prospects'])
+    await queryClient.invalidateQueries({ queryKey: ['/prospects'] })
 
     return { success: true, count: prospectsToInsert.length }
   } catch (err: any) {
