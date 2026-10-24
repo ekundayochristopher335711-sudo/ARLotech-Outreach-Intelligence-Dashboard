@@ -1,3 +1,5 @@
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
 -- ============================================================
 -- PROFILES TABLE
 -- ============================================================
@@ -58,6 +60,177 @@ CREATE POLICY "Users can delete own email templates" ON email_templates
 
 -- Indexes
 CREATE INDEX idx_email_templates_user_id ON email_templates(user_id);
+
+-- ============================================================
+-- OUTREACH CORE TABLES
+-- ============================================================
+
+CREATE TABLE prospects (
+  id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  business_name TEXT NOT NULL,
+  contact_name TEXT NOT NULL DEFAULT '',
+  email TEXT,
+  website TEXT,
+  normalized_domain TEXT,
+  business_category TEXT,
+  city TEXT,
+  country TEXT,
+  phone TEXT,
+  linkedin_url TEXT,
+  notes TEXT,
+  source TEXT,
+  status TEXT NOT NULL DEFAULT 'New',
+  do_not_contact BOOLEAN NOT NULL DEFAULT false,
+  last_contacted_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE website_analyses (
+  id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  prospect_id UUID REFERENCES prospects(id) ON DELETE SET NULL,
+  website_url TEXT NOT NULL,
+  overall_score NUMERIC,
+  category_scores JSONB,
+  findings JSONB NOT NULL DEFAULT '[]'::jsonb,
+  positive_observations JSONB NOT NULL DEFAULT '[]'::jsonb,
+  analysis_status TEXT NOT NULL DEFAULT 'pending',
+  error_message TEXT,
+  analysis_provider TEXT,
+  analyzed_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE campaigns (
+  id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  name TEXT NOT NULL,
+  description TEXT,
+  industry TEXT,
+  location TEXT,
+  status TEXT NOT NULL DEFAULT 'Draft',
+  start_date DATE,
+  end_date DATE,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE email_drafts (
+  id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  prospect_id UUID REFERENCES prospects(id) ON DELETE SET NULL,
+  campaign_id UUID REFERENCES campaigns(id) ON DELETE SET NULL,
+  subject TEXT NOT NULL,
+  body TEXT NOT NULL,
+  template_type TEXT NOT NULL DEFAULT 'custom',
+  generation_source TEXT NOT NULL DEFAULT 'manual',
+  status TEXT NOT NULL DEFAULT 'draft',
+  approved_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE email_messages (
+  id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  prospect_id UUID REFERENCES prospects(id) ON DELETE SET NULL,
+  campaign_id UUID REFERENCES campaigns(id) ON DELETE SET NULL,
+  provider TEXT,
+  provider_message_id TEXT,
+  direction TEXT NOT NULL DEFAULT 'outbound',
+  subject TEXT NOT NULL DEFAULT '',
+  body TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'draft',
+  sent_at TIMESTAMPTZ,
+  received_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE follow_up_sequences (
+  id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  prospect_id UUID REFERENCES prospects(id) ON DELETE SET NULL,
+  campaign_id UUID REFERENCES campaigns(id) ON DELETE SET NULL,
+  status TEXT NOT NULL DEFAULT 'Active',
+  current_step INTEGER DEFAULT 0,
+  next_action_at TIMESTAMPTZ,
+  timezone TEXT NOT NULL DEFAULT 'UTC',
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE suppression_list (
+  id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  email TEXT NOT NULL,
+  normalized_email TEXT NOT NULL,
+  reason TEXT NOT NULL DEFAULT '',
+  source TEXT NOT NULL DEFAULT 'manual',
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE (user_id, normalized_email)
+);
+
+CREATE TABLE activity_logs (
+  id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  prospect_id UUID REFERENCES prospects(id) ON DELETE SET NULL,
+  campaign_id UUID REFERENCES campaigns(id) ON DELETE SET NULL,
+  event_type TEXT NOT NULL,
+  description TEXT NOT NULL,
+  metadata JSONB,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE dashboard_metrics (
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE PRIMARY KEY,
+  total_prospects INTEGER NOT NULL DEFAULT 0,
+  prospects_contacted INTEGER NOT NULL DEFAULT 0,
+  emails_sent INTEGER NOT NULL DEFAULT 0,
+  replies_received INTEGER NOT NULL DEFAULT 0,
+  interested_prospects INTEGER NOT NULL DEFAULT 0,
+  follow_ups_due INTEGER NOT NULL DEFAULT 0,
+  meetings_booked INTEGER NOT NULL DEFAULT 0,
+  clients_won INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE campaign_prospects (
+  id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  campaign_id UUID REFERENCES campaigns(id) ON DELETE CASCADE NOT NULL,
+  prospect_id UUID REFERENCES prospects(id) ON DELETE CASCADE NOT NULL,
+  status TEXT NOT NULL DEFAULT 'assigned',
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE (campaign_id, prospect_id)
+);
+
+DO $$
+DECLARE
+  table_name TEXT;
+BEGIN
+  FOREACH table_name IN ARRAY ARRAY[
+    'prospects', 'website_analyses', 'campaigns', 'email_drafts',
+    'email_messages', 'follow_up_sequences', 'suppression_list',
+    'activity_logs', 'dashboard_metrics', 'campaign_prospects'
+  ] LOOP
+    EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', table_name);
+    EXECUTE format(
+      'CREATE POLICY %I ON %I FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id)',
+      table_name || '_owner_policy', table_name
+    );
+  END LOOP;
+END $$;
+
+CREATE INDEX idx_prospects_user_id ON prospects(user_id);
+CREATE INDEX idx_website_analyses_user_id ON website_analyses(user_id);
+CREATE INDEX idx_campaigns_user_id ON campaigns(user_id);
+CREATE INDEX idx_email_drafts_user_id ON email_drafts(user_id);
+CREATE INDEX idx_email_messages_user_id ON email_messages(user_id);
+CREATE INDEX idx_follow_up_sequences_user_id ON follow_up_sequences(user_id);
+CREATE INDEX idx_activity_logs_user_id ON activity_logs(user_id);
+CREATE INDEX idx_campaign_prospects_user_id ON campaign_prospects(user_id);
+
 -- ============================================================
 -- ============================================================
 -- UPDATE TRIGGERS for updated_at
@@ -81,7 +254,7 @@ CREATE TRIGGER update_website_analyses_updated_at BEFORE UPDATE ON website_analy
 CREATE TRIGGER update_email_drafts_updated_at BEFORE UPDATE ON email_drafts
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
-CREATE TRIGGER update campaigns_updated_at BEFORE UPDATE ON campaigns
+CREATE TRIGGER update_campaigns_updated_at BEFORE UPDATE ON campaigns
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 -- PROSPECT NOTES TABLE
 -- ============================================================
