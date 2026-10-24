@@ -1,0 +1,9 @@
+[project]
+id = ""
+ref = "master"
+branch = "pgvector"
+
+[db]
+schema = "public"
+
+[features]
