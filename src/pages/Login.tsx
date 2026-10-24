@@ -31,7 +31,11 @@ export function LoginPage() {
     setError('')
     const { error } = await supabase.auth.signInWithPassword({ email, password })
     if (error) {
-      setError(error.message)
+      setError(
+        typeof error.message === 'string'
+          ? error.message
+          : JSON.stringify(error),
+      )
     } else {
       navigate('/', { replace: true })
     }
