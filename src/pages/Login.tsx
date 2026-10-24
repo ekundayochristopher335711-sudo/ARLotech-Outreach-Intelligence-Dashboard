@@ -21,7 +21,7 @@ export function LoginPage() {
       }
     })
     return () => {
-      listener.unsubscribe()
+      listener.subscription.unsubscribe()
     }
   }, [navigate])
 

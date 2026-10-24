@@ -12,7 +12,7 @@ declare module '@supabase/supabase-js' {
   export interface SupabaseClient {
     auth: {
       getSession(): Promise<{ data: { session: any | null }; error: any }>
-      onAuthStateChange(callback: (event: string, session: any | null) => void): { data: { unsubscribe: () => void } }
+      onAuthStateChange(callback: (event: string, session: any | null) => void): { data: { subscription: { unsubscribe: () => void } } }
       signInWithPassword(credentials: { email: string; password: string }): Promise<{ data: any; error: any }>
       signOut(): Promise<{ error: any }>
     }
@@ -27,7 +27,7 @@ declare module '@supabase/auth-js' {
   export type User = any
   export class AuthClient {
     getSession(): Promise<{ data: { session: any | null }; error: any }>
-    onAuthStateChange(callback: (event: string, session: any | null) => void): { data: { unsubscribe: () => void } }
+    onAuthStateChange(callback: (event: string, session: any | null) => void): { data: { subscription: { unsubscribe: () => void } } }
     signInWithPassword(credentials: { email: string; password: string }): Promise<{ data: any; error: any }>
     signOut(): Promise<{ error: any }>
   }

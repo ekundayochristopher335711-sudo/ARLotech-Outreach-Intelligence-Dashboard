@@ -26,7 +26,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     })
 
     return () => {
-      listener.unsubscribe()
+      listener.subscription.unsubscribe()
     }
   }, [])
 
