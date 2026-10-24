@@ -75,7 +75,7 @@ $$ LANGUAGE 'plpgsql';
 CREATE TRIGGER update_prospects_updated_at BEFORE UPDATE ON prospects
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
-CREATE TRIGGER update website_analyses_updated_at BEFORE UPDATE ON website_analyses
+CREATE TRIGGER update_website_analyses_updated_at BEFORE UPDATE ON website_analyses
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 CREATE TRIGGER update email_drafts_updated_at BEFORE UPDATE ON email_drafts
