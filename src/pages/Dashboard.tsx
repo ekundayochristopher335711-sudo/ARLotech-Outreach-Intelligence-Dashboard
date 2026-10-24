@@ -3,7 +3,7 @@ import { Card } from '@/components/ui/Card'
 import { MetricCard } from '@/components/dashboard/MetricCard'
 import { ActivityFeed } from '@/components/dashboard/ActivityFeed'
 import { ProspectTable } from '@/components/dashboard/ProspectTable'
-import { supabase } from '@/lib/supabase'
+import { getCurrentUserId, supabase } from '@/lib/supabase'
 import { type DashboardMetrics } from '@/types'
 
 export function DashboardPage() {
@@ -17,9 +17,18 @@ export function DashboardPage() {
       const { data, error } = await supabase
         .from('dashboard_metrics')
         .select('*')
-        .single()
+        .maybeSingle()
       if (error) throw error
-      return data as DashboardMetrics
+      return (data ?? {
+        total_prospects: 0,
+        prospects_contacted: 0,
+        emails_sent: 0,
+        replies_received: 0,
+        interested_prospects: 0,
+        follow_ups_due: 0,
+        meetings_booked: 0,
+        clients_won: 0,
+      }) as DashboardMetrics
     },
   })
 
@@ -29,10 +38,11 @@ export function DashboardPage() {
   } = useQuery({
     queryKey: ['/prospects'],
     queryFn: async () => {
+      const userId = await getCurrentUserId()
       const { data, error } = await supabase
         .from('prospects')
         .select('*')
-        .eq('user_id', 'current_user')
+        .eq('user_id', userId)
         .order('created_at', { ascending: false })
         .limit(5)
       if (error) throw error
@@ -46,10 +56,11 @@ export function DashboardPage() {
   } = useQuery({
     queryKey: ['/activity'],
     queryFn: async () => {
+      const userId = await getCurrentUserId()
       const { data, error } = await supabase
         .from('activity_logs')
         .select('*')
-        .eq('user_id', 'current_user')
+        .eq('user_id', userId)
         .order('created_at', { ascending: false })
         .limit(10)
       if (error) throw error

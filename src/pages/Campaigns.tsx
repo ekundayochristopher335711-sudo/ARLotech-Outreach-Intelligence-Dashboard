@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { Card } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
-import { supabase } from '@/lib/supabase'
+import { getCurrentUserId, supabase } from '@/lib/supabase'
 import { type Campaign } from '@/types'
 import { FileText, Filter, Plus } from 'lucide-react'
 
@@ -12,10 +12,11 @@ export function CampaignsPage() {
   } = useQuery({
     queryKey: ['/campaigns'],
     queryFn: async () => {
+      const userId = await getCurrentUserId()
       const { data } = await supabase
         .from('campaigns')
         .select('*')
-        .eq('user_id', 'current_user')
+        .eq('user_id', userId)
         .order('created_at', { ascending: false })
       return data
     },

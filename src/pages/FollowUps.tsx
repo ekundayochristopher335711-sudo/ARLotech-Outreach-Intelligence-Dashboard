@@ -1,16 +1,17 @@
 import { useQuery } from '@tanstack/react-query'
 import { Card } from '@/components/ui/Card'
-import { supabase } from '@/lib/supabase'
+import { getCurrentUserId, supabase } from '@/lib/supabase'
 import { type FollowUpSequence } from '@/types'
 
 export function FollowUpsPage() {
   const { data: sequences, isLoading } = useQuery({
     queryKey: ['/follow-ups'],
     queryFn: async () => {
+      const userId = await getCurrentUserId()
       const { data } = await supabase
         .from('follow_up_sequences')
         .select('*')
-        .eq('user_id', 'current_user')
+        .eq('user_id', userId)
       return data
     },
   })

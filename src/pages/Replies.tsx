@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { Card } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
-import { supabase } from '@/lib/supabase'
+import { getCurrentUserId, supabase } from '@/lib/supabase'
 import { format } from 'date-fns'
 import { Mail, Clock, CheckCircle } from 'lucide-react'
 
@@ -12,10 +12,11 @@ export function RepliesPage() {
   } = useQuery({
     queryKey: ['/email-messages'],
     queryFn: async () => {
+      const userId = await getCurrentUserId()
       const { data, error } = await supabase
         .from('email_messages')
         .select('*')
-        .eq('user_id', 'current_user')
+        .eq('user_id', userId)
         .order('sent_at', { ascending: false })
         .limit(50)
       if (error) throw error

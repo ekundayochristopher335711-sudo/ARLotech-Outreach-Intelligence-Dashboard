@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { Card } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
-import { supabase } from '@/lib/supabase'
+import { getCurrentUserId, supabase } from '@/lib/supabase'
 import { format } from 'date-fns'
 import { Globe, AlertCircle, Clock, FileSearch } from 'lucide-react'
 
@@ -12,10 +12,11 @@ export function WebsiteIntelligencePage() {
   } = useQuery({
     queryKey: ['/website-analyses'],
     queryFn: async () => {
+      const userId = await getCurrentUserId()
       const { data, error } = await supabase
         .from('website_analyses')
         .select('*')
-        .eq('user_id', 'current_user')
+        .eq('user_id', userId)
         .order('analyzed_at', { ascending: false })
         .limit(5)
       if (error) throw error

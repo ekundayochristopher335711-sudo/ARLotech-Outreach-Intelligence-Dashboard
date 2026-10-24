@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import { useCsvImport } from '@/lib/csvImport'
 import { ProspectTable } from '@/components/dashboard/ProspectTable'
-import { supabase } from '@/lib/supabase'
+import { getCurrentUserId, supabase } from '@/lib/supabase'
 import { type Prospect } from '@/types'
 import { Plus, FileSpreadsheet, ChevronDown, Trash, Edit, Check, Loader2, Flag } from 'lucide-react'
 import { useState } from 'react'
@@ -16,10 +16,11 @@ export function ProspectsPage() {
   const { data: prospects, isLoading } = useQuery({
     queryKey: ['/prospects'],
     queryFn: async () => {
+      const userId = await getCurrentUserId()
       const { data, error } = await supabase
         .from('prospects')
         .select('*')
-        .eq('user_id', 'current_user')
+        .eq('user_id', userId)
         .order('created_at', { ascending: false })
       if (error) throw error
       return data as Prospect[]
@@ -49,11 +50,12 @@ export function ProspectsPage() {
 
   const { mutateAsync: insertProspect } = useMutation({
     mutationFn: async (newProspect: Omit<Prospect, 'id' | 'created_at' | 'updated_at'>) => {
+      const userId = await getCurrentUserId()
       const { data, error } = await supabase
         .from('prospects')
         .insert({
           ...newProspect,
-          user_id: 'current_user',
+          user_id: userId,
         })
         .select()
       if (error) throw error
