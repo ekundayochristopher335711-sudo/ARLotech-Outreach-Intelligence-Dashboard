@@ -106,7 +106,7 @@ export function LoginPage() {
             </button>
           </form>
           <p className="mt-6 text-center text-sm text-slate-500">
-            Demo: demo@arlotech.app / demo123
+            Sign-in accounts are managed in Supabase.
           </p>
         </div>
       </div>

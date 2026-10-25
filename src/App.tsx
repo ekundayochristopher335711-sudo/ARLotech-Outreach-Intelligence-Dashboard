@@ -5,6 +5,7 @@ import {
   Routes,
   Route,
 } from 'react-router-dom'
+import { Menu } from 'lucide-react'
 import { AuthProvider, useAuth } from '@/hooks/useAuth'
 import { Sidebar } from '@/components/layout/Sidebar'
 import { LoginPage } from '@/pages/Login'
@@ -61,27 +62,50 @@ function AppShell() {
   const closeSidebar = () => setMobileOpen(false)
 
   return (
-    <div className="flex h-screen overflow-hidden">
+    <div className="flex h-dvh overflow-hidden">
+      {mobileOpen && (
+        <button
+          type="button"
+          className="fixed inset-0 z-40 bg-slate-900/40 lg:hidden"
+          onClick={closeSidebar}
+          aria-label="Close navigation menu"
+        />
+      )}
       <Sidebar
         mobileOpen={mobileOpen}
         setMobileOpen={setMobileOpen}
         onNavigate={closeSidebar}
       />
-      <div className="flex-1 overflow-auto">
-        <main className="p-4 lg:p-6">
-          <Routes>
-            <Route index element={<DashboardPage />} />
-            <Route path="prospects" element={<ProspectsPage />} />
-            <Route path="prospects/:id" element={<ProspectDetails />} />
-            <Route path="campaigns" element={<CampaignsPage />} />
-            <Route path="replies" element={<RepliesPage />} />
-            <Route path="follow-ups" element={<FollowUpsPage />} />
-            <Route path="email-drafts" element={<EmailDraftsPage />} />
-            <Route path="website-intelligence" element={<WebsiteIntelligencePage />} />
-            <Route path="analytics" element={<AnalyticsDashboard />} />
-            <Route path="settings" element={<SettingsPage />} />
-          </Routes>
-        </main>
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+        <header className="flex h-14 shrink-0 items-center gap-3 border-b border-slate-200 bg-white px-4 lg:hidden">
+          <button
+            type="button"
+            className="rounded-md p-2 text-slate-600 hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-arlotech"
+            onClick={() => setMobileOpen(true)}
+            aria-label="Open navigation menu"
+            aria-controls="app-sidebar"
+            aria-expanded={mobileOpen}
+          >
+            <Menu className="h-5 w-5" />
+          </button>
+          <span className="text-sm font-semibold text-slate-800">Arlotech AI</span>
+        </header>
+        <div className="min-w-0 flex-1 overflow-auto">
+          <main className="min-h-full p-4 lg:p-6">
+            <Routes>
+              <Route index element={<DashboardPage />} />
+              <Route path="prospects" element={<ProspectsPage />} />
+              <Route path="prospects/:id" element={<ProspectDetails />} />
+              <Route path="campaigns" element={<CampaignsPage />} />
+              <Route path="replies" element={<RepliesPage />} />
+              <Route path="follow-ups" element={<FollowUpsPage />} />
+              <Route path="email-drafts" element={<EmailDraftsPage />} />
+              <Route path="website-intelligence" element={<WebsiteIntelligencePage />} />
+              <Route path="analytics" element={<AnalyticsDashboard />} />
+              <Route path="settings" element={<SettingsPage />} />
+            </Routes>
+          </main>
+        </div>
       </div>
     </div>
   )

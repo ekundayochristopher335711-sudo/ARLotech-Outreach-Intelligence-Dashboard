@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { NavLink } from 'react-router-dom'
 import {
   LayoutDashboard,
@@ -15,6 +15,7 @@ import {
   Building,
   Plane,
 } from 'lucide-react'
+import { useAuth } from '@/hooks/useAuth'
 
 interface NavItem {
   label: string
@@ -45,22 +46,53 @@ export function Sidebar({
   onNavigate: () => void
 }) {
   const [collapsed, setCollapsed] = useState(false)
+  const [signingOut, setSigningOut] = useState(false)
+  const [signOutError, setSignOutError] = useState('')
+  const { signOut } = useAuth()
 
   const toggleCollapse = () => setCollapsed((v) => !v)
+
+  useEffect(() => {
+    if (!mobileOpen) return
+
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setMobileOpen(false)
+    }
+
+    window.addEventListener('keydown', closeOnEscape)
+    return () => window.removeEventListener('keydown', closeOnEscape)
+  }, [mobileOpen, setMobileOpen])
+
+  const handleSignOut = async () => {
+    setSigningOut(true)
+    setSignOutError('')
+    try {
+      await signOut()
+      onNavigate()
+    } catch (error) {
+      setSignOutError(error instanceof Error ? error.message : 'Could not sign out.')
+    } finally {
+      setSigningOut(false)
+    }
+  }
 
   return (
     <>
       <aside
-        className={`fixed inset-y-0 left-0 z-50 flex flex-col border-r border-slate-200 bg-white transition-transform duration-300 lg:translate-x-0 ${
+        id="app-sidebar"
+        className={`fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-slate-200 bg-white transition-all duration-300 lg:relative lg:inset-y-auto lg:left-auto lg:translate-x-0 ${
+          collapsed ? 'lg:w-20' : 'lg:w-64'
+        } ${
           mobileOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
+        aria-label="Main navigation"
       >
         <div className="flex items-center justify-between h-16 px-4 border-b border-slate-200">
           <div className="flex items-center gap-2">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-arlotech text-white">
               <Building className="h-4 w-4" />
             </div>
-            <span className={`text-sm font-bold text-slate-800 ${collapsed ? 'hidden' : 'block'}`}>
+            <span className={`text-sm font-bold text-slate-800 ${collapsed ? 'lg:hidden' : ''}`}>
               Arlotech AI
             </span>
           </div>
@@ -83,7 +115,7 @@ export function Sidebar({
                 to={item.path}
                 className={({ isActive }) =>
                   `flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-                    collapsed ? 'justify-center' : 'justify-start'
+                    collapsed ? 'lg:justify-center' : 'justify-start'
                   } ${
                     isActive
                       ? 'bg-arlotech text-white'
@@ -96,25 +128,32 @@ export function Sidebar({
                 }}
               >
                 <item.icon className="h-4 w-4" />
-                {!collapsed && <span className="truncate">{item.label}</span>}
+                <span className={`truncate ${collapsed ? 'lg:hidden' : ''}`}>{item.label}</span>
               </NavLink>
             </div>
           ))}
         </div>
 
         <div className="p-4 border-t border-slate-200">
+          {signOutError && (
+            <p className="mb-2 text-xs text-red-600" role="alert">
+              {signOutError}
+            </p>
+          )}
           <button
             type="button"
-            className="flex w-full items-center gap-2 px-3 py-2 rounded-md text-sm font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+            className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-60"
+            onClick={handleSignOut}
+            disabled={signingOut}
           >
             <LogOut className="h-4 w-4" />
-            {!collapsed && <span>Log out</span>}
+            <span className={collapsed ? 'lg:hidden' : ''}>{signingOut ? 'Logging out...' : 'Log out'}</span>
           </button>
         </div>
 
         <button
           type="button"
-          className="absolute -right-3 top-16 lg:top-24 flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200"
+          className="absolute -right-3 top-16 hidden h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 lg:flex"
           onClick={toggleCollapse}
           aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
         >
