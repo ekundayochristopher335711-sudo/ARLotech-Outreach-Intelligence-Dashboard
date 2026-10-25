@@ -49,16 +49,36 @@ serve(async (req) => {
       throw new Error('Only http/https URLs are supported')
     }
 
-    const res = await fetch(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (compatible; ArlotechBot/1.0)',
-        'Accept': 'text/html,application/xhtml+xml',
-      },
-      redirect: 'follow',
-    })
+    const userAgents = [
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15',
+      'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)',
+    ]
 
-    if (!res.ok) {
-      throw new Error(`Failed to fetch URL: ${res.status} ${res.statusText}`)
+    let res: Response | null = null
+    let lastFetchError: string | null = null
+    for (const ua of userAgents) {
+      try {
+        res = await fetch(url, {
+          headers: {
+            'User-Agent': ua,
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Cache-Control': 'no-cache',
+          },
+          redirect: 'follow',
+        })
+        if (res.ok) break
+        lastFetchError = `Failed to fetch URL: ${res.status} ${res.statusText}`
+        // Retry with a different UA on 403/401/429/5xx
+        if (![403, 401, 429, 500, 502, 503, 504].includes(res.status)) break
+      } catch (e) {
+        lastFetchError = e instanceof Error ? e.message : 'fetch failed'
+      }
+    }
+
+    if (!res || !res.ok) {
+      throw new Error(lastFetchError || 'Failed to fetch URL')
     }
     const html = await res.text()
     const finalUrl = res.url

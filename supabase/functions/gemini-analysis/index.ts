@@ -31,6 +31,7 @@ serve(async (req) => {
         availableModels = (listData?.models ?? [])
           .filter((m: any) => Array.isArray(m?.supportedGenerationMethods) && m.supportedGenerationMethods.includes('generateContent'))
           .map((m: any) => String(m.name).replace(/^models\//, ''))
+          .filter((name: string) => /gemini/i.test(name))
           .filter((name: string) => !/tts|audio|image|embedding|aqa/i.test(name))
           .filter(Boolean)
       }
@@ -47,7 +48,12 @@ serve(async (req) => {
 
     const candidateModels = requestedModel
       ? [requestedModel]
-      : (availableModels.length ? availableModels : staticModels)
+      : (availableModels.length ? availableModels.slice().sort((a: string, b: string) => {
+          const af = /flash/i.test(a) ? 0 : 1
+          const bf = /flash/i.test(b) ? 0 : 1
+          if (af !== bf) return af - bf
+          return b.localeCompare(a)
+        }) : staticModels)
 
     const prompt = `You are an SEO and web performance expert. Analyze the following website and provide a structured report.
 
@@ -104,7 +110,7 @@ Return ONLY valid JSON (no markdown) with this shape:
         const errBody = await geminiRes.text()
         lastError = new Error(`Gemini API error (${modelName}): ${geminiRes.status} - ${errBody}`)
         // Try next model on 404/NOT_FOUND, 400 (capability mismatch), 429 (rate limit), or 503 (overloaded); otherwise stop.
-        if ([404, 400, 429, 503].includes(geminiRes.status)) continue
+        if ([404, 400, 429, 500, 503].includes(geminiRes.status)) continue
         throw lastError
       }
 
