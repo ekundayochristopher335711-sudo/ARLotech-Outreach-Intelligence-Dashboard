@@ -51,7 +51,17 @@ export interface GeminiResult {
 
 export async function extractContent(url: string): Promise<ExtractedContent> {
   const { data, error } = await (supabase as any).functions.invoke('extract-content', { body: { url } })
-  if (error) throw new Error(error.message || 'extract-content failed')
+  if (error) {
+    let detail = error.message || 'extract-content failed'
+    try {
+      const ctx = (error as any)?.context
+      if (ctx && typeof ctx.text === 'function') {
+        const body = await ctx.text()
+        if (body) detail = `${detail} — ${body}`
+      }
+    } catch { /* ignore */ }
+    throw new Error(detail)
+  }
   if (data?.error) throw new Error(data.error)
   return data as ExtractedContent
 }
@@ -60,7 +70,17 @@ export async function runPageSpeed(url: string, strategy: 'mobile' | 'desktop' =
   const { data, error } = await (supabase as any).functions.invoke('pagespeed-insights', {
     body: { url, strategy, categories: ['performance', 'accessibility', 'seo', 'best-practices'] },
   })
-  if (error) throw new Error(error.message || 'pagespeed-insights failed')
+  if (error) {
+    let detail = error.message || 'pagespeed-insights failed'
+    try {
+      const ctx = (error as any)?.context
+      if (ctx && typeof ctx.text === 'function') {
+        const body = await ctx.text()
+        if (body) detail = `${detail} — ${body}`
+      }
+    } catch { /* ignore */ }
+    throw new Error(detail)
+  }
   if (data?.error) throw new Error(data.error)
   return data as PageSpeedResult
 }
@@ -71,7 +91,17 @@ export async function generateGeminiAnalysis(payload: {
   pagespeed: PageSpeedResult
 }): Promise<GeminiResult> {
   const { data, error } = await (supabase as any).functions.invoke('gemini-analysis', { body: payload })
-  if (error) throw new Error(error.message || 'gemini-analysis failed')
+  if (error) {
+    let detail = error.message || 'gemini-analysis failed'
+    try {
+      const ctx = (error as any)?.context
+      if (ctx && typeof ctx.text === 'function') {
+        const body = await ctx.text()
+        if (body) detail = `${detail} — ${body}`
+      }
+    } catch { /* ignore */ }
+    throw new Error(detail)
+  }
   if (data?.error) throw new Error(data.error)
   return data as GeminiResult
 }
