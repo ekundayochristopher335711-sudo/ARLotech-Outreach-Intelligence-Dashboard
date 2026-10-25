@@ -89,8 +89,8 @@ Return ONLY valid JSON (no markdown) with this shape:
       if (!geminiRes.ok) {
         const errBody = await geminiRes.text()
         lastError = new Error(`Gemini API error (${modelName}): ${geminiRes.status} - ${errBody}`)
-        // Try next model on 404/NOT_FOUND; otherwise stop.
-        if (geminiRes.status === 404) continue
+        // Try next model on 404/NOT_FOUND, 429 (rate limit), or 503 (overloaded); otherwise stop.
+        if ([404, 429, 503].includes(geminiRes.status)) continue
         throw lastError
       }
 
