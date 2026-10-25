@@ -1,9 +1,1 @@
-[project]
-id = ""
-ref = "master"
-branch = "pgvector"
-
-[db]
-schema = "public"
-
-[features]
+project_id = "vfgaqyatzyrsdjdsejie"
