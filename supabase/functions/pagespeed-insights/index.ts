@@ -29,10 +29,18 @@ serve(async (req) => {
 
     const apiUrl = `https://www.googleapis.com/pagespeedonline/v5/runPagespeed?url=${encodeURIComponent(url)}&key=${PAGESPEED_API_KEY}&strategy=${validStrategy}&${categoryParams}`
 
-    const response = await fetch(apiUrl)
-    if (!response.ok) {
-      const errorBody = await response.text()
-      throw new Error(`PageSpeed Insights API error: ${response.status} - ${errorBody}`)
+    let response: Response | null = null
+    let lastErrorBody = ''
+    for (let attempt = 0; attempt < 2; attempt++) {
+      response = await fetch(apiUrl)
+      if (response.ok) break
+      lastErrorBody = await response.text()
+      if (response.status !== 400) break
+      // retry once on Lighthouse document request failures
+      await new Promise((r) => setTimeout(r, 1500))
+    }
+    if (!response || !response.ok) {
+      throw new Error(`PageSpeed Insights API error: ${response?.status ?? 500} - ${lastErrorBody}`)
     }
 
     const data = await response.json()

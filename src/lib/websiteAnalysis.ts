@@ -115,7 +115,20 @@ export async function analyzeWebsite(url: string) {
   const userId = await getCurrentUserId()
 
   const content = await extractContent(url)
-  const pagespeed = await runPageSpeed(url, 'desktop')
+
+  let pagespeed: PageSpeedResult
+  try {
+    pagespeed = await runPageSpeed(url, 'desktop')
+  } catch (e) {
+    console.warn('PageSpeed desktop failed, retrying mobile:', e)
+    try {
+      pagespeed = await runPageSpeed(url, 'mobile')
+    } catch (e2) {
+      console.warn('PageSpeed mobile failed, continuing without PageSpeed:', e2)
+      pagespeed = { id: url, title: url, strategy: 'none', lighthouseResult: { categories: {}, audits: {} } } as PageSpeedResult
+    }
+  }
+
   const gemini = await generateGeminiAnalysis({ url, content, pagespeed })
 
   const cats = pagespeed?.lighthouseResult?.categories || {}
@@ -127,7 +140,10 @@ export async function analyzeWebsite(url: string) {
   const perfScore = categoryScores.performance ?? null
   const seoScore = categoryScores.seo ?? null
   const scores = Object.values(categoryScores).filter((n): n is number => n !== null)
-  const overall = scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : (perfScore ?? 0)
+  const hasPageSpeed = scores.length > 0
+  const overall = hasPageSpeed
+    ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length)
+    : 50
 
   const audits = pagespeed?.lighthouseResult?.audits || {}
   const failedAudits = Object.values(audits)
