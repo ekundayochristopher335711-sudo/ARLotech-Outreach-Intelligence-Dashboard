@@ -1,3 +1,4 @@
+import { useNavigate } from 'react-router-dom'
 import { Badge } from '@/components/ui/Badge'
 import { type Prospect } from '@/types'
 import { MapPin, MoreVertical } from 'lucide-react'
@@ -8,12 +9,14 @@ interface ProspectTableProps {
 }
 
 export function ProspectTable({ prospects, compact = false }: ProspectTableProps) {
+  const navigate = useNavigate()
   return (
     <div className={`space-y-3 ${compact ? 'divide-y' : ''}`}>
       {prospects.map((prospect) => (
         <div
           key={prospect.id}
-          className={`flex items-center gap-3 rounded-lg p-3 transition-colors ${
+          onClick={() => navigate(`/prospects/${prospect.id}`)}
+          className={`flex items-center gap-3 rounded-lg p-3 transition-colors cursor-pointer ${
             compact ? 'divide-y' : 'hover:bg-slate-50'
           }`}
         >

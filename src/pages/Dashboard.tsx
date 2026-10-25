@@ -1,12 +1,15 @@
 import { useQuery } from '@tanstack/react-query'
+import { useNavigate } from 'react-router-dom'
 import { Card } from '@/components/ui/Card'
 import { MetricCard } from '@/components/dashboard/MetricCard'
 import { ActivityFeed } from '@/components/dashboard/ActivityFeed'
 import { ProspectTable } from '@/components/dashboard/ProspectTable'
 import { getCurrentUserId, supabase } from '@/lib/supabase'
 import { type DashboardMetrics } from '@/types'
+import { toast } from 'sonner'
 
 export function DashboardPage() {
+  const navigate = useNavigate()
   const {
     data: metrics,
     isLoading,
@@ -99,7 +102,15 @@ export function DashboardPage() {
           <p className="text-sm text-slate-500 mt-1">Welcome to your outreach intelligence dashboard</p>
         </div>
         <div className="flex gap-2">
-          <button type="button" className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50">
+          <button type="button" onClick={() => {
+            const blob = new Blob([JSON.stringify({ metrics, prospects, activity }, null, 2)], { type: 'application/json' })
+            const a = document.createElement('a')
+            a.href = URL.createObjectURL(blob)
+            a.download = 'dashboard-report.json'
+            a.click()
+            URL.revokeObjectURL(a.href)
+            toast.success('Exported')
+          }} className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50">
             Export
           </button>
         </div>
@@ -136,7 +147,7 @@ export function DashboardPage() {
         <Card className="lg:col-span-2">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold text-slate-800">Recent Activity</h2>
-            <button type="button" className="text-sm text-arlotech hover:underline">
+            <button type="button" onClick={() => navigate('/replies')} className="text-sm text-arlotech hover:underline">
               View all
             </button>
           </div>
@@ -146,7 +157,7 @@ export function DashboardPage() {
         <Card>
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold text-slate-800">Recent Prospects</h2>
-            <button type="button" className="text-sm text-arlotech hover:underline">
+            <button type="button" onClick={() => navigate('/prospects')} className="text-sm text-arlotech hover:underline">
               View all
             </button>
           </div>

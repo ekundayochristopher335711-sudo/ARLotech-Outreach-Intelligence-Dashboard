@@ -1,4 +1,5 @@
 import { Card } from '@/components/ui/Card'
+import { toast } from 'sonner'
 
 export function SettingsPage() {
   return (
@@ -27,7 +28,7 @@ export function SettingsPage() {
                   <p className="text-xs text-slate-400">{i.status}</p>
                 </div>
               </div>
-              <button type="button" className="text-xs text-arlotech hover:underline">
+              <button type="button" onClick={() => toast.info(`${i.provider} integration management coming soon`)} className="text-xs text-arlotech hover:underline">
                 {i.status === 'Connected' ? 'Disconnect' : 'Connect'}
               </button>
             </div>

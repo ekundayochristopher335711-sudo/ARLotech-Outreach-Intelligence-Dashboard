@@ -1,15 +1,22 @@
-import { useQuery } from '@tanstack/react-query'
+import { useState } from 'react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Card } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
+import { Button } from '@/components/ui/Button'
 import { getCurrentUserId, supabase } from '@/lib/supabase'
+import { toast } from 'sonner'
 import { type Campaign } from '@/types'
-import { FileText, Filter, Plus } from 'lucide-react'
+import { FileText, Filter, Plus, X } from 'lucide-react'
 
 export function CampaignsPage() {
-  const {
-    data: campaigns,
-    isLoading,
-  } = useQuery({
+  const queryClient = useQueryClient()
+  const [showForm, setShowForm] = useState(false)
+  const [name, setName] = useState('')
+  const [description, setDescription] = useState('')
+  const [industry, setIndustry] = useState('')
+  const [location, setLocation] = useState('')
+
+  const { data: campaigns, isLoading } = useQuery({
     queryKey: ['/campaigns'],
     queryFn: async () => {
       const userId = await getCurrentUserId()
@@ -20,6 +27,31 @@ export function CampaignsPage() {
         .order('created_at', { ascending: false })
       return data
     },
+  })
+
+  const createMutation = useMutation({
+    mutationFn: async () => {
+      const userId = await getCurrentUserId()
+      const { error } = await supabase.from('campaigns').insert({
+        user_id: userId,
+        name,
+        description,
+        industry,
+        location,
+        status: 'Draft',
+      })
+      if (error) throw error
+    },
+    onSuccess: () => {
+      toast.success('Campaign created')
+      setShowForm(false)
+      setName('')
+      setDescription('')
+      setIndustry('')
+      setLocation('')
+      queryClient.invalidateQueries({ queryKey: ['/campaigns'] })
+    },
+    onError: (err: any) => toast.error(err?.message || 'Create failed'),
   })
 
   if (isLoading) {
@@ -39,15 +71,48 @@ export function CampaignsPage() {
           <p className="text-sm text-slate-500 mt-1">Manage and track outreach campaigns</p>
         </div>
         <div className="flex gap-2">
-          <button type="button" className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50">
+          <button type="button" onClick={() => toast.info('Filter coming soon')} className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50">
             <Filter className="h-4 w-4" />
           </button>
-          <button type="button" className="rounded-lg bg-arlotech px-3 py-1.5 text-sm text-white hover:bg-arlotech-muted">
+          <button type="button" onClick={() => setShowForm(true)} className="rounded-lg bg-arlotech px-3 py-1.5 text-sm text-white hover:bg-arlotech-muted">
             <Plus className="h-4 w-4" />
             New Campaign
           </button>
         </div>
       </div>
+
+      {showForm && (
+        <Card className="p-6 space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold text-slate-800">New Campaign</h2>
+            <button type="button" onClick={() => setShowForm(false)} className="p-1 text-slate-500 hover:text-slate-700"><X className="h-5 w-5" /></button>
+          </div>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="space-y-1">
+              <label className="block text-sm font-medium text-slate-700">Name</label>
+              <input value={name} onChange={(e) => setName(e.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-arlotech focus:outline-none focus:ring-2 focus:ring-arlotech/20" />
+            </div>
+            <div className="space-y-1">
+              <label className="block text-sm font-medium text-slate-700">Industry</label>
+              <input value={industry} onChange={(e) => setIndustry(e.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-arlotech focus:outline-none focus:ring-2 focus:ring-arlotech/20" />
+            </div>
+            <div className="space-y-1">
+              <label className="block text-sm font-medium text-slate-700">Location</label>
+              <input value={location} onChange={(e) => setLocation(e.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-arlotech focus:outline-none focus:ring-2 focus:ring-arlotech/20" />
+            </div>
+            <div className="space-y-1 sm:col-span-2">
+              <label className="block text-sm font-medium text-slate-700">Description</label>
+              <input value={description} onChange={(e) => setDescription(e.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-arlotech focus:outline-none focus:ring-2 focus:ring-arlotech/20" />
+            </div>
+          </div>
+          <div className="flex gap-2 justify-end">
+            <Button variant="secondary" onClick={() => setShowForm(false)}>Cancel</Button>
+            <Button onClick={() => createMutation.mutate()} disabled={createMutation.isPending || !name.trim()}>
+              {createMutation.isPending ? 'Saving...' : 'Create'}
+            </Button>
+          </div>
+        </Card>
+      )}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {(campaigns as Campaign[]).map((c) => (

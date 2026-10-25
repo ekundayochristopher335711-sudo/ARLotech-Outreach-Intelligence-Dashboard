@@ -1,11 +1,14 @@
 import { useQuery } from '@tanstack/react-query'
+import { useNavigate } from 'react-router-dom'
 import { Card } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { getCurrentUserId, supabase } from '@/lib/supabase'
+import { toast } from 'sonner'
 import { format } from 'date-fns'
 import { Mail, Clock, CheckCircle } from 'lucide-react'
 
 export function RepliesPage() {
+  const navigate = useNavigate()
   const {
     data: messages,
     isLoading,
@@ -46,7 +49,15 @@ export function RepliesPage() {
           <p className="text-sm text-slate-500 mt-1">Track and manage replied conversations</p>
         </div>
         <div className="flex gap-2">
-          <button type="button" className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50">
+          <button type="button" onClick={() => {
+            const blob = new Blob([JSON.stringify(messages || [], null, 2)], { type: 'application/json' })
+            const a = document.createElement('a')
+            a.href = URL.createObjectURL(blob)
+            a.download = 'replies.json'
+            a.click()
+            URL.revokeObjectURL(a.href)
+            toast.success('Exported')
+          }} className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50">
             <Mail className="h-4 w-4" />
             Export
           </button>
@@ -93,7 +104,7 @@ export function RepliesPage() {
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold text-slate-800">Recent Replies</h2>
           <div className="flex gap-2">
-            <button type="button" className="text-xs text-slate-500 hover:text-slate-700">
+            <button type="button" onClick={() => navigate('/replies')} className="text-xs text-slate-500 hover:text-slate-700">
               View all
             </button>
           </div>

@@ -1,3 +1,4 @@
+import { Toaster } from 'sonner'
 import { useState } from 'react'
 import {
   BrowserRouter,
@@ -128,6 +129,7 @@ export default function App() {
           />
         </Routes>
       </BrowserRouter>
+      <Toaster richColors position="top-right" />
     </AuthProvider>
   )
 }
