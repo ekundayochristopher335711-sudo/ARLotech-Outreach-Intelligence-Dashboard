@@ -21,19 +21,32 @@ serve(async (req) => {
     // Candidate models in priority order. We try each until one succeeds,
     // so the function keeps working even if a model is retired/renamed.
     const requestedModel = typeof body?.model === 'string' ? body.model : null
+
+    // Discover the models this key can actually use, so we never guess wrong names.
+    let availableModels: string[] = []
+    try {
+      const listRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${GEMINI_API_KEY}&pageSize=1000`)
+      if (listRes.ok) {
+        const listData = await listRes.json()
+        availableModels = (listData?.models ?? [])
+          .filter((m: any) => Array.isArray(m?.supportedGenerationMethods) && m.supportedGenerationMethods.includes('generateContent'))
+          .map((m: any) => String(m.name).replace(/^models\//, ''))
+          .filter(Boolean)
+      }
+    } catch { /* ignore; fall back to static list */ }
+
+    const staticModels = [
+      'gemini-2.5-flash',
+      'gemini-2.0-flash',
+      'gemini-2.0-flash-lite',
+      'gemini-1.5-flash',
+      'gemini-1.5-flash-latest',
+      'gemini-1.5-pro',
+    ]
+
     const candidateModels = requestedModel
       ? [requestedModel]
-      : [
-          'gemini-3.8-flash',
-          'gemini-3-flash-preview',
-          'gemini-3-pro-preview',
-          'gemini-2.5-flash',
-          'gemini-2.0-flash',
-          'gemini-2.0-flash-lite',
-          'gemini-1.5-flash',
-          'gemini-1.5-flash-latest',
-          'gemini-1.5-pro',
-        ]
+      : (availableModels.length ? availableModels : staticModels)
 
     const prompt = `You are an SEO and web performance expert. Analyze the following website and provide a structured report.
 
@@ -111,7 +124,8 @@ Return ONLY valid JSON (no markdown) with this shape:
       )
     }
 
-    throw lastError ?? new Error('No Gemini model available')
+    const hint = availableModels.length ? ` Available models: ${availableModels.join(', ')}` : ''
+    throw new Error((lastError?.message ?? 'No Gemini model available') + hint)
   } catch (error) {
     return new Response(
       JSON.stringify({ error: error instanceof Error ? error.message : 'An error occurred' }),
