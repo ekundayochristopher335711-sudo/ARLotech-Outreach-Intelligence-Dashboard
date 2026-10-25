@@ -10,7 +10,7 @@ import { AuthProvider, useAuth } from '@/hooks/useAuth'
 import { Sidebar } from '@/components/layout/Sidebar'
 import { LoginPage } from '@/pages/Login'
 import { DashboardPage } from '@/pages/Dashboard'
-import { ProspectsPage } from '@/pages/Prospects'
+import { NewProspectPage, ProspectsPage } from '@/pages/Prospects'
 import { ProspectDetails } from '@/pages/ProspectDetails'
 import { CampaignsPage } from '@/pages/Campaigns'
 import { RepliesPage } from '@/pages/Replies'
@@ -95,6 +95,7 @@ function AppShell() {
             <Routes>
               <Route index element={<DashboardPage />} />
               <Route path="prospects" element={<ProspectsPage />} />
+              <Route path="prospects/new" element={<NewProspectPage />} />
               <Route path="prospects/:id" element={<ProspectDetails />} />
               <Route path="campaigns" element={<CampaignsPage />} />
               <Route path="replies" element={<RepliesPage />} />

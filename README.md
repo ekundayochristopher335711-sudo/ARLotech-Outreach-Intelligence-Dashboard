@@ -40,7 +40,9 @@ Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` in Vercel for each environm
 
 ## Current scope
 
-The dashboard reads Supabase metrics and activity, and the prospect list is backed by Supabase. Several visible controls are not wired up yet: adding/importing prospects and creating campaigns are incomplete, and email drafts currently show a placeholder. There is no backend/API implementation for AI website analysis or AI email generation, and the app does not send email. These workflows need to be implemented and connected to the relevant providers before the dashboard can run a complete automated outreach campaign.
+The dashboard reads Supabase metrics and activity. The prospect list supports search, manual creation, and CSV import. CSV files must include a `business_name` header; supported optional headers are `contact_name`, `email`, `website`, `business_category`, `city`, `country`, `phone`, `linkedin_url`, `notes`, `source`, `status`, and `do_not_contact`.
+
+Editing/deleting prospects and creating campaigns are not yet wired up, and email drafts currently show a placeholder. There is no backend/API implementation for AI website analysis or AI email generation, and the app does not send email. These workflows need to be implemented and connected to the relevant providers before the dashboard can run a complete automated outreach campaign.
 
 ## Checks
 
