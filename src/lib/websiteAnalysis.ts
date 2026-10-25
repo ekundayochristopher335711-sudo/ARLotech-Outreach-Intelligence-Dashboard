@@ -20,6 +20,7 @@ export interface ExtractedContent {
   images: { total: number; missingAlt: number }
   schema: string[]
   h1Count: number
+  contacts?: { emails: string[]; phones: string[] }
 }
 
 export interface PageSpeedResult {
@@ -111,7 +112,7 @@ function scoreToNumber(score: number | null | undefined): number | null {
   return Math.round(score * 100)
 }
 
-export async function analyzeWebsite(url: string) {
+export async function analyzeWebsite(url: string, prospectId: string | null = null) {
   const userId = await getCurrentUserId()
 
   const content = await extractContent(url)
@@ -230,6 +231,7 @@ export async function analyzeWebsite(url: string) {
     .from('website_analyses')
     .insert({
       user_id: userId,
+      prospect_id: prospectId,
       website_url: url,
       overall_score: overall,
       category_scores: categoryScores,

@@ -8,7 +8,10 @@ import { useCsvImport } from '@/lib/csvImport'
 import { ProspectTable } from '@/components/dashboard/ProspectTable'
 import { useAuth } from '@/hooks/useAuth'
 import { supabase } from '@/lib/supabase'
-import { type Prospect } from '@/types'
+import { type Prospect, type ImportSummary } from '@/types'
+import { type ImportResultRow, importLeadsInternal } from '@/lib/csvImport'
+import { extractLeadsFromText } from '@/lib/leadExtraction'
+import { enrichAndAnalyzeProspect, type EnrichmentResult } from '@/lib/leadEnrichment'
 import { FileSpreadsheet, Plus, Search } from 'lucide-react'
 
 interface ProspectFormValues {
@@ -76,9 +79,14 @@ function TextField({
 export function ProspectsPage() {
   const navigate = useNavigate()
   const { session } = useAuth()
+  const queryClient = useQueryClient()
   const fileInput = useRef<HTMLInputElement>(null)
   const [search, setSearch] = useState('')
   const [importMessage, setImportMessage] = useState('')
+  const [importSummary, setImportSummary] = useState<ImportSummary | null>(null)
+  const [importResults, setImportResults] = useState<ImportResultRow[]>([])
+  const [enrichmentResults, setEnrichmentResults] = useState<EnrichmentResult[]>([])
+  const [isEnriching, setIsEnriching] = useState(false)
   const { importCsv, isImporting, importError } = useCsvImport()
   const {
     data: prospects,
@@ -115,10 +123,46 @@ export function ProspectsPage() {
     if (!file) return
 
     setImportMessage('')
-    const result = await importCsv(file)
-    if (result.success) {
-      setImportMessage(`Imported ${result.count ?? 0} prospects.`)
+    setImportSummary(null)
+    setImportResults([])
+    setEnrichmentResults([])
+    setIsEnriching(false)
+
+    const userId = session?.user.id
+    let result
+    const isText = file.name.toLowerCase().endsWith('.txt') || file.type.startsWith('text/')
+    if (isText) {
+      const text = await file.text()
+      const leads = await extractLeadsFromText(text)
+      result = await importLeadsInternal(leads as any, queryClient, userId)
+    } else {
+      result = await importCsv(file)
     }
+
+    if (result.success) {
+      setImportMessage(`Imported ${result.summary.success} of ${result.summary.total} prospects.`)
+    } else if (result.summary.success > 0) {
+      setImportMessage(`Imported ${result.summary.success} of ${result.summary.total} prospects with some issues.`)
+    } else {
+      setImportMessage(result.errors ?? 'Import failed.')
+    }
+    setImportSummary(result.summary)
+    setImportResults(result.results)
+
+    // Enrich/analyze inserted prospects with websites in the background
+    const inserted = result.insertedProspects ?? []
+    if (inserted.length > 0) {
+      setIsEnriching(true)
+      const enrichment: EnrichmentResult[] = []
+      for (const prospect of inserted) {
+        if (!prospect.website) continue
+        const res = await enrichAndAnalyzeProspect(prospect)
+        enrichment.push(res)
+        setEnrichmentResults([...enrichment])
+      }
+      setIsEnriching(false)
+    }
+
     input.value = ''
   }
 
@@ -133,7 +177,7 @@ export function ProspectsPage() {
           <input
             ref={fileInput}
             type="file"
-            accept=".csv,text/csv"
+            accept=".csv,.txt,text/csv,text/plain"
             className="hidden"
             onChange={handleImport}
             aria-label="Choose prospects CSV file"
@@ -171,6 +215,79 @@ export function ProspectsPage() {
         >
           {importError || importMessage}
         </p>
+      )}
+
+      {importSummary && (
+        <Card className="p-4 space-y-3">
+          <div className="flex flex-wrap gap-3 text-sm">
+            <span className="rounded-full bg-slate-100 px-3 py-1">Total: {importSummary.total}</span>
+            <span className="rounded-full bg-green-100 text-green-700 px-3 py-1">Imported: {importSummary.success}</span>
+            <span className="rounded-full bg-amber-100 text-amber-700 px-3 py-1">Skipped duplicates: {importSummary.skipped_duplicate}</span>
+            <span className="rounded-full bg-red-100 text-red-700 px-3 py-1">Invalid: {importSummary.invalid}</span>
+            <span className="rounded-full bg-red-100 text-red-700 px-3 py-1">Failed: {importSummary.failed}</span>
+          </div>
+          {importResults.some((r) => r.status !== 'success') && (
+            <div className="max-h-48 overflow-auto rounded-lg border border-slate-200">
+              <table className="w-full text-xs">
+                <thead className="bg-slate-50">
+                  <tr>
+                    <th className="px-3 py-2 text-left">Row</th>
+                    <th className="px-3 py-2 text-left">Business</th>
+                    <th className="px-3 py-2 text-left">Status</th>
+                    <th className="px-3 py-2 text-left">Reason</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {importResults
+                    .filter((r) => r.status !== 'success')
+                    .map((r) => (
+                      <tr key={r.id} className="border-t border-slate-100">
+                        <td className="px-3 py-2">{r.id}</td>
+                        <td className="px-3 py-2">{r.business_name}</td>
+                        <td className="px-3 py-2">{r.status}</td>
+                        <td className="px-3 py-2">{r.reason ?? '—'}</td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Card>
+      )}
+
+      {(isEnriching || enrichmentResults.length > 0) && (
+        <Card className="p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-slate-800">Post-import enrichment</h3>
+            {isEnriching && <span className="text-xs text-slate-500">Analyzing websites…</span>}
+          </div>
+          <div className="max-h-64 overflow-auto rounded-lg border border-slate-200">
+            <table className="w-full text-xs">
+              <thead className="bg-slate-50">
+                <tr>
+                  <th className="px-3 py-2 text-left">Business</th>
+                  <th className="px-3 py-2 text-left">Contact email</th>
+                  <th className="px-3 py-2 text-left">Contact phone</th>
+                  <th className="px-3 py-2 text-left">Score</th>
+                  <th className="px-3 py-2 text-left">Draft</th>
+                  <th className="px-3 py-2 text-left">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {enrichmentResults.map((r) => (
+                  <tr key={r.prospect_id} className="border-t border-slate-100">
+                    <td className="px-3 py-2">{r.business_name}</td>
+                    <td className="px-3 py-2">{r.contact_email ?? '—'}</td>
+                    <td className="px-3 py-2">{r.contact_phone ?? '—'}</td>
+                    <td className="px-3 py-2">{r.analysis_score ?? '—'}</td>
+                    <td className="px-3 py-2">{r.draft_created ? 'Created' : '—'}</td>
+                    <td className="px-3 py-2">{r.error ?? 'OK'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
       )}
 
       <Card>

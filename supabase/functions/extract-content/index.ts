@@ -151,6 +151,17 @@ serve(async (req) => {
 
     const favicon = linkRel(html, 'icon') || linkRel(html, 'shortcut icon')
 
+    const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g
+    const phoneRegex = /(?:\+?\d{1,3}[\s.-]?)?(?:\(?\d{3}\)?[\s.-]?)?\d{3}[\s.-]?\d{4}/g
+    const emails = new Set<string>()
+    for (const m of html.matchAll(emailRegex)) emails.add(m[0].toLowerCase())
+    for (const m of html.matchAll(/mailto:([^"'>\s]+)/gi)) {
+      try { emails.add(decodeURIComponent(m[1].split('?')[0]).toLowerCase()) } catch { emails.add(m[1].split('?')[0].toLowerCase()) }
+    }
+    const phones = new Set<string>()
+    for (const m of html.matchAll(phoneRegex)) phones.add(m[0].trim())
+    for (const m of html.matchAll(/tel:([^"'>\s]+)/gi)) phones.add(decodeURIComponent(m[1]))
+
     const result = {
       url,
       finalUrl,
@@ -179,6 +190,7 @@ serve(async (req) => {
       },
       schema: schemaScripts,
       h1Count: headings.h1.length,
+      contacts: { emails: [...emails], phones: [...phones] },
     }
 
     return new Response(JSON.stringify(result), {
