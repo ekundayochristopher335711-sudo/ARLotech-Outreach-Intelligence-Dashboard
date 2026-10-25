@@ -44,7 +44,34 @@ The dashboard reads Supabase metrics and activity. The prospect list supports se
 
 Editing/deleting prospects and creating campaigns are not yet wired up, and email drafts currently show a placeholder. There is no backend/API implementation for AI website analysis or AI email generation, and the app does not send email. These workflows need to be implemented and connected to the relevant providers before the dashboard can run a complete automated outreach campaign.
 
-## Checks
+
+## Website Intelligence integrations
+
+The Website Intelligence page orchestrates three Supabase Edge Functions:
+
+- `pagespeed-insights` — calls the Google PageSpeed Insights API (Lighthouse) for performance, accessibility, SEO and best-practices scores plus audit details.
+- `extract-content` — fetches the target page server-side and extracts title, meta, headings, text, links, images, schema.org, etc.
+- `gemini-analysis` — sends the extracted content + PageSpeed data to the Gemini API and returns an AI summary, score explanation, recommendations and observations.
+
+The combined report is stored in the `website_analyses` Supabase table.
+
+### Configure secrets (server-side, never exposed to the browser)
+
+```sh
+npx supabase secrets set PAGESPEED_API_KEY=your-google-pagespeed-key
+npx supabase secrets set GEMINI_API_KEY=your-gemini-key
+```
+
+### Deploy the functions
+
+```sh
+npx supabase functions deploy pagespeed-insights
+npx supabase functions deploy extract-content
+npx supabase functions deploy gemini-analysis
+```
+
+The frontend invokes them via `supabase.functions.invoke(...)` and stores the resulting report in Supabase.
+
 
 ```sh
 npm run build
