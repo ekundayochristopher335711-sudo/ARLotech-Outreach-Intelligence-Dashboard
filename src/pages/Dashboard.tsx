@@ -7,6 +7,7 @@ import { ProspectTable } from '@/components/dashboard/ProspectTable'
 import { getCurrentUserId, supabase } from '@/lib/supabase'
 import { type DashboardMetrics } from '@/types'
 import { toast } from 'sonner'
+import { exportDashboardPdf } from '@/lib/exportPdf'
 
 export function DashboardPage() {
   const navigate = useNavigate()
@@ -103,13 +104,8 @@ export function DashboardPage() {
         </div>
         <div className="flex gap-2">
           <button type="button" onClick={() => {
-            const blob = new Blob([JSON.stringify({ metrics, prospects, activity }, null, 2)], { type: 'application/json' })
-            const a = document.createElement('a')
-            a.href = URL.createObjectURL(blob)
-            a.download = 'dashboard-report.json'
-            a.click()
-            URL.revokeObjectURL(a.href)
-            toast.success('Exported')
+            exportDashboardPdf(metrics, prospects || [], activity || [])
+            toast.success('Exported as PDF')
           }} className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50">
             Export
           </button>

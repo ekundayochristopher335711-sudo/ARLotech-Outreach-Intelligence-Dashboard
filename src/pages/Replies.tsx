@@ -4,6 +4,7 @@ import { Card } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { getCurrentUserId, supabase } from '@/lib/supabase'
 import { toast } from 'sonner'
+import { exportRepliesPdf } from '@/lib/exportPdf'
 import { format } from 'date-fns'
 import { Mail, Clock, CheckCircle } from 'lucide-react'
 
@@ -50,13 +51,8 @@ export function RepliesPage() {
         </div>
         <div className="flex gap-2">
           <button type="button" onClick={() => {
-            const blob = new Blob([JSON.stringify(messages || [], null, 2)], { type: 'application/json' })
-            const a = document.createElement('a')
-            a.href = URL.createObjectURL(blob)
-            a.download = 'replies.json'
-            a.click()
-            URL.revokeObjectURL(a.href)
-            toast.success('Exported')
+            exportRepliesPdf(messages || [])
+            toast.success('Exported as PDF')
           }} className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50">
             <Mail className="h-4 w-4" />
             Export

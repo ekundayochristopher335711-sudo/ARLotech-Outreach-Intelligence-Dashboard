@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { getCurrentUserId, supabase } from '@/lib/supabase'
 import { analyzeWebsite } from '@/lib/websiteAnalysis'
+import { exportWebsiteAnalysisPdf } from '@/lib/exportPdf'
 import { toast } from 'sonner'
 import { format } from 'date-fns'
 import { Globe, AlertCircle, Clock, Loader2, Search, X, Download, Copy } from 'lucide-react'
@@ -56,12 +57,8 @@ export function WebsiteIntelligencePage() {
     navigator.clipboard.writeText(JSON.stringify(analysis, null, 2)).then(() => toast.success('Report copied'))
   }
   const handleDownloadReport = (analysis: any) => {
-    const blob = new Blob([JSON.stringify(analysis, null, 2)], { type: 'application/json' })
-    const a = document.createElement('a')
-    a.href = URL.createObjectURL(blob)
-    a.download = `website-analysis-${analysis.id || 'report'}.json`
-    a.click()
-    URL.revokeObjectURL(a.href)
+    exportWebsiteAnalysisPdf(analysis)
+    toast.success('Report downloaded as PDF')
   }
 
   if (isLoading) {
