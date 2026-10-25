@@ -31,6 +31,7 @@ serve(async (req) => {
         availableModels = (listData?.models ?? [])
           .filter((m: any) => Array.isArray(m?.supportedGenerationMethods) && m.supportedGenerationMethods.includes('generateContent'))
           .map((m: any) => String(m.name).replace(/^models\//, ''))
+          .filter((name: string) => !/tts|audio|image|embedding|aqa/i.test(name))
           .filter(Boolean)
       }
     } catch { /* ignore; fall back to static list */ }
@@ -102,8 +103,8 @@ Return ONLY valid JSON (no markdown) with this shape:
       if (!geminiRes.ok) {
         const errBody = await geminiRes.text()
         lastError = new Error(`Gemini API error (${modelName}): ${geminiRes.status} - ${errBody}`)
-        // Try next model on 404/NOT_FOUND, 429 (rate limit), or 503 (overloaded); otherwise stop.
-        if ([404, 429, 503].includes(geminiRes.status)) continue
+        // Try next model on 404/NOT_FOUND, 400 (capability mismatch), 429 (rate limit), or 503 (overloaded); otherwise stop.
+        if ([404, 400, 429, 503].includes(geminiRes.status)) continue
         throw lastError
       }
 
