@@ -15,11 +15,22 @@ serve(async (req) => {
     if (!GEMINI_API_KEY) throw new Error('GEMINI_API_KEY is not configured')
 
     const body = await req.json()
-    const { url, content, pagespeed, model } = body
+    const { url, content, pagespeed } = body
     if (!url) throw new Error('url is required')
 
-    const modelName = model || 'gemini-2.0-flash'
-    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${GEMINI_API_KEY}`
+    // Candidate models in priority order. We try each until one succeeds,
+    // so the function keeps working even if a model is retired/renamed.
+    const requestedModel = typeof body?.model === 'string' ? body.model : null
+    const candidateModels = requestedModel
+      ? [requestedModel]
+      : [
+          'gemini-2.5-flash',
+          'gemini-2.0-flash',
+          'gemini-2.0-flash-lite',
+          'gemini-1.5-flash',
+          'gemini-1.5-flash-latest',
+          'gemini-1.5-pro',
+        ]
 
     const prompt = `You are an SEO and web performance expert. Analyze the following website and provide a structured report.
 
@@ -59,35 +70,45 @@ Return ONLY valid JSON (no markdown) with this shape:
   "positive_observations": ["positive 1", "..."]
 }`
 
-    const geminiRes = await fetch(endpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0.4, responseMimeType: 'application/json' },
-      }),
-    })
+    let lastError: Error | null = null
+    for (const modelName of candidateModels) {
+      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${GEMINI_API_KEY}`
 
-    if (!geminiRes.ok) {
-      const errBody = await geminiRes.text()
-      throw new Error(`Gemini API error: ${geminiRes.status} - ${errBody}`)
+      const geminiRes = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { temperature: 0.4, responseMimeType: 'application/json' },
+        }),
+      })
+
+      if (!geminiRes.ok) {
+        const errBody = await geminiRes.text()
+        lastError = new Error(`Gemini API error (${modelName}): ${geminiRes.status} - ${errBody}`)
+        // Try next model on 404/NOT_FOUND; otherwise stop.
+        if (geminiRes.status === 404) continue
+        throw lastError
+      }
+
+      const geminiData = await geminiRes.json()
+      const rawText = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
+
+      let parsed: any = null
+      try {
+        const cleaned = rawText.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim()
+        parsed = JSON.parse(cleaned)
+      } catch {
+        parsed = null
+      }
+
+      return new Response(
+        JSON.stringify({ text: rawText, parsed, model: modelName }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      )
     }
 
-    const geminiData = await geminiRes.json()
-    const rawText = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
-
-    let parsed: any = null
-    try {
-      const cleaned = rawText.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim()
-      parsed = JSON.parse(cleaned)
-    } catch {
-      parsed = null
-    }
-
-    return new Response(
-      JSON.stringify({ text: rawText, parsed, model: modelName }),
-      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
-    )
+    throw lastError ?? new Error('No Gemini model available')
   } catch (error) {
     return new Response(
       JSON.stringify({ error: error instanceof Error ? error.message : 'An error occurred' }),
