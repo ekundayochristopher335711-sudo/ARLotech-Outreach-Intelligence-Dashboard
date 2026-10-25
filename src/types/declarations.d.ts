@@ -8,6 +8,13 @@ declare module 'supabase' {
   }
 }
 
+declare module '@tanstack/query-core' {
+  export class QueryClient {
+    constructor(config?: object)
+    invalidateQueries(filters?: object): Promise<void>
+  }
+}
+
 declare module '@supabase/supabase-js' {
   export interface SupabaseClient {
     auth: {

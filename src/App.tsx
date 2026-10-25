@@ -94,7 +94,7 @@ export default function App() {
         <Routes>
           <Route path="/login" element={<PublicRoute><LoginPage /></PublicRoute>} />
           <Route
-            path="/"
+            path="/*"
             element={
               <PrivateRoute>
                 <AppShell />
