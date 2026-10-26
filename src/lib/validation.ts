@@ -51,6 +51,7 @@ export const EmailStatusSchema = z.enum([
 ])
 
 export const CampaignStatusSchema = z.enum([
+  'Draft',
   'Planning',
   'Active',
   'Paused',
@@ -69,14 +70,20 @@ export const FollowUpSequenceStatusSchema = z.enum([
 export const FollowUpStepStatusSchema = z.enum(['Pending', 'Sent', 'Completed', 'Canceled', 'Blocked'])
 
 export const AnalysisStatusSchema = z.enum([
-  'queued',
-  'running',
+  'pending',
+  'processing',
   'completed',
   'failed',
   'blocked',
 ])
 
-export const AnalysisProviderSchema = z.enum(['custom', 'pagespeed_insights', 'lighthouse'])
+export const AnalysisProviderSchema = z.enum([
+  'custom',
+  'pagespeed_insights',
+  'pagespeed+gemini',
+  'gemini',
+  'lighthouse',
+])
 
 export const ImportResultSchema = z.object({
   id: z.string(),

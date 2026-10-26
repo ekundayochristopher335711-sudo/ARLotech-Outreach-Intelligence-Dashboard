@@ -42,6 +42,10 @@ export interface WebsiteAnalysis {
   prospect_id: string | null
   website_url: string
   overall_score: number | null
+  performance_score: number | null
+  accessibility_score: number | null
+  seo_score: number | null
+  best_practices_score: number | null
   category_scores: Record<string, number | null> | null
   findings: Array<{
     id: string
@@ -61,11 +65,13 @@ export interface WebsiteAnalysis {
     potential_benefit: string
     priority: string
   }>
+  ai_analysis: Record<string, unknown> | null
   analysis_status: string
   error_message: string | null
   analysis_provider: string | null
   analyzed_at: string | null
   created_at: string
+  updated_at: string
 }
 
 export interface EmailDraft {
