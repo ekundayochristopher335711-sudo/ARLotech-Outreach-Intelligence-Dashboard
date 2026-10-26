@@ -12,7 +12,7 @@ import { type Prospect, type ImportSummary } from '@/types'
 import { type ImportResultRow, importLeadsInternal } from '@/lib/csvImport'
 import { extractLeadsFromText } from '@/lib/leadExtraction'
 import { enrichAndAnalyzeProspect, type EnrichmentResult } from '@/lib/leadEnrichment'
-import { FileSpreadsheet, Plus, Search } from 'lucide-react'
+import { ClipboardPaste, FileSpreadsheet, Plus, Search } from 'lucide-react'
 
 interface ProspectFormValues {
   business_name: string
@@ -82,7 +82,11 @@ export function ProspectsPage() {
   const queryClient = useQueryClient()
   const fileInput = useRef<HTMLInputElement>(null)
   const [search, setSearch] = useState('')
+  const [showTextImport, setShowTextImport] = useState(false)
+  const [prospectText, setProspectText] = useState('')
+  const [isExtractingText, setIsExtractingText] = useState(false)
   const [importMessage, setImportMessage] = useState('')
+  const [importFailure, setImportFailure] = useState('')
   const [importSummary, setImportSummary] = useState<ImportSummary | null>(null)
   const [importResults, setImportResults] = useState<ImportResultRow[]>([])
   const [enrichmentResults, setEnrichmentResults] = useState<EnrichmentResult[]>([])
@@ -117,34 +121,20 @@ export function ProspectsPage() {
     )
   })
 
-  const handleImport = async (event: ChangeEvent<HTMLInputElement>) => {
-    const input = event.currentTarget
-    const file = input.files?.[0]
-    if (!file) return
-
+  const completeImport = async (result: Awaited<ReturnType<typeof importLeadsInternal>>) => {
     setImportMessage('')
+    setImportFailure('')
     setImportSummary(null)
     setImportResults([])
     setEnrichmentResults([])
     setIsEnriching(false)
-
-    const userId = session?.user.id
-    let result
-    const isText = file.name.toLowerCase().endsWith('.txt') || file.type.startsWith('text/')
-    if (isText) {
-      const text = await file.text()
-      const leads = await extractLeadsFromText(text)
-      result = await importLeadsInternal(leads as any, queryClient, userId)
-    } else {
-      result = await importCsv(file)
-    }
 
     if (result.success) {
       setImportMessage(`Imported ${result.summary.success} of ${result.summary.total} prospects.`)
     } else if (result.summary.success > 0) {
       setImportMessage(`Imported ${result.summary.success} of ${result.summary.total} prospects with some issues.`)
     } else {
-      setImportMessage(result.errors ?? 'Import failed.')
+      setImportFailure(result.errors ?? 'Import failed.')
     }
     setImportSummary(result.summary)
     setImportResults(result.results)
@@ -162,8 +152,67 @@ export function ProspectsPage() {
       }
       setIsEnriching(false)
     }
+  }
 
-    input.value = ''
+  const handleImport = async (event: ChangeEvent<HTMLInputElement>) => {
+    const input = event.currentTarget
+    const file = input.files?.[0]
+    if (!file) return
+
+    setImportMessage('')
+    setImportFailure('')
+    setImportSummary(null)
+    setImportResults([])
+    setEnrichmentResults([])
+    setIsEnriching(false)
+
+    try {
+      const userId = session?.user.id
+      const isText = file.name.toLowerCase().endsWith('.txt') || file.type.startsWith('text/')
+      if (isText) {
+        const text = await file.text()
+        const leads = await extractLeadsFromText(text)
+        await completeImport(await importLeadsInternal(leads as any, queryClient, userId))
+      } else {
+        await completeImport(await importCsv(file))
+      }
+    } catch (error) {
+      setImportFailure(error instanceof Error ? error.message : 'Could not import prospects.')
+    } finally {
+      input.value = ''
+    }
+  }
+
+  const handleTextImport = async () => {
+    const text = prospectText.trim()
+    if (!text) {
+      setImportFailure('Paste prospect details first.')
+      return
+    }
+
+    setImportMessage('')
+    setImportFailure('')
+    setImportSummary(null)
+    setImportResults([])
+    setEnrichmentResults([])
+    setIsEnriching(false)
+    setIsExtractingText(true)
+
+    try {
+      const leads = await extractLeadsFromText(text)
+      if (leads.length === 0) {
+        setImportFailure('No business prospects were found in that text.')
+        return
+      }
+
+      await completeImport(await importLeadsInternal(leads as any, queryClient, session?.user.id))
+      setProspectText('')
+      setShowTextImport(false)
+    } catch (error) {
+      setImportFailure(error instanceof Error ? error.message : 'Could not extract prospects from this text.')
+    } finally {
+      setIsExtractingText(false)
+    }
   }
 
   return (
@@ -180,7 +229,7 @@ export function ProspectsPage() {
             accept=".csv,.txt,text/csv,text/plain"
             className="hidden"
             onChange={handleImport}
-            aria-label="Choose prospects CSV file"
+            aria-label="Choose prospects CSV or text file"
           />
           <Button
             variant="secondary"
@@ -190,7 +239,16 @@ export function ProspectsPage() {
             ariaLabel="Import prospects"
           >
             <FileSpreadsheet className="h-4 w-4" />
-            {isImporting ? 'Importing...' : 'Import CSV'}
+            {isImporting ? 'Importing...' : 'Import file'}
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => setShowTextImport((visible) => !visible)}
+            ariaLabel="Paste prospect details"
+          >
+            <ClipboardPaste className="h-4 w-4" />
+            {showTextImport ? 'Close paste' : 'Paste text'}
           </Button>
           <Button
             variant="primary"
@@ -204,16 +262,41 @@ export function ProspectsPage() {
         </div>
       </div>
 
-      {(importError || importMessage) && (
+      {showTextImport && (
+        <Card className="space-y-3 p-4">
+          <h2 className="text-base font-semibold text-slate-800">Paste prospect details</h2>
+          <div className="space-y-1">
+            <label htmlFor="prospect-text" className="block text-sm font-medium text-slate-700">
+              Business information
+            </label>
+            <textarea
+              id="prospect-text"
+              value={prospectText}
+              onChange={(event) => setProspectText(event.target.value)}
+              rows={7}
+              disabled={isExtractingText}
+              className="w-full resize-y rounded-lg border border-slate-300 px-3 py-2 text-sm placeholder:text-slate-400 focus:border-arlotech focus:outline-none focus:ring-2 focus:ring-arlotech/20 disabled:bg-slate-50"
+              placeholder="Paste business listings, directory entries, or prospect notes..."
+            />
+          </div>
+          <div className="flex justify-end">
+            <Button onClick={handleTextImport} disabled={isExtractingText || !prospectText.trim()}>
+              {isExtractingText ? 'Extracting...' : 'Extract & import'}
+            </Button>
+          </div>
+        </Card>
+      )}
+
+      {(importError || importFailure || importMessage) && (
         <p
           className={`rounded-lg border p-3 text-sm ${
-            importError
+            importError || importFailure
               ? 'border-red-200 bg-red-50 text-red-700'
               : 'border-green-200 bg-green-50 text-green-700'
           }`}
-          role={importError ? 'alert' : 'status'}
+          role={importError || importFailure ? 'alert' : 'status'}
         >
-          {importError || importMessage}
+          {importError || importFailure || importMessage}
         </p>
       )}
 
