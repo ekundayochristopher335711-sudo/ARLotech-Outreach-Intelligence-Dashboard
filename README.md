@@ -59,7 +59,7 @@ The Website Intelligence page orchestrates three Supabase Edge Functions:
 
 The combined report is stored in the `website_analyses` Supabase table.
 
-Website audit PDFs separate scored Lighthouse measurements and direct page-inspection findings from AI-assisted suggestions. They deduplicate repeated findings, explain the PageSpeed score calculation, show the count of verified observations actually included in the PDF, and provide audit-specific remediation with resource-level evidence when the audit provides it.
+Website audit PDFs identify the linked prospect when available, include all unique measured/page-inspection observations, explain the PageSpeed score calculation, distinguish Lighthouse estimates from measured results, and provide contextual recommendations to validate. Reports conclude with a concise, evidence-based next step.
 
 ### Configure secrets (server-side, never exposed to the browser)
 

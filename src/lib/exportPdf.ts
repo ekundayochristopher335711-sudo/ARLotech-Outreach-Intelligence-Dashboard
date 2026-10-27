@@ -47,6 +47,7 @@ interface PdfFinding {
   audit_id?: string | null
   category?: string | null
   display_value?: string | null
+  lighthouse_score_pct?: number | null
   opportunity_ms?: number | null
   opportunity_bytes?: number | null
   affected_resources?: string[] | null
@@ -340,7 +341,9 @@ function normalizePdfFindings(findings: PdfFinding[]) {
 function formatOpportunity(finding: PdfFinding) {
   const values: string[] = []
   if (typeof finding.opportunity_ms === 'number' && finding.opportunity_ms > 0) {
-    values.push(`${(finding.opportunity_ms / 1000).toFixed(1)} s`)
+    values.push(finding.opportunity_ms >= 100
+      ? `${(finding.opportunity_ms / 1000).toFixed(1)} s`
+      : `${Math.round(finding.opportunity_ms)} ms`)
   }
   if (typeof finding.opportunity_bytes === 'number' && finding.opportunity_bytes > 0) {
     values.push(`${(finding.opportunity_bytes / 1024).toFixed(0)} KB`)
@@ -348,7 +351,32 @@ function formatOpportunity(finding: PdfFinding) {
   return values.length ? `Estimated opportunity: ${values.join(' · ')}` : null
 }
 
-function buildWebsiteAnalysisPdf(analysis: Record<string, any>) {
+function recommendationContext(title: string) {
+  if (/\bh1\b|heading/i.test(title)) {
+    return 'Validate the rendered page’s heading structure first; client-side content may not appear in a static HTML inspection. Ensure any primary heading accurately describes the page rather than adding one solely for SEO.'
+  }
+  if (/content|word count|copy|text/i.test(title)) {
+    return 'Review the complete rendered page, service pages, and intended audience before expanding copy. The captured text alone does not establish that more content is needed.'
+  }
+  if (/canonical/i.test(title)) {
+    return 'Check Search Console and confirm that multiple indexable URL variants or duplicate pages exist before adding or changing canonical tags.'
+  }
+  if (/meta description/i.test(title)) {
+    return 'Confirm the page is intended to appear in search results and review its existing rendered metadata before adding or revising a description.'
+  }
+  return 'Treat this as a hypothesis, not a required change. Confirm it against the rendered page, site configuration, and business goals before implementation.'
+}
+
+function recommendationConcept(title: string) {
+  if (/\bh1\b|heading/i.test(title)) return 'h1'
+  if (/canonical/i.test(title)) return 'canonical'
+  if (/content|word count|copy|text/i.test(title)) return 'content'
+  if (/alt text|alt attribute|image alternative/i.test(title)) return 'alt-text'
+  if (/meta description/i.test(title)) return 'meta-description'
+  return null
+}
+
+function buildWebsiteAnalysisPdf(analysis: Record<string, any>, preparedFor?: string | null) {
   const rec = analysis?.record || analysis || {}
   const url = rec.website_url ?? rec.url ?? 'Website not recorded'
   let hostname = url
@@ -358,6 +386,12 @@ function buildWebsiteAnalysisPdf(analysis: Record<string, any>) {
     hostname = String(url)
   }
   const report = createReport('Website audit', `${hostname}  |  Assessed ${displayDate(rec.analyzed_at)}`, 'WEB INTELLIGENCE')
+  const verifiedBusinessName = preparedFor?.trim() || rec.prospect?.business_name?.trim() || null
+  const assessedAddress = /^https?:\/\//i.test(url)
+    ? url
+    : hostname === 'Website not recorded'
+      ? 'Not recorded'
+      : `https://${url}`
   const categoryScores = rec.category_scores && typeof rec.category_scores === 'object'
     ? Object.entries(rec.category_scores).filter((entry): entry is [string, number] =>
         typeof entry[1] === 'number' && Number.isFinite(entry[1]),
@@ -379,14 +413,22 @@ function buildWebsiteAnalysisPdf(analysis: Record<string, any>) {
   )
   const findings = measuredFindings
     .sort((left, right) => {
-      const rank = (priority?: string | null) =>
-        priority?.toLowerCase() === 'high' ? 0 : priority?.toLowerCase() === 'medium' ? 1 : 2
-      return rank(left.priority) - rank(right.priority)
+      const timeLeft = left.opportunity_ms ?? 0
+      const timeRight = right.opportunity_ms ?? 0
+      if (timeLeft !== timeRight) return timeRight - timeLeft
+      const bytesLeft = left.opportunity_bytes ?? 0
+      const bytesRight = right.opportunity_bytes ?? 0
+      if (bytesLeft !== bytesRight) return bytesRight - bytesLeft
+      return 0
     })
-  const primaryFindings = findings.slice(0, 8)
-  const findingCountLabel = primaryFindings.length === findings.length
-    ? `Verified observations (${primaryFindings.length})`
-    : `Verified observations (${primaryFindings.length} shown)`
+  const primaryFindings = findings
+  const measuredFindingConcepts = new Set(
+    findings.map((finding) => recommendationConcept(finding.title || '')).filter(Boolean),
+  )
+  const additionalRecommendations = unverifiedFindings.filter((finding) => {
+    const concept = recommendationConcept(finding.title || finding.recommended_fix || '')
+    return !concept || !measuredFindingConcepts.has(concept)
+  })
   const positives: Array<string | { title?: string | null; evidence?: string | null }> = Array.isArray(rec.positive_observations)
     ? rec.positive_observations
     : []
@@ -407,7 +449,7 @@ function buildWebsiteAnalysisPdf(analysis: Record<string, any>) {
 
   report.addSection('Assessment scope')
   report.addParagraph(
-    'We assessed the website page and technical signals observed at the time shown above. This report focuses on site observations and does not identify a website owner or prospective recipient.',
+    `Prepared for: ${verifiedBusinessName || hostname}\nWebsite assessed: ${assessedAddress}\nPrepared by: Arlotech Digital Solutions\n\nWe reviewed the website’s observed technical performance, accessibility, search signals, and page structure at the time shown above.`,
     { size: 8.5 },
   )
 
@@ -421,7 +463,7 @@ function buildWebsiteAnalysisPdf(analysis: Record<string, any>) {
     )
   }
 
-  report.addSection(findingCountLabel)
+  report.addSection(`Verified observations (${findings.length})`)
   if (primaryFindings.length === 0) {
     report.addParagraph('No scored Lighthouse issues or direct page-inspection issues were recorded.')
   } else {
@@ -431,13 +473,23 @@ function buildWebsiteAnalysisPdf(analysis: Record<string, any>) {
       const metadata = [
         finding.sourceLabel,
         finding.category?.replace(/-/g, ' '),
-        finding.priority ? `${finding.priority} priority` : null,
+        typeof finding.lighthouse_score_pct === 'number'
+          ? `Lighthouse audit score ${finding.lighthouse_score_pct}%`
+          : null,
       ].filter(Boolean)
       report.addParagraph(metadata.join('  |  '), { size: 7.5, color: TEAL })
       const evidence = finding.display_value || finding.evidence
       if (evidence && evidence !== 'AI-generated') report.addParagraph(`Observed: ${evidence}`, { size: 8 })
       const opportunity = formatOpportunity(finding)
-      if (opportunity) report.addParagraph(opportunity, { size: 7.5 })
+      if (opportunity) {
+        report.addParagraph(opportunity, { size: 7.5 })
+        report.addParagraph(
+          'Potential impact: Lighthouse estimates this opportunity under test conditions; actual user impact and production savings may differ.',
+          { size: 7.5, color: MUTED },
+        )
+      } else if (finding.sourceLabel === 'Measured') {
+        report.addParagraph('No quantified savings were reported for this Lighthouse finding.', { size: 7.5, color: MUTED })
+      }
       if (finding.explanation && finding.sourceLabel !== 'Measured') {
         report.addParagraph(finding.explanation, { size: 8 })
       }
@@ -446,7 +498,10 @@ function buildWebsiteAnalysisPdf(analysis: Record<string, any>) {
         const recommendation = finding.sourceLabel === 'Measured'
           ? lighthouseRecommendation(auditId, finding.title || 'this issue')
           : finding.recommended_fix
-        if (recommendation) report.addParagraph(`Our recommendation: ${useTeamVoice(recommendation)}`, { size: 8, bold: true })
+        if (recommendation) {
+          report.addParagraph(`Our recommendation: ${useTeamVoice(recommendation)}`, { size: 8, bold: true })
+          report.addParagraph(`Suggested review order: ${index + 1}`, { size: 7.5, color: MUTED })
+        }
       }
       const resources = finding.affected_resources?.filter(Boolean).slice(0, 3) ?? []
       for (const resource of resources) {
@@ -456,23 +511,21 @@ function buildWebsiteAnalysisPdf(analysis: Record<string, any>) {
     })
   }
 
-  if (findings.length > primaryFindings.length) {
-    report.addParagraph(`${findings.length - primaryFindings.length} additional unique observations are not included in this PDF; view them in the dashboard.`, {
-      size: 7.5,
-      color: MUTED,
-    })
-  }
-
-  if (unverifiedFindings.length > 0) {
-    report.addSection(`AI-assisted suggestions (${unverifiedFindings.length}; not measured findings)`)
-    unverifiedFindings.slice(0, 3).forEach((finding) => {
+  if (additionalRecommendations.length > 0) {
+    report.addSection(`Additional recommendations to validate (${additionalRecommendations.length})`)
+    report.addParagraph(
+      'These are hypotheses for discussion, not measured findings or required changes. We recommend validating each against the rendered site, its configuration, and your business goals.',
+      { size: 8, color: MUTED },
+    )
+    additionalRecommendations.forEach((finding) => {
       const suggestion = useTeamVoice(finding.title || finding.recommended_fix || 'Review this suggestion manually.')
-      const recommendation = /^we recommend\b/i.test(suggestion) ? suggestion : `We recommend: ${suggestion}`
-      report.addParagraph(recommendation, { size: 8 })
+      report.addParagraph(suggestion, { size: 8, bold: true })
+      report.addParagraph(recommendationContext(finding.title || finding.recommended_fix || ''), {
+        size: 7.5,
+        color: MUTED,
+        indent: 3,
+      })
     })
-    if (unverifiedFindings.length > 3) {
-      report.addParagraph(`${unverifiedFindings.length - 3} further suggestions omitted for brevity.`, { size: 7.5, color: MUTED })
-    }
   }
 
   if (positives.length > 0) {
@@ -486,6 +539,30 @@ function buildWebsiteAnalysisPdf(analysis: Record<string, any>) {
       })
     }
   }
+
+  report.addSection('Conclusion and next steps')
+  const quantifiedFindings = findings.filter(
+    (finding) => (finding.opportunity_ms ?? 0) > 0 || (finding.opportunity_bytes ?? 0) > 0,
+  )
+  if (quantifiedFindings.length > 0) {
+    const opportunities = quantifiedFindings.slice(0, 3).map((finding) => {
+      const estimate = formatOpportunity(finding)
+      return `${finding.title || 'Measured opportunity'}${estimate ? ` (${estimate.replace('Estimated opportunity: ', '')})` : ''}`
+    })
+    report.addParagraph(
+      `The clearest quantified opportunities in this assessment are ${opportunities.join('; ')}. These are Lighthouse estimates, not guaranteed improvements; we recommend validating the listed resources and addressing the opportunities that best align with your goals.`,
+      { size: 8.5 },
+    )
+  } else {
+    report.addParagraph(
+      'This assessment did not record quantified savings opportunities. We recommend reviewing the observations above in the context of your site goals before making changes.',
+      { size: 8.5 },
+    )
+  }
+  report.addParagraph(
+    'We would be happy to discuss the findings and help determine which improvements are appropriate for your website.',
+    { size: 8.5 },
+  )
 
   report.addParagraph(
     'Method: We used Lighthouse/PageSpeed measurements and direct HTML page inspection at the time shown above. Results can vary by device, network, location, and page state. We recommend confirming the affected resources before implementation.',
@@ -503,6 +580,6 @@ export function exportWebsiteAnalysisPdf(analysis: Record<string, any>) {
   report.finish(filename)
 }
 
-export function createWebsiteAnalysisPdfBase64(analysis: Record<string, any>) {
-  return buildWebsiteAnalysisPdf(analysis).report.toBase64()
+export function createWebsiteAnalysisPdfBase64(analysis: Record<string, any>, preparedFor?: string | null) {
+  return buildWebsiteAnalysisPdf(analysis, preparedFor).report.toBase64()
 }

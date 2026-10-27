@@ -300,7 +300,7 @@ export function EmailDraftsPage() {
             ? {
                 attachment: {
                   filename: `website-review-${safeFilename}.pdf`,
-                  content: createWebsiteAnalysisPdfBase64(analysis),
+                  content: createWebsiteAnalysisPdfBase64(analysis, prospect.business_name),
                 },
               }
             : {}),

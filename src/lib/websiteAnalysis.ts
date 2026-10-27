@@ -194,6 +194,7 @@ export async function analyzeWebsite(url: string, prospectId: string | null = nu
       explanation: audit.description || '',
       recommended_fix: lighthouseRecommendation(audit.id, audit.title || 'this issue'),
       affected_resources: affectedResources(audit.details),
+      lighthouse_score_pct: scoreToNumber(audit.score),
       opportunity_ms: audit.details?.overallSavingsMs ?? null,
       opportunity_bytes: audit.details?.overallSavingsBytes ?? null,
       priority: audit.score < 0.5 ? 'high' : audit.score < 0.9 ? 'medium' : 'low',

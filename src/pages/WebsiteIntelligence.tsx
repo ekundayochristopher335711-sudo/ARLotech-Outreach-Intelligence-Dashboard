@@ -23,7 +23,7 @@ export function WebsiteIntelligencePage() {
       const userId = await getCurrentUserId()
       const { data, error } = await supabase
         .from('website_analyses')
-        .select('*')
+        .select('*, prospect:prospects(business_name)')
         .eq('user_id', userId)
         .order('analyzed_at', { ascending: false })
         .limit(20)
@@ -339,6 +339,5 @@ export function WebsiteIntelligencePage() {
     </div>
   )
 }
-
 
 
