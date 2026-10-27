@@ -58,7 +58,9 @@ serve(async (req) => {
       throw new Error('Set OUTREACH_POSTAL_ADDRESS as a Supabase function secret before sending commercial outreach.')
     }
 
-    const supabase = createClient(supabaseUrl, supabaseKey)
+    const supabase = createClient(supabaseUrl, supabaseKey, {
+      global: { headers: { Authorization: authorization } },
+    })
     const { data: userData, error: authError } = await supabase.auth.getUser(token)
     if (authError || !userData.user) return jsonResponse({ error: 'Your session is invalid or expired.' }, 401)
     const userId = userData.user.id
