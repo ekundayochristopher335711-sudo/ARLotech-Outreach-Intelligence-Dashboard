@@ -18,7 +18,8 @@ type OutreachProspect = Pick<
 >
 
 interface OutreachSendResult {
-  prospect_id: string
+  prospect_id: string | null
+  recipient_email?: string
   business_name: string
   status: 'sent' | 'skipped' | 'failed'
   error?: string
@@ -29,6 +30,27 @@ interface SendOutreachResponse {
   results: OutreachSendResult[]
 }
 
+interface ManualSendResponse {
+  result: OutreachSendResult
+}
+
+function isManualSendResponse(data: unknown): data is ManualSendResponse {
+  if (!data || typeof data !== 'object' || !('result' in data)) return false
+  const result = data.result
+  return (
+    !!result &&
+    typeof result === 'object' &&
+    'prospect_id' in result &&
+    (typeof result.prospect_id === 'string' || result.prospect_id === null) &&
+    'business_name' in result &&
+    typeof result.business_name === 'string' &&
+    'recipient_email' in result &&
+    typeof result.recipient_email === 'string' &&
+    'status' in result &&
+    ['sent', 'skipped', 'failed'].includes(String(result.status))
+  )
+}
+
 function isSendOutreachResponse(data: unknown): data is SendOutreachResponse {
   if (!data || typeof data !== 'object' || !('results' in data) || !Array.isArray(data.results)) return false
   return data.results.every(
@@ -36,7 +58,7 @@ function isSendOutreachResponse(data: unknown): data is SendOutreachResponse {
       !!result &&
       typeof result === 'object' &&
       'prospect_id' in result &&
-      typeof result.prospect_id === 'string' &&
+      (typeof result.prospect_id === 'string' || result.prospect_id === null) &&
       'business_name' in result &&
       typeof result.business_name === 'string' &&
       'status' in result &&
@@ -61,6 +83,11 @@ export function EmailDraftsPage() {
   const [editingDraft, setEditingDraft] = useState<EmailDraft | null>(null)
   const [subject, setSubject] = useState('')
   const [body, setBody] = useState('')
+  const [manualRecipient, setManualRecipient] = useState('')
+  const [manualSubject, setManualSubject] = useState('')
+  const [manualBody, setManualBody] = useState('')
+  const [manualComplianceConfirmed, setManualComplianceConfirmed] = useState(false)
+  const [manualSendResult, setManualSendResult] = useState<OutreachSendResult | null>(null)
   const [campaignId, setCampaignId] = useState('')
   const [prospectId, setProspectId] = useState('')
   const [selectedOutreachIds, setSelectedOutreachIds] = useState<string[]>([])
@@ -78,7 +105,7 @@ export function EmailDraftsPage() {
         .select('*')
         .eq('user_id', userId)
         .order('updated_at', { ascending: false })
-      if (error) throw new Error(await getOutreachFunctionError(error))
+      if (error) throw error
       return data as EmailDraft[]
     },
   })
@@ -165,18 +192,17 @@ export function EmailDraftsPage() {
   })
 
   const { data: previouslySentRows = [], error: sentHistoryError } = useQuery<
-    Array<{ prospect_id: string | null }>
+    Array<{ prospect_id: string | null; recipient_email: string | null }>
   >({
     queryKey: ['/email-messages', 'outreach-sent'],
     queryFn: async () => {
       const userId = await getCurrentUserId()
       const { data, error } = await supabase
         .from('email_messages')
-        .select('prospect_id')
+        .select('prospect_id, recipient_email')
         .eq('user_id', userId)
         .eq('direction', 'outbound')
         .eq('status', 'sent')
-        .not('prospect_id', 'is', null)
       if (error) throw error
       return data
     },
@@ -186,6 +212,10 @@ export function EmailDraftsPage() {
   const outreachAnalysisRows = outreachAnalyses as WebsiteAnalysis[]
   const suppressedEmailRows = suppressedRows as Array<{ normalized_email: string }>
   const previouslySentProspectRows = previouslySentRows as Array<{ prospect_id: string | null }>
+  const sentRecipientRows = previouslySentRows as Array<{
+    prospect_id: string | null
+    recipient_email: string | null
+  }>
   const analysisByProspect = new Map<string, WebsiteAnalysis>()
   for (const analysis of outreachAnalysisRows) {
     if (analysis.prospect_id && !analysisByProspect.has(analysis.prospect_id)) {
@@ -200,12 +230,21 @@ export function EmailDraftsPage() {
       row.prospect_id ? [row.prospect_id] : [],
     ),
   )
+  const alreadyEmailedAddresses = new Set(
+    sentRecipientRows.flatMap((row) => (row.recipient_email ? [row.recipient_email.toLowerCase()] : [])),
+  )
+  const manualRecipientDoNotContact = outreachProspectRows.some(
+    (prospect) =>
+      prospect.do_not_contact &&
+      prospect.email?.trim().toLowerCase() === manualRecipient.trim().toLowerCase(),
+  )
 
   const getOutreachBlockReason = (prospect: OutreachProspect) => {
     if (!prospect.email?.trim()) return 'No email address'
     if (prospect.do_not_contact) return 'Do not contact'
     if (suppressedEmails.has(prospect.email.trim().toLowerCase())) return 'On suppression list'
     if (alreadyEmailedProspects.has(prospect.id)) return 'Already emailed'
+    if (alreadyEmailedAddresses.has(prospect.email.trim().toLowerCase())) return 'Email address already contacted'
     if (
       prospect.website &&
       !hasMatchingWebsiteAnalysis(prospect, analysisByProspect.get(prospect.id))
@@ -276,7 +315,7 @@ export function EmailDraftsPage() {
       const { data, error } = await functionClient.functions.invoke('send-outreach', {
         body: { batchId: outreachBatchId, emails: emailPayload, complianceConfirmed },
       })
-      if (error) throw error
+      if (error) throw new Error(await getOutreachFunctionError(error))
       if (!isSendOutreachResponse(data)) {
         const message = data && typeof data === 'object' && 'error' in data && typeof data.error === 'string'
           ? data.error
@@ -302,6 +341,65 @@ export function EmailDraftsPage() {
       setComplianceConfirmed(false)
     },
     onError: (error: Error) => toast.error(error.message || 'Could not send outreach batch.'),
+  })
+
+  const manualSendMutation = useMutation({
+    mutationFn: async () => {
+      const emailAddress = manualRecipient.trim().toLowerCase()
+      if (!emailAddress || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailAddress)) {
+        throw new Error('Enter a valid recipient email address.')
+      }
+      if (!manualSubject.trim() || !manualBody.trim()) {
+        throw new Error('Enter both a subject and an email message.')
+      }
+      if (suppressedEmails.has(emailAddress)) throw new Error('This address is on your suppression list.')
+      if (alreadyEmailedAddresses.has(emailAddress)) {
+        throw new Error('This address has already received an email from this account.')
+      }
+
+      const functionClient = supabase as typeof supabase & {
+        functions: {
+          invoke: (
+            name: string,
+            options: { body: unknown },
+          ) => Promise<{ data: unknown; error: Error | null }>
+        }
+      }
+      const { data, error } = await functionClient.functions.invoke('send-outreach', {
+        body: {
+          batchId: crypto.randomUUID(),
+          manualEmail: {
+            recipient_email: emailAddress,
+            subject: manualSubject.trim(),
+            body: manualBody.trim(),
+          },
+          complianceConfirmed: true,
+        },
+      })
+      if (error) throw new Error(await getOutreachFunctionError(error))
+      if (!isManualSendResponse(data)) {
+        throw new Error('The send function returned an invalid response.')
+      }
+      return data.result
+    },
+    onSuccess: async (result: OutreachSendResult) => {
+      setManualSendResult(result)
+      if (result.status === 'sent') {
+        toast.success(`Email sent to ${result.recipient_email}.`)
+        setManualRecipient('')
+        setManualSubject('')
+        setManualBody('')
+        setManualComplianceConfirmed(false)
+      } else {
+        toast.error(result.error || 'The email was not sent.')
+      }
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['/email-messages'] }),
+        queryClient.invalidateQueries({ queryKey: ['/email-messages', 'outreach-sent'] }),
+        queryClient.invalidateQueries({ queryKey: ['/dashboard/metrics'] }),
+      ])
+    },
+    onError: (error: Error) => toast.error(error.message || 'Could not send this email.'),
   })
 
   const saveMutation = useMutation({
@@ -384,6 +482,110 @@ export function EmailDraftsPage() {
           <Plus className="h-4 w-4" /> New Draft
         </Button>
       </div>
+
+      <Card className="space-y-4 p-4 sm:p-6">
+        <div>
+          <h2 className="text-lg font-semibold text-slate-800">Write a one-off email</h2>
+          <p className="mt-1 text-sm text-slate-500">
+            Enter any recipient and write your own message. It is sent through the same authenticated Resend function and recorded in your email history.
+          </p>
+        </div>
+        {(suppressionError || sentHistoryError) && (
+          <p className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700" role="alert">
+            Manual sending is disabled until suppression and send history can be checked.
+          </p>
+        )}
+        <label className="block space-y-1">
+          <span className="text-sm font-medium text-slate-700">To</span>
+          <input
+            type="email"
+            autoComplete="email"
+            value={manualRecipient}
+            onChange={(event) => {
+              setManualRecipient(event.target.value)
+              setManualSendResult(null)
+            }}
+            placeholder="recipient@example.com"
+            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-arlotech focus:outline-none focus:ring-2 focus:ring-arlotech/20"
+          />
+        </label>
+        {manualRecipient.trim() && (suppressedEmails.has(manualRecipient.trim().toLowerCase()) ||
+          alreadyEmailedAddresses.has(manualRecipient.trim().toLowerCase())) && (
+          <p className="text-sm text-red-700">
+            {suppressedEmails.has(manualRecipient.trim().toLowerCase())
+              ? 'This address is on your suppression list and cannot be contacted.'
+              : 'An email has already been sent to this address from your account.'}
+          </p>
+        )}
+        {manualRecipient.trim() && manualRecipientDoNotContact && (
+          <p className="text-sm text-red-700">This address belongs to a prospect marked Do Not Contact.</p>
+        )}
+        <label className="block space-y-1">
+          <span className="text-sm font-medium text-slate-700">Subject</span>
+          <input
+            value={manualSubject}
+            maxLength={200}
+            onChange={(event) => setManualSubject(event.target.value)}
+            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-arlotech focus:outline-none focus:ring-2 focus:ring-arlotech/20"
+          />
+        </label>
+        <label className="block space-y-1">
+          <span className="text-sm font-medium text-slate-700">Message</span>
+          <textarea
+            value={manualBody}
+            maxLength={12000}
+            rows={7}
+            onChange={(event) => setManualBody(event.target.value)}
+            className="w-full resize-y rounded-lg border border-slate-300 px-3 py-2 text-sm leading-6 focus:border-arlotech focus:outline-none focus:ring-2 focus:ring-arlotech/20"
+          />
+        </label>
+        <p className="text-xs text-slate-500">
+          The sender adds the configured postal address and an opt-out instruction to the end of the email.
+        </p>
+        <label className="flex items-start gap-2 text-sm text-slate-600">
+          <input
+            type="checkbox"
+            checked={manualComplianceConfirmed}
+            onChange={(event) => setManualComplianceConfirmed(event.target.checked)}
+            className="mt-1 h-4 w-4 shrink-0 accent-arlotech"
+          />
+          <span>I reviewed this recipient and have a lawful basis to contact them.</span>
+        </label>
+        {manualSendResult && (
+          <p
+            className={`rounded-lg p-3 text-sm ${
+              manualSendResult.status === 'sent'
+                ? 'bg-green-50 text-green-800'
+                : 'bg-red-50 text-red-700'
+            }`}
+            role="status"
+          >
+            {manualSendResult.status === 'sent'
+              ? `Sent to ${manualSendResult.recipient_email}.${manualSendResult.tracking_error ? ` History warning: ${manualSendResult.tracking_error}` : ''}`
+              : manualSendResult.error || 'The email was not sent.'}
+          </p>
+        )}
+        <div className="flex justify-end">
+          <Button
+            onClick={() => manualSendMutation.mutate()}
+            disabled={
+              manualSendMutation.isPending ||
+              !manualRecipient.trim() ||
+              !manualSubject.trim() ||
+              !manualBody.trim() ||
+              !manualComplianceConfirmed ||
+              !!suppressionError ||
+              !!sentHistoryError ||
+              suppressedEmails.has(manualRecipient.trim().toLowerCase()) ||
+              alreadyEmailedAddresses.has(manualRecipient.trim().toLowerCase()) ||
+              manualRecipientDoNotContact
+            }
+          >
+            <Send className="h-4 w-4" />
+            {manualSendMutation.isPending ? 'Sending...' : 'Send email'}
+          </Button>
+        </div>
+      </Card>
 
       <Card className="space-y-5 p-4 sm:p-6">
         <div>

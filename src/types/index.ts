@@ -96,6 +96,7 @@ export interface EmailMessage {
   campaign_id: string | null
   provider: string | null
   provider_message_id: string | null
+  recipient_email: string | null
   direction: string
   subject: string
   body: string
@@ -331,4 +332,3 @@ export interface ImportRejection {
   website: string | null
   reason: string
 }
-

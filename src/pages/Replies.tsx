@@ -8,7 +8,10 @@ import { exportRepliesPdf } from '@/lib/exportPdf'
 import { getCurrentUserId, supabase } from '@/lib/supabase'
 import type { EmailMessage, Prospect } from '@/types'
 
-type ReplyMessage = Pick<EmailMessage, 'id' | 'direction' | 'status' | 'received_at' | 'sent_at' | 'created_at' | 'subject' | 'body' | 'prospect_id'>
+type ReplyMessage = Pick<
+  EmailMessage,
+  'id' | 'direction' | 'status' | 'received_at' | 'sent_at' | 'created_at' | 'subject' | 'body' | 'prospect_id' | 'recipient_email'
+>
 
 export function RepliesPage() {
   const {
@@ -21,9 +24,9 @@ export function RepliesPage() {
       const userId = await getCurrentUserId()
       const { data, error } = await supabase
         .from('email_messages')
-        .select('id, direction, status, received_at, sent_at, created_at, subject, body, prospect_id')
+        .select('id, direction, status, received_at, sent_at, created_at, subject, body, prospect_id, recipient_email')
         .eq('user_id', userId)
-        .order('received_at', { ascending: false, nullsFirst: false })
+        .order('created_at', { ascending: false })
         .limit(100)
       if (error) throw error
       return data as ReplyMessage[]
@@ -54,6 +57,12 @@ export function RepliesPage() {
   const allMessages = (messages || []) as ReplyMessage[]
   const repliedMessages = allMessages.filter((message) => message.direction === 'inbound' || message.status === 'replied')
   const sentMessages = allMessages.filter((message) => message.direction === 'outbound' && message.status === 'sent')
+  const recentSentMessages = sentMessages
+    .slice()
+    .sort((left, right) =>
+      Date.parse(right.sent_at || right.created_at) - Date.parse(left.sent_at || left.created_at),
+    )
+    .slice(0, 25)
   const prospectNames = new Map<string, string>(
     ((prospects || []) as Pick<Prospect, 'id' | 'business_name'>[]).map((prospect) => [prospect.id, prospect.business_name]),
   )
@@ -132,6 +141,37 @@ export function RepliesPage() {
                 </div>
                 <h3 className="font-medium text-slate-800">{message.subject || '(No subject)'}</h3>
                 <p className="mt-2 whitespace-pre-wrap text-sm text-slate-600">{message.body || '(No message content)'}</p>
+              </article>
+            ))}
+          </div>
+        )}
+      </Card>
+
+      <Card className="p-5">
+        <h2 className="mb-4 text-lg font-semibold text-slate-800">Recent Sent Emails</h2>
+        {recentSentMessages.length === 0 ? (
+          <p className="py-6 text-center text-sm text-slate-500">No sent emails have been recorded yet.</p>
+        ) : (
+          <div className="space-y-3">
+            {recentSentMessages.map((message) => (
+              <article key={message.id} className="rounded-lg border border-slate-200 p-4">
+                <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <Badge variant="success">Sent</Badge>
+                    <span className="text-xs text-slate-400">
+                      {message.sent_at
+                        ? format(new Date(message.sent_at), 'MMM d, yyyy HH:mm')
+                        : message.created_at
+                          ? format(new Date(message.created_at), 'MMM d, yyyy HH:mm')
+                          : 'Date unavailable'}
+                    </span>
+                  </div>
+                  <span className="break-all text-sm font-medium text-slate-700">
+                    {message.recipient_email || (message.prospect_id ? prospectNames.get(message.prospect_id) : null) || 'Unknown recipient'}
+                  </span>
+                </div>
+                <h3 className="font-medium text-slate-800">{message.subject || '(No subject)'}</h3>
+                <p className="mt-2 line-clamp-3 whitespace-pre-wrap text-sm text-slate-600">{message.body || '(No message content)'}</p>
               </article>
             ))}
           </div>

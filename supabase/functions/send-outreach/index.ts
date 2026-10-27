@@ -18,7 +18,9 @@ interface OutreachAttachment {
 }
 
 interface OutreachEmail {
-  prospect_id: string
+  prospect_id?: string
+  recipient_email?: string
+  manual?: boolean
   subject: string
   body: string
   attachment?: OutreachAttachment
@@ -34,6 +36,17 @@ function jsonResponse(body: unknown, status = 200) {
 function websiteHost(website: string) {
   const normalized = /^https?:\/\//i.test(website) ? website : `https://${website}`
   return new URL(normalized).hostname.replace(/^www\./i, '').toLowerCase()
+}
+
+function escapeIlikePattern(value: string) {
+  return value.replace(/[\\%_]/g, (character) => `\\${character}`)
+}
+
+async function createIdempotencyKey(userId: string, batchId: string, identifier: string) {
+  const value = new TextEncoder().encode(`${userId}:${batchId}:${identifier}`)
+  const digest = await crypto.subtle.digest('SHA-256', value)
+  const hexDigest = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('')
+  return `${userId}-${batchId}-${hexDigest}`
 }
 
 serve(async (req) => {
@@ -66,26 +79,55 @@ serve(async (req) => {
     const userId = userData.user.id
 
     const body = await req.json()
-    const emails = body?.emails as OutreachEmail[] | undefined
+    const manualMode = body?.manualEmail !== undefined
     const batchId = body?.batchId
     if (body?.complianceConfirmed !== true) {
       return jsonResponse({ error: 'Confirm that you reviewed the recipients and have a lawful basis to contact them.' }, 400)
     }
-    if (!Array.isArray(emails) || emails.length === 0 || emails.length > MAX_BATCH_SIZE) {
-      return jsonResponse({ error: `Choose between 1 and ${MAX_BATCH_SIZE} prospects per batch.` }, 400)
-    }
     if (typeof batchId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(batchId)) {
       return jsonResponse({ error: 'The send batch identifier is invalid. Prepare the preview again.' }, 400)
     }
-    if (new Set(emails.map((email) => email?.prospect_id)).size !== emails.length) {
+    let emails: OutreachEmail[]
+    if (manualMode) {
+      const manualEmail = body.manualEmail
+      if (
+        !manualEmail ||
+        typeof manualEmail !== 'object' ||
+        typeof manualEmail.recipient_email !== 'string' ||
+        manualEmail.recipient_email.length > 254 ||
+        typeof manualEmail.subject !== 'string' ||
+        typeof manualEmail.body !== 'string'
+      ) {
+        return jsonResponse({ error: 'Enter a recipient email, subject, and message.' }, 400)
+      }
+      emails = [{
+        manual: true,
+        recipient_email: manualEmail.recipient_email.trim().toLowerCase(),
+        subject: manualEmail.subject,
+        body: manualEmail.body,
+      }]
+      if (body.emails !== undefined) {
+        return jsonResponse({ error: 'Send either a manual email or a prospect batch, not both.' }, 400)
+      }
+    } else {
+      emails = body?.emails as OutreachEmail[]
+      if (!Array.isArray(emails) || emails.length === 0 || emails.length > MAX_BATCH_SIZE) {
+        return jsonResponse({ error: `Choose between 1 and ${MAX_BATCH_SIZE} prospects per batch.` }, 400)
+      }
+    }
+    const prospectEmails = emails.filter((email) => !email?.manual)
+    if (new Set(prospectEmails.map((email) => email?.prospect_id)).size !== prospectEmails.length) {
       return jsonResponse({ error: 'A prospect can only appear once in a batch.' }, 400)
     }
     let attachmentPayloadSize = 0
     for (const email of emails) {
       if (
         !email ||
-        typeof email.prospect_id !== 'string' ||
-        !email.prospect_id ||
+        (email.manual
+          ? typeof email.recipient_email !== 'string' ||
+            email.recipient_email.length > 254 ||
+            !EMAIL_PATTERN.test(email.recipient_email)
+          : typeof email.prospect_id !== 'string' || !email.prospect_id) ||
         typeof email.subject !== 'string' ||
         !email.subject.trim() ||
         email.subject.length > 200 ||
@@ -93,7 +135,10 @@ serve(async (req) => {
         !email.body.trim() ||
         email.body.length > 12_000
       ) {
-        return jsonResponse({ error: 'Every email must include a valid prospect, subject, and message.' }, 400)
+        return jsonResponse({ error: 'Every email must include a valid recipient, subject, and message.' }, 400)
+      }
+      if (email.manual && email.attachment !== undefined) {
+        return jsonResponse({ error: 'Manual emails cannot include website report attachments.' }, 400)
       }
       if (email.attachment !== undefined) {
         if (
@@ -112,27 +157,34 @@ serve(async (req) => {
       return jsonResponse({ error: 'The combined report attachments are too large. Send a smaller batch.' }, 413)
     }
 
-    const prospectIds = emails.map((email) => email.prospect_id)
-    const { data: prospects, error: prospectError } = await supabase
-      .from('prospects')
-      .select('id, user_id, business_name, email, website, do_not_contact, status')
-      .eq('user_id', userId)
-      .in('id', prospectIds)
+    const prospectIds = emails.flatMap((email) => email.prospect_id ? [email.prospect_id] : [])
+    const { data: prospects, error: prospectError } = prospectIds.length
+      ? await supabase
+          .from('prospects')
+          .select('id, user_id, business_name, email, website, do_not_contact, status')
+          .eq('user_id', userId)
+          .in('id', prospectIds)
+      : { data: [], error: null }
     if (prospectError) throw prospectError
 
-    const { data: sentMessages, error: sentError } = await supabase
-      .from('email_messages')
-      .select('prospect_id')
-      .eq('user_id', userId)
-      .eq('direction', 'outbound')
-      .eq('status', 'sent')
-      .in('prospect_id', prospectIds)
+    const { data: sentMessages, error: sentError } = prospectIds.length
+      ? await supabase
+          .from('email_messages')
+          .select('prospect_id, recipient_email')
+          .eq('user_id', userId)
+          .eq('direction', 'outbound')
+          .eq('status', 'sent')
+          .in('prospect_id', prospectIds)
+      : { data: [], error: null }
     if (sentError) throw sentError
     const sentProspectIds = new Set((sentMessages ?? []).map((message) => message.prospect_id))
 
-    const normalizedEmails = (prospects ?? [])
-      .map((prospect) => prospect.email?.trim().toLowerCase())
-      .filter((email): email is string => !!email)
+    const prospectById = new Map((prospects ?? []).map((prospect) => [prospect.id, prospect]))
+    const normalizedEmails = [...new Set(emails.flatMap((email) => {
+      if (email.manual) return email.recipient_email ? [email.recipient_email] : []
+      const recipient = email.prospect_id ? prospectById.get(email.prospect_id)?.email?.trim().toLowerCase() : null
+      return recipient ? [recipient] : []
+    }))]
     const { data: suppressedRows, error: suppressionError } = normalizedEmails.length
       ? await supabase
           .from('suppression_list')
@@ -142,6 +194,38 @@ serve(async (req) => {
       : { data: [], error: null }
     if (suppressionError) throw suppressionError
     const suppressedEmails = new Set((suppressedRows ?? []).map((row) => row.normalized_email.toLowerCase()))
+
+    const { data: sentRecipientMessages, error: sentRecipientError } = normalizedEmails.length
+      ? await supabase
+          .from('email_messages')
+          .select('recipient_email')
+          .eq('user_id', userId)
+          .eq('direction', 'outbound')
+          .eq('status', 'sent')
+          .in('recipient_email', normalizedEmails)
+      : { data: [], error: null }
+    if (sentRecipientError) throw sentRecipientError
+    const sentRecipientEmails = new Set(
+      (sentRecipientMessages ?? [])
+        .map((message) => message.recipient_email?.toLowerCase())
+        .filter((email): email is string => !!email),
+    )
+
+    const manualRecipient = emails.find((email) => email.manual)?.recipient_email
+    const { data: doNotContactRows, error: doNotContactError } = manualRecipient
+      ? await supabase
+          .from('prospects')
+          .select('email')
+          .eq('user_id', userId)
+          .eq('do_not_contact', true)
+          .ilike('email', escapeIlikePattern(manualRecipient))
+      : { data: [], error: null }
+    if (doNotContactError) throw doNotContactError
+    const doNotContactEmails = new Set(
+      (doNotContactRows ?? [])
+        .map((prospect) => prospect.email?.trim().toLowerCase())
+        .filter((email): email is string => !!email),
+    )
 
     const websiteProspectIds = (prospects ?? []).filter((prospect) => !!prospect.website).map((prospect) => prospect.id)
     const { data: analyses, error: analysisError } = websiteProspectIds.length
@@ -178,30 +262,33 @@ serve(async (req) => {
     }
 
     const results: Array<{
-      prospect_id: string
+      prospect_id: string | null
+      recipient_email: string
       business_name: string
       status: 'sent' | 'skipped' | 'failed'
       error?: string
       tracking_error?: string
     }> = []
-    const prospectById = new Map((prospects ?? []).map((prospect) => [prospect.id, prospect]))
 
     for (const [index, email] of emails.entries()) {
-      const prospect = prospectById.get(email.prospect_id)
+      const prospect = email.prospect_id ? prospectById.get(email.prospect_id) : null
+      const recipient = email.manual
+        ? email.recipient_email
+        : prospect?.email?.trim().toLowerCase()
       const result = {
-        prospect_id: email.prospect_id,
-        business_name: prospect?.business_name ?? 'Unknown prospect',
+        prospect_id: email.prospect_id ?? null,
+        recipient_email: recipient ?? '',
+        business_name: prospect?.business_name ?? recipient ?? 'Unknown prospect',
         status: 'skipped' as 'sent' | 'skipped' | 'failed',
       }
-      if (!prospect) {
+      if (!email.manual && !prospect) {
         results.push({ ...result, error: 'Prospect not found or not owned by this account.' })
         continue
       }
-      if (prospect.do_not_contact) {
+      if (prospect?.do_not_contact) {
         results.push({ ...result, error: 'This prospect is marked Do Not Contact.' })
         continue
       }
-      const recipient = prospect.email?.trim().toLowerCase()
       if (!recipient || !EMAIL_PATTERN.test(recipient)) {
         results.push({ ...result, error: 'Prospect has no valid email address.' })
         continue
@@ -210,32 +297,42 @@ serve(async (req) => {
         results.push({ ...result, error: 'This email is on the suppression list.' })
         continue
       }
-      if (sentProspectIds.has(prospect.id)) {
+      if (email.manual && doNotContactEmails.has(recipient)) {
+        results.push({ ...result, error: 'This address belongs to a prospect marked Do Not Contact.' })
+        continue
+      }
+      if (prospect && sentProspectIds.has(prospect.id)) {
         results.push({ ...result, error: 'An outbound email has already been recorded for this prospect.' })
         continue
       }
-      const websiteAudits = analysesByProspect.get(prospect.id) ?? []
-      const hasCurrentWebsiteAudit = prospect.website
-        ? websiteAudits.some((auditedWebsite) => {
-            try {
-              return websiteHost(prospect.website) === websiteHost(auditedWebsite)
-            } catch {
-              return false
-            }
-          })
-        : false
-      if (prospect.website && !hasCurrentWebsiteAudit) {
-        results.push({ ...result, error: 'Complete a website audit before sending this website-specific email.' })
+      if (sentRecipientEmails.has(recipient)) {
+        results.push({ ...result, error: 'An outbound email has already been recorded for this email address.' })
         continue
       }
-      if ((!!prospect.website) !== (!!email.attachment)) {
-        results.push({
-          ...result,
-          error: prospect.website
-            ? 'A website audit PDF is required for this prospect.'
-            : 'A website report cannot be attached to a no-website introduction.',
-        })
-        continue
+      if (prospect) {
+        const websiteAudits = analysesByProspect.get(prospect.id) ?? []
+        const hasCurrentWebsiteAudit = prospect.website
+          ? websiteAudits.some((auditedWebsite) => {
+              try {
+                return websiteHost(prospect.website) === websiteHost(auditedWebsite)
+              } catch {
+                return false
+              }
+            })
+          : false
+        if (prospect.website && !hasCurrentWebsiteAudit) {
+          results.push({ ...result, error: 'Complete a website audit before sending this website-specific email.' })
+          continue
+        }
+        if ((!!prospect.website) !== (!!email.attachment)) {
+          results.push({
+            ...result,
+            error: prospect.website
+              ? 'A website audit PDF is required for this prospect.'
+              : 'A website report cannot be attached to a no-website introduction.',
+          })
+          continue
+        }
       }
 
       const resendResponse = await fetch('https://api.resend.com/emails', {
@@ -243,7 +340,7 @@ serve(async (req) => {
         headers: {
           Authorization: `Bearer ${resendApiKey}`,
           'Content-Type': 'application/json',
-          'Idempotency-Key': `${userId}-${batchId}-${prospect.id}`,
+          'Idempotency-Key': await createIdempotencyKey(userId, batchId, prospect?.id ?? recipient),
         },
         body: JSON.stringify({
           from: fromEmail,
@@ -273,40 +370,45 @@ serve(async (req) => {
       }
 
       const sentAt = new Date().toISOString()
+      const sentBody = `${email.body.trim()}\n\n---\nIf you do not want further outreach, reply to this email and let me know.\n\n${postalAddress.trim()}`
       const { error: messageError } = await supabase.from('email_messages').insert({
         user_id: userId,
-        prospect_id: prospect.id,
+        prospect_id: prospect?.id ?? null,
+        recipient_email: recipient,
         provider: 'resend',
         provider_message_id: resendBody.id,
         direction: 'outbound',
         subject: email.subject.trim(),
-        body: email.body.trim(),
+        body: sentBody,
         status: 'sent',
         sent_at: sentAt,
       })
       const trackingErrors: string[] = []
       if (messageError) trackingErrors.push(`message history: ${messageError.message}`)
 
-      const { error: prospectUpdateError } = await supabase
-        .from('prospects')
-        .update({
-          last_contacted_at: sentAt,
-          ...(prospect.status === 'New' ? { status: 'Contacted' } : {}),
-        })
-        .eq('id', prospect.id)
-        .eq('user_id', userId)
-      if (prospectUpdateError) trackingErrors.push(`prospect status: ${prospectUpdateError.message}`)
+      if (prospect) {
+        const { error: prospectUpdateError } = await supabase
+          .from('prospects')
+          .update({
+            last_contacted_at: sentAt,
+            ...(prospect.status === 'New' ? { status: 'Contacted' } : {}),
+          })
+          .eq('id', prospect.id)
+          .eq('user_id', userId)
+        if (prospectUpdateError) trackingErrors.push(`prospect status: ${prospectUpdateError.message}`)
+      }
 
       const { error: activityError } = await supabase.from('activity_logs').insert({
         user_id: userId,
-        prospect_id: prospect.id,
+        prospect_id: prospect?.id ?? null,
         event_type: 'email_sent',
-        description: `Outreach email sent to ${recipient} via Resend.`,
-        metadata: { provider_message_id: resendBody.id },
+        description: `${email.manual ? 'Manual email' : 'Outreach email'} sent to ${recipient} via Resend.`,
+        metadata: { provider_message_id: resendBody.id, recipient_email: recipient },
       })
       if (activityError) trackingErrors.push(`activity log: ${activityError.message}`)
 
-      sentProspectIds.add(prospect.id)
+      if (prospect) sentProspectIds.add(prospect.id)
+      sentRecipientEmails.add(recipient)
       results.push({
         ...result,
         status: 'sent',
@@ -315,7 +417,7 @@ serve(async (req) => {
       if (index < emails.length - 1) await new Promise((resolve) => setTimeout(resolve, 600))
     }
 
-    return jsonResponse({ results })
+    return manualMode ? jsonResponse({ result: results[0] }) : jsonResponse({ results })
   } catch (error) {
     return jsonResponse(
       { error: error instanceof Error ? error.message : 'The outreach batch could not be processed.' },
