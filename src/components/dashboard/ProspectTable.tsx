@@ -1,14 +1,26 @@
 import { useNavigate } from 'react-router-dom'
 import { Badge } from '@/components/ui/Badge'
 import { type Prospect } from '@/types'
-import { MapPin, MoreVertical } from 'lucide-react'
+import { format } from 'date-fns'
+import { CheckCircle2, MapPin, Trash2 } from 'lucide-react'
 
 interface ProspectTableProps {
   prospects: Prospect[]
   compact?: boolean
+  onMarkContacted?: (prospect: Prospect) => void
+  onDelete?: (prospect: Prospect) => void
+  isUpdatingContact?: boolean
+  isDeleting?: boolean
 }
 
-export function ProspectTable({ prospects, compact = false }: ProspectTableProps) {
+export function ProspectTable({
+  prospects,
+  compact = false,
+  onMarkContacted,
+  onDelete,
+  isUpdatingContact = false,
+  isDeleting = false,
+}: ProspectTableProps) {
   const navigate = useNavigate()
   return (
     <div className={`space-y-3 ${compact ? 'divide-y' : ''}`}>
@@ -39,11 +51,44 @@ export function ProspectTable({ prospects, compact = false }: ProspectTableProps
             <Badge variant="default">{prospect.status}</Badge>
           </div>
 
-          <div className="flex items-center gap-1 opacity-0 hover:opacity-100 transition-opacity">
-            <button type="button" className="p-1 text-slate-400 hover:text-slate-600 rounded hover:bg-slate-100">
-              <MoreVertical className="h-4 w-4" />
-            </button>
-          </div>
+          {(onMarkContacted || onDelete) && (
+            <div className="flex shrink-0 items-center gap-2" onClick={(event) => event.stopPropagation()}>
+              {onMarkContacted &&
+                (prospect.last_contacted_at ? (
+                  <span
+                    className="flex items-center gap-1 text-xs text-green-700"
+                    title={`Last contacted ${format(new Date(prospect.last_contacted_at), 'PPp')}`}
+                  >
+                    <CheckCircle2 className="h-4 w-4" />
+                    <span className="hidden sm:inline">
+                      Contacted {format(new Date(prospect.last_contacted_at), 'MMM d')}
+                    </span>
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => onMarkContacted(prospect)}
+                    disabled={isUpdatingContact}
+                    className="rounded px-2 py-1 text-xs font-medium text-green-700 hover:bg-green-50 disabled:opacity-50"
+                    aria-label={`Mark ${prospect.business_name} as contacted`}
+                  >
+                    Mark contacted
+                  </button>
+                ))}
+              {onDelete && (
+                <button
+                  type="button"
+                  onClick={() => onDelete(prospect)}
+                  disabled={isDeleting}
+                  className="rounded p-2 text-slate-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
+                  aria-label={`Delete ${prospect.business_name}`}
+                  title="Delete prospect"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              )}
+            </div>
+          )}
         </div>
       ))}
     </div>

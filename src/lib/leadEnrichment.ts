@@ -17,18 +17,20 @@ export async function enrichProspectContacts(prospect: Prospect): Promise<{ emai
   let email = prospect.email
   let phone = prospect.phone
   if (!prospect.website) return { email, phone }
-  try {
-    const content = await extractContent(prospect.website)
-    const contacts = content.contacts
-    const emails = contacts?.emails ?? []
-    const phones = contacts?.phones ?? []
-    if (!email && emails.length) email = emails[0]
-    if (!phone && phones.length) phone = phones[0]
-    if (email !== prospect.email || phone !== prospect.phone) {
-      await supabase.from('prospects').update({ email, phone }).eq('id', prospect.id)
-    }
-  } catch {
-    // ignore enrichment errors
+  const content = await extractContent(prospect.website)
+  const contacts = content.contacts
+  const emails = contacts?.emails ?? []
+  const phones = contacts?.phones ?? []
+  if (!email && emails.length) email = emails[0]
+  if (!phone && phones.length) phone = phones[0]
+  if (email !== prospect.email || phone !== prospect.phone) {
+    const userId = await getCurrentUserId()
+    const { error } = await supabase
+      .from('prospects')
+      .update({ email, phone })
+      .eq('id', prospect.id)
+      .eq('user_id', userId)
+    if (error) throw error
   }
   return { email, phone }
 }
@@ -64,9 +66,13 @@ export async function enrichAndAnalyzeProspect(prospect: Prospect): Promise<Enri
   }
 
   try {
-    const contacts = await enrichProspectContacts(prospect)
-    result.contact_email = contacts.email
-    result.contact_phone = contacts.phone
+    try {
+      const contacts = await enrichProspectContacts(prospect)
+      result.contact_email = contacts.email
+      result.contact_phone = contacts.phone
+    } catch (err) {
+      result.error = `Contact lookup failed: ${err instanceof Error ? err.message : 'Unknown error'}`
+    }
 
     const analysis = await analyzeWebsite(prospect.website, prospect.id)
     result.analysis_score = analysis.overallScore
@@ -94,7 +100,8 @@ export async function enrichAndAnalyzeProspect(prospect: Prospect): Promise<Enri
       if (!draftError) result.draft_created = true
     }
   } catch (err) {
-    result.error = err instanceof Error ? err.message : 'Enrichment failed'
+    const analysisError = err instanceof Error ? err.message : 'Enrichment failed'
+    result.error = result.error ? `${result.error}; ${analysisError}` : analysisError
   }
 
   return result

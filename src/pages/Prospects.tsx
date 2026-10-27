@@ -13,6 +13,7 @@ import { type ImportResultRow, importLeadsInternal } from '@/lib/csvImport'
 import { extractLeadsFromText } from '@/lib/leadExtraction'
 import { enrichAndAnalyzeProspect, type EnrichmentResult } from '@/lib/leadEnrichment'
 import { ClipboardPaste, FileSpreadsheet, Plus, Search } from 'lucide-react'
+import { toast } from 'sonner'
 
 interface ProspectFormValues {
   business_name: string
@@ -92,6 +93,46 @@ export function ProspectsPage() {
   const [enrichmentResults, setEnrichmentResults] = useState<EnrichmentResult[]>([])
   const [isEnriching, setIsEnriching] = useState(false)
   const { importCsv, isImporting, importError } = useCsvImport()
+  const deleteProspect = useMutation({
+    mutationFn: async (prospectId: string) => {
+      const userId = session?.user.id
+      if (!userId) throw new Error('You must be signed in to delete prospects.')
+      const { error } = await supabase
+        .from('prospects')
+        .delete()
+        .eq('id', prospectId)
+        .eq('user_id', userId)
+      if (error) throw error
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['/prospects'] })
+      toast.success('Prospect deleted')
+    },
+    onError: (error: unknown) => toast.error(error instanceof Error ? error.message : 'Could not delete prospect.'),
+  })
+  const markContacted = useMutation({
+    mutationFn: async (prospect: Prospect) => {
+      const userId = session?.user.id
+      if (!userId) throw new Error('You must be signed in to update prospects.')
+      const { error } = await supabase
+        .from('prospects')
+        .update({
+          last_contacted_at: new Date().toISOString(),
+          ...(prospect.status === 'New' ? { status: 'Contacted' } : {}),
+        })
+        .eq('id', prospect.id)
+        .eq('user_id', userId)
+      if (error) throw error
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['/prospects'] }),
+        queryClient.invalidateQueries({ queryKey: ['/dashboard/metrics'] }),
+      ])
+      toast.success('Prospect marked as contacted')
+    },
+    onError: (error: unknown) => toast.error(error instanceof Error ? error.message : 'Could not update prospect.'),
+  })
   const {
     data: prospects,
     isLoading,
@@ -150,6 +191,7 @@ export function ProspectsPage() {
         enrichment.push(res)
         setEnrichmentResults([...enrichment])
       }
+      await queryClient.invalidateQueries({ queryKey: ['/prospects'] })
       setIsEnriching(false)
     }
   }
@@ -264,7 +306,12 @@ export function ProspectsPage() {
 
       {showTextImport && (
         <Card className="space-y-3 p-4">
-          <h2 className="text-base font-semibold text-slate-800">Paste prospect details</h2>
+          <div>
+            <h2 className="text-base font-semibold text-slate-800">Paste prospect details</h2>
+            <p className="mt-1 text-xs text-slate-500">
+              Website links in Google Maps listings are matched to each business, then contact details are looked up from the website.
+            </p>
+          </div>
           <div className="space-y-1">
             <label htmlFor="prospect-text" className="block text-sm font-medium text-slate-700">
               Business information
@@ -403,7 +450,17 @@ export function ProspectsPage() {
             Could not load prospects: {error.message}
           </p>
         ) : filteredProspects.length > 0 ? (
-          <ProspectTable prospects={filteredProspects} />
+          <ProspectTable
+            prospects={filteredProspects}
+            onMarkContacted={(prospect) => markContacted.mutate(prospect)}
+            onDelete={(prospect) => {
+              if (window.confirm(`Delete ${prospect.business_name}? This cannot be undone.`)) {
+                deleteProspect.mutate(prospect.id)
+              }
+            }}
+            isUpdatingContact={markContacted.isPending}
+            isDeleting={deleteProspect.isPending}
+          />
         ) : (
           <p className="py-8 text-center text-sm text-slate-500">
             {search ? 'No prospects match your search.' : 'No prospects yet. Add one or import a CSV to get started.'}
