@@ -28,7 +28,7 @@ export function ProspectTable({
         <div
           key={prospect.id}
           onClick={() => navigate(`/prospects/${prospect.id}`)}
-          className={`flex items-center gap-3 rounded-lg p-3 transition-colors cursor-pointer ${
+          className={`grid w-full grid-cols-[2.5rem_minmax(0,1fr)] items-start gap-3 rounded-lg p-3 transition-colors cursor-pointer sm:flex sm:items-center ${
             compact ? 'divide-y' : 'hover:bg-slate-50'
           }`}
         >
@@ -36,9 +36,9 @@ export function ProspectTable({
             {prospect.business_name.charAt(0)}
           </div>
 
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-slate-800 truncate">{prospect.business_name}</p>
-            <p className="text-xs text-slate-400 truncate">{prospect.email || 'No email'}</p>
+          <div className="min-w-0 sm:flex-1">
+            <p className="break-words text-sm font-medium leading-5 text-slate-800">{prospect.business_name}</p>
+            <p className="break-all text-xs text-slate-400">{prospect.email || 'No email'}</p>
             {prospect.city && (
               <p className="text-xs text-slate-400 flex items-center gap-1 mt-0.5">
                 <MapPin className="h-3 w-3" />
@@ -47,12 +47,12 @@ export function ProspectTable({
             )}
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="col-start-2 flex min-w-0 flex-wrap items-center gap-2 sm:col-auto">
             <Badge variant="default">{prospect.status}</Badge>
           </div>
 
           {(onMarkContacted || onDelete) && (
-            <div className="flex shrink-0 items-center gap-2" onClick={(event) => event.stopPropagation()}>
+            <div className="col-start-2 flex min-w-0 flex-wrap items-center gap-2 sm:col-auto sm:shrink-0" onClick={(event) => event.stopPropagation()}>
               {onMarkContacted &&
                 (prospect.last_contacted_at ? (
                   <span

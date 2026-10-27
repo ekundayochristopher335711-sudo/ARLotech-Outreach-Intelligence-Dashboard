@@ -42,7 +42,11 @@ Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` in Vercel for each environm
 
 The dashboard reads Supabase metrics and activity. The prospect list supports search, manual creation, and CSV import. CSV files must include a `business_name` header; supported optional headers are `contact_name`, `email`, `website`, `business_category`, `city`, `country`, `phone`, `linkedin_url`, `notes`, `source`, `status`, and `do_not_contact`.
 
-Editing/deleting prospects and creating campaigns are not yet wired up, and email drafts currently show a placeholder. There is no backend/API implementation for AI website analysis or AI email generation, and the app does not send email. These workflows need to be implemented and connected to the relevant providers before the dashboard can run a complete automated outreach campaign.
+Campaigns can be created, filtered, updated, and deleted. Email drafts can be created, edited, associated with prospects or campaigns, and deleted. The Email Drafts page also supports manually selected, reviewed outreach batches. Replies and analytics use the email activity records stored in Supabase. Follow-up reminders can be scheduled and their statuses managed, but reminders do not trigger automatic email. Account profile details can be updated in Settings.
+
+Outreach batches are sent individually through the `send-outreach` Supabase Edge Function and Resend. The function checks ownership, do-not-contact status, suppressions, previous sends, and completed website audits; it limits batches to 10 and sends to 50 recipients per rolling 24 hours. Website reports are attached for audited prospects, while prospects without a website receive a separate introduction. Review and confirm every message before sending. Email sending does not guarantee inbox placement or replace applicable marketing/privacy compliance.
+
+AI website analysis and outreach generation require their respective server-side secrets. Inbox synchronization and automatic follow-up sending are not implemented.
 
 
 ## Website Intelligence integrations
@@ -71,6 +75,17 @@ npx supabase functions deploy gemini-analysis
 ```
 
 The frontend invokes them via `supabase.functions.invoke(...)` and stores the resulting report in Supabase.
+
+## Resend outreach
+
+Verify a sender domain in Resend, then configure these secrets for the linked Supabase project. Use a valid sender address from the verified domain and your business's postal address. Never put the Resend API key in `.env`, a `VITE_` variable, source control, or browser code.
+
+```sh
+npx supabase secrets set RESEND_API_KEY=re_your_key RESEND_FROM_EMAIL="ArloTech <outreach@yourdomain.com>" OUTREACH_POSTAL_ADDRESS="Your business postal address"
+npx supabase functions deploy send-outreach
+```
+
+In **Email Drafts**, select up to 10 eligible prospects, preview and edit each individual email, confirm you have a lawful basis to contact the recipients, then confirm sending. Each website prospect must have a completed audit; its PDF report is attached. Prospects without a website receive a separate introduction without an audit attachment. Do-not-contact, suppressed, and previously emailed prospects are blocked. The server caps sending at 50 messages per rolling 24 hours.
 
 
 ```sh

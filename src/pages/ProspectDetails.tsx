@@ -152,6 +152,18 @@ export function ProspectDetails() {
               className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-arlotech focus:outline-none focus:ring-2 focus:ring-arlotech/20"
             />
           </div>
+          <label className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+            <input
+              type="checkbox"
+              checked={form.do_not_contact ?? false}
+              onChange={(event) => setForm((current) => ({ ...current, do_not_contact: event.target.checked }))}
+              className="mt-1 h-4 w-4 shrink-0 accent-arlotech"
+            />
+            <span>
+              <span className="block font-medium">Do not contact</span>
+              <span className="block text-xs">Exclude this prospect from future outreach batches.</span>
+            </span>
+          </label>
           <div className="flex gap-2 justify-end">
             <Button variant="secondary" onClick={() => setEditing(false)}>Cancel</Button>
             <Button onClick={() => updateMutation.mutate()} disabled={updateMutation.isPending}>

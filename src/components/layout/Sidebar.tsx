@@ -12,7 +12,6 @@ import {
   LogOut,
   ChevronLeft,
   ChevronRight,
-  Building,
   Plane,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
@@ -89,11 +88,9 @@ export function Sidebar({
       >
         <div className="flex items-center justify-between h-16 px-4 border-b border-slate-200">
           <div className="flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-arlotech text-white">
-              <Building className="h-4 w-4" />
-            </div>
+            <img src="/favicon.svg" alt="" className="h-8 w-8 rounded-lg" />
             <span className={`text-sm font-bold text-slate-800 ${collapsed ? 'lg:hidden' : ''}`}>
-              Arlotech AI
+              ArloTech
             </span>
           </div>
           <button

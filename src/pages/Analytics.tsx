@@ -1,87 +1,150 @@
+import { useQuery } from '@tanstack/react-query'
+import { format } from 'date-fns'
+import { BarChart3, Mail, MessageCircle, Users } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
+import { getCurrentUserId, supabase } from '@/lib/supabase'
 
-const stats = [
-  { label: 'Emails', value: '1,247', change: '+12%', icon: 'mail', color: 'bg-blue-100 text-blue-600' },
-  { label: 'Replies', value: '284', change: '+8%', icon: 'reply', color: 'bg-green-100 text-green-600' },
-  { label: 'Replies', value: '284', change: '+8%', icon: 'reply', color: 'bg-green-100 text-green-600' },
-  { label: 'Open Rate', value: '41%', change: '+3%', icon: 'chart', color: 'bg-amber-100 text-amber-600' },
-]
+interface DailyActivity {
+  date: string
+  sent: number
+  replies: number
+}
+
+function daysAgo(days: number, from = new Date()) {
+  const date = new Date(from)
+  date.setDate(date.getDate() - days)
+  return date
+}
 
 export function AnalyticsDashboard() {
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['/analytics'],
+    queryFn: async () => {
+      const userId = await getCurrentUserId()
+      const now = new Date()
+      const chartStart = daysAgo(13, now)
+      chartStart.setHours(0, 0, 0, 0)
+      const replyWindowStart = daysAgo(29, now).toISOString()
+
+      const [
+        prospectsResult,
+        campaignsResult,
+        sentCountResult,
+        replyCountResult,
+        dueCountResult,
+        sentActivityResult,
+        replyActivityResult,
+      ] = await Promise.all([
+        supabase.from('prospects').select('id', { count: 'exact', head: true }).eq('user_id', userId),
+        supabase.from('campaigns').select('id', { count: 'exact', head: true }).eq('user_id', userId),
+        supabase.from('email_messages').select('id', { count: 'exact', head: true }).eq('user_id', userId).eq('direction', 'outbound').eq('status', 'sent'),
+        supabase.from('email_messages').select('id', { count: 'exact', head: true }).eq('user_id', userId).or('direction.eq.inbound,status.eq.replied'),
+        supabase.from('follow_up_sequences').select('id', { count: 'exact', head: true }).eq('user_id', userId).eq('status', 'Active').lte('next_action_at', now.toISOString()),
+        supabase.from('email_messages').select('sent_at').eq('user_id', userId).eq('direction', 'outbound').eq('status', 'sent').gte('sent_at', chartStart.toISOString()),
+        supabase.from('email_messages').select('received_at, direction, status').eq('user_id', userId).gte('received_at', replyWindowStart).or('direction.eq.inbound,status.eq.replied'),
+      ])
+
+      const results = [prospectsResult, campaignsResult, sentCountResult, replyCountResult, dueCountResult, sentActivityResult, replyActivityResult]
+      const failedResult = results.find((result) => result.error)
+      if (failedResult?.error) throw failedResult.error
+
+      const days: DailyActivity[] = Array.from({ length: 14 }, (_, index) => ({
+        date: format(daysAgo(13 - index, now), 'yyyy-MM-dd'),
+        sent: 0,
+        replies: 0,
+      }))
+      const dailyByDate = new Map(days.map((day) => [day.date, day]))
+
+      for (const message of (sentActivityResult.data || []) as { sent_at: string | null }[]) {
+        if (!message.sent_at) continue
+        const day = dailyByDate.get(format(new Date(message.sent_at), 'yyyy-MM-dd'))
+        if (day) day.sent += 1
+      }
+      for (const message of (replyActivityResult.data || []) as { received_at: string | null; direction: string; status: string }[]) {
+        if (message.direction !== 'inbound' && message.status !== 'replied') continue
+        if (!message.received_at) continue
+        const day = dailyByDate.get(format(new Date(message.received_at), 'yyyy-MM-dd'))
+        if (day) day.replies += 1
+      }
+
+      const sent = sentCountResult.count || 0
+      const replies = replyCountResult.count || 0
+      return {
+        prospects: prospectsResult.count || 0,
+        campaigns: campaignsResult.count || 0,
+        sent,
+        replies,
+        due: dueCountResult.count || 0,
+        replyRate: sent > 0 ? Math.round((replies / sent) * 100) : 0,
+        dailyActivity: days,
+      }
+    },
+  })
+
+  if (isLoading) {
+    return (
+      <div className="space-y-6">
+        <div className="h-8 w-48 animate-pulse rounded bg-slate-200" />
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">{[...Array(6)].map((_, i) => <div key={i} className="h-28 animate-pulse rounded bg-slate-200" />)}</div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return <p className="py-12 text-center text-sm text-red-600">Could not load analytics: {error.message}</p>
+  }
+
+  const dailyActivity = (data?.dailyActivity || []) as DailyActivity[]
+  const maxActivity = Math.max(1, ...dailyActivity.flatMap((day) => [day.sent, day.replies]))
+  const cards = [
+    { label: 'Prospects', value: data?.prospects ?? 0, icon: Users, color: 'bg-blue-100 text-blue-600' },
+    { label: 'Campaigns', value: data?.campaigns ?? 0, icon: BarChart3, color: 'bg-purple-100 text-purple-600' },
+    { label: 'Emails sent', value: data?.sent ?? 0, icon: Mail, color: 'bg-indigo-100 text-indigo-600' },
+    { label: 'Replies received', value: data?.replies ?? 0, icon: MessageCircle, color: 'bg-green-100 text-green-600' },
+    { label: 'Reply rate', value: `${data?.replyRate ?? 0}%`, icon: BarChart3, color: 'bg-amber-100 text-amber-600' },
+    { label: 'Follow-ups due', value: data?.due ?? 0, icon: Mail, color: 'bg-rose-100 text-rose-600' },
+  ]
+
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-800">Analytics</h1>
-          <p className="text-sm text-slate-500 mt-1">Track your outreach performance</p>
-        </div>
+      <div>
+        <h1 className="text-2xl font-bold text-slate-800">Analytics</h1>
+        <p className="mt-1 text-sm text-slate-500">Outreach totals and activity calculated from your Supabase records.</p>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {stats.map((s) => (
-          <Card key={s.label} className="p-5">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {cards.map(({ label, value, icon: Icon, color }) => (
+          <Card key={label} className="p-5">
             <div className="flex items-center justify-between">
-              <p className="text-3xl font-bold text-slate-800">{s.value}</p>
-              <div className={`flex h-10 w-10 items-center justify-center rounded-lg ${s.color}`}>
-                {s.icon === 'mail' && <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>}
-                {s.icon === 'reply' && <svg className="h-5 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"/></svg>}
-                {s.icon === 'chart' && <svg className="h-5 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2m0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2"/></svg>}
-              </div>
-            </div>
-            <div className="mt-2 flex items-center gap-2">
-              <span className="text-sm text-slate-600">{s.change}</span>
-              <span className="text-xs text-slate-400">vs last month</span>
+              <div><p className="text-3xl font-bold text-slate-800">{value}</p><p className="mt-1 text-sm text-slate-500">{label}</p></div>
+              <div className={`flex h-10 w-10 items-center justify-center rounded-lg ${color}`}><Icon className="h-5 w-5" /></div>
             </div>
           </Card>
         ))}
       </div>
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <Card className="p-5">
-          <h3 className="text-lg font-semibold mb-4">Email Performance</h3>
-          <div className="space-y-3">
-            {[
-              { segment: 'Prospects', value: '24%', color: 'bg-blue-500' },
-              { segment: 'Existing Clients', value: '18%', color: 'bg-green-500' },
-              { segment: 'Partners', value: '12%', color: 'bg-amber-500' },
-              { segment: 'Agents', value: '10%', color: 'bg-purple-500' },
-              { segment: 'Partners', value: '8%', color: 'bg-red-500' },
-            ].map((d) => (
-              <div key={d.segment}>
-                <div className="flex justify-between text-sm mb-1">
-                  <span className="text-slate-600">{d.segment}</span>
-                  <span className="text-slate-500">{d.value}</span>
-                </div>
-                <div className="h-2 rounded-full bg-slate-100">
-                  <div className={`h-2 rounded-full ${d.color}`} style={{ width: `${parseInt(d.value)}%` }} />
-                </div>
+      <Card className="p-5">
+        <div className="mb-5">
+          <h2 className="text-lg font-semibold text-slate-800">Email activity</h2>
+          <p className="text-sm text-slate-500">Emails sent and replies received per day over the last 14 days</p>
+        </div>
+        <div className="flex h-56 items-end gap-2 overflow-x-auto border-b border-slate-200 pb-2">
+          {dailyActivity.map((day) => (
+            <div key={day.date} className="flex h-full min-w-8 flex-1 flex-col justify-end gap-1" title={`${format(new Date(`${day.date}T00:00:00`), 'MMM d')}: ${day.sent} sent, ${day.replies} replies`}>
+              <div className="flex h-full items-end justify-center gap-0.5">
+                <div className="w-2.5 rounded-t bg-blue-500" style={{ height: `${Math.max(day.sent ? 4 : 0, (day.sent / maxActivity) * 100)}%` }} />
+                <div className="w-2.5 rounded-t bg-green-500" style={{ height: `${Math.max(day.replies ? 4 : 0, (day.replies / maxActivity) * 100)}%` }} />
               </div>
-            ))}
-          </div>
-        </Card>
-
-        <Card className="p-5">
-          <h3 className="text-lg font-semibold mb-4">Delivery Status</h3>
-          <div className="space-y-3">
-            {[
-              { status: 'Delivered', value: '92%', color: 'bg-green-500' },
-              { status: 'Pending', value: '5%', color: 'bg-amber-500' },
-              { status: 'Bounced', value: '2%', color: 'bg-red-500' },
-              { status: 'Spam', value: '1%', color: 'bg-red-600' },
-            ].map((d) => (
-              <div key={d.status}>
-                <div className="flex justify-between text-sm mb-1">
-                  <span className="text-slate-600">{d.status}</span>
-                  <span className="text-slate-500">{d.value}</span>
-                </div>
-                <div className="h-2 rounded-full bg-slate-100">
-                  <div className={`h-2 rounded-full ${d.color}`} style={{ width: `${parseInt(d.value)}%` }} />
-                </div>
-              </div>
-            ))}
-          </div>
-        </Card>
-      </div>
+              <span className="text-center text-[10px] text-slate-400">{format(new Date(`${day.date}T00:00:00`), 'd')}</span>
+            </div>
+          ))}
+        </div>
+        <div className="mt-3 flex gap-4 text-xs text-slate-500">
+          <span><span className="mr-1.5 inline-block h-2.5 w-2.5 rounded-sm bg-blue-500" />Sent</span>
+          <span><span className="mr-1.5 inline-block h-2.5 w-2.5 rounded-sm bg-green-500" />Replies</span>
+        </div>
+        <p className="mt-3 text-xs text-slate-400">Reply rate = received replies ÷ sent emails. Open and delivery rates are not shown because this app does not track opens or delivery events.</p>
+      </Card>
     </div>
   )
 }
