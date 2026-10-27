@@ -167,18 +167,6 @@ serve(async (req) => {
       : { data: [], error: null }
     if (prospectError) throw prospectError
 
-    const { data: sentMessages, error: sentError } = prospectIds.length
-      ? await supabase
-          .from('email_messages')
-          .select('prospect_id, recipient_email')
-          .eq('user_id', userId)
-          .eq('direction', 'outbound')
-          .eq('status', 'sent')
-          .in('prospect_id', prospectIds)
-      : { data: [], error: null }
-    if (sentError) throw sentError
-    const sentProspectIds = new Set((sentMessages ?? []).map((message) => message.prospect_id))
-
     const prospectById = new Map((prospects ?? []).map((prospect) => [prospect.id, prospect]))
     const normalizedEmails = [...new Set(emails.flatMap((email) => {
       if (email.manual) return email.recipient_email ? [email.recipient_email] : []
@@ -194,22 +182,6 @@ serve(async (req) => {
       : { data: [], error: null }
     if (suppressionError) throw suppressionError
     const suppressedEmails = new Set((suppressedRows ?? []).map((row) => row.normalized_email.toLowerCase()))
-
-    const { data: sentRecipientMessages, error: sentRecipientError } = normalizedEmails.length
-      ? await supabase
-          .from('email_messages')
-          .select('recipient_email')
-          .eq('user_id', userId)
-          .eq('direction', 'outbound')
-          .eq('status', 'sent')
-          .in('recipient_email', normalizedEmails)
-      : { data: [], error: null }
-    if (sentRecipientError) throw sentRecipientError
-    const sentRecipientEmails = new Set(
-      (sentRecipientMessages ?? [])
-        .map((message) => message.recipient_email?.toLowerCase())
-        .filter((email): email is string => !!email),
-    )
 
     const manualRecipient = emails.find((email) => email.manual)?.recipient_email
     const { data: doNotContactRows, error: doNotContactError } = manualRecipient
@@ -299,14 +271,6 @@ serve(async (req) => {
       }
       if (email.manual && doNotContactEmails.has(recipient)) {
         results.push({ ...result, error: 'This address belongs to a prospect marked Do Not Contact.' })
-        continue
-      }
-      if (prospect && sentProspectIds.has(prospect.id)) {
-        results.push({ ...result, error: 'An outbound email has already been recorded for this prospect.' })
-        continue
-      }
-      if (sentRecipientEmails.has(recipient)) {
-        results.push({ ...result, error: 'An outbound email has already been recorded for this email address.' })
         continue
       }
       if (prospect) {
@@ -407,8 +371,6 @@ serve(async (req) => {
       })
       if (activityError) trackingErrors.push(`activity log: ${activityError.message}`)
 
-      if (prospect) sentProspectIds.add(prospect.id)
-      sentRecipientEmails.add(recipient)
       results.push({
         ...result,
         status: 'sent',

@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { format } from 'date-fns'
-import { CheckCircle, Clock, Mail } from 'lucide-react'
+import { CheckCircle, Clock, Mail, RefreshCw } from 'lucide-react'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/Badge'
 import { Card } from '@/components/ui/Card'
@@ -10,13 +10,15 @@ import type { EmailMessage, Prospect } from '@/types'
 
 type ReplyMessage = Pick<
   EmailMessage,
-  'id' | 'direction' | 'status' | 'received_at' | 'sent_at' | 'created_at' | 'subject' | 'body' | 'prospect_id' | 'recipient_email'
+  'id' | 'direction' | 'status' | 'received_at' | 'sent_at' | 'created_at' | 'subject' | 'body' | 'prospect_id' | 'recipient_email' | 'sender_email'
 >
 
 export function RepliesPage() {
   const {
     data: messages,
     isLoading,
+    isFetching,
+    refetch,
     error,
   } = useQuery({
     queryKey: ['/email-messages'],
@@ -24,7 +26,7 @@ export function RepliesPage() {
       const userId = await getCurrentUserId()
       const { data, error } = await supabase
         .from('email_messages')
-        .select('id, direction, status, received_at, sent_at, created_at, subject, body, prospect_id, recipient_email')
+        .select('id, direction, status, received_at, sent_at, created_at, subject, body, prospect_id, recipient_email, sender_email')
         .eq('user_id', userId)
         .order('created_at', { ascending: false })
         .limit(100)
@@ -74,17 +76,27 @@ export function RepliesPage() {
           <h1 className="text-2xl font-bold text-slate-800">Replies</h1>
           <p className="mt-1 text-sm text-slate-500">Review inbound messages recorded in your outreach activity.</p>
         </div>
-        <button
-          type="button"
-          onClick={() => {
-            exportRepliesPdf(repliedMessages, prospectNames)
-            toast.success('Replies exported as PDF')
-          }}
-          disabled={repliedMessages.length === 0}
-          className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          <Mail className="mr-2 inline h-4 w-4" /> Export Replies
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => void refetch()}
+            disabled={isFetching}
+            className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <RefreshCw className={`mr-2 inline h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} /> Refresh
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              exportRepliesPdf(repliedMessages, prospectNames)
+              toast.success('Replies exported as PDF')
+            }}
+            disabled={repliedMessages.length === 0}
+            className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <Mail className="mr-2 inline h-4 w-4" /> Export Replies
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -135,8 +147,11 @@ export function RepliesPage() {
                           : 'Date unavailable'}
                     </span>
                   </div>
-                  <span className="text-sm font-medium text-slate-700">
-                    {message.prospect_id ? prospectNames.get(message.prospect_id) || 'Prospect' : 'Unlinked message'}
+                  <span className="text-right text-sm font-medium text-slate-700">
+                    {message.sender_email || (message.prospect_id ? prospectNames.get(message.prospect_id) || 'Prospect' : 'Unlinked message')}
+                    {message.prospect_id && (
+                      <span className="block text-xs font-normal text-slate-500">{prospectNames.get(message.prospect_id) || 'Prospect'}</span>
+                    )}
                   </span>
                 </div>
                 <h3 className="font-medium text-slate-800">{message.subject || '(No subject)'}</h3>

@@ -44,9 +44,9 @@ The dashboard reads Supabase metrics and activity. The prospect list supports se
 
 Campaigns can be created, filtered, updated, and deleted. Email drafts can be created, edited, associated with prospects or campaigns, and deleted. The Email Drafts page supports manually composed one-off emails to a typed recipient, as well as manually selected, reviewed prospect batches. Both send through the authenticated Resend function and are recorded in email history. Replies and analytics use the email activity records stored in Supabase. Follow-up reminders can be scheduled and their statuses managed, but reminders do not trigger automatic email. Account profile details can be updated in Settings.
 
-Outreach batches are sent individually through the `send-outreach` Supabase Edge Function and Resend. The function checks ownership, do-not-contact status, suppressions, previous sends, and completed website audits; it limits batches to 10 and sends to 50 recipients per rolling 24 hours. Website reports are attached for audited prospects, while prospects without a website receive a separate introduction. Review and confirm every message before sending. Email sending does not guarantee inbox placement or replace applicable marketing/privacy compliance.
+Outreach batches are sent individually through the `send-outreach` Supabase Edge Function and Resend. The function checks ownership, do-not-contact status, suppressions, and completed website audits; it limits batches to 10 and sends to 50 recipients per rolling 24 hours. Previously contacted prospects are labeled and require confirmation before resending. Website reports are attached for audited prospects, while prospects without a website receive a separate introduction. Review and confirm every message before sending. Email sending does not guarantee inbox placement or replace applicable marketing/privacy compliance.
 
-AI website analysis and outreach generation require their respective server-side secrets. Inbox synchronization and automatic follow-up sending are not implemented.
+AI website analysis and outreach generation require their respective server-side secrets. Replies sent to your configured Resend receiving domain are recorded by the `resend-inbound` Edge Function. Automatic follow-up sending is not implemented.
 
 
 ## Website Intelligence integrations
@@ -92,7 +92,25 @@ npm run supabase:migrate
 npx supabase functions deploy send-outreach
 ```
 
-In **Email Drafts**, write a one-off message to any recipient address, or select up to 10 eligible prospects, preview and edit each individual email, confirm you have a lawful basis to contact the recipients, then send. The configured postal address and an opt-out instruction are appended automatically. Each website prospect in a batch must have a completed audit; its PDF report is attached. Prospects without a website receive a separate introduction without an audit attachment. Suppressed and previously contacted addresses are blocked; prospect batches additionally respect Do Not Contact. The server caps sending at 50 messages per rolling 24 hours.
+### Receive email replies
+
+Configure Resend Receiving for a domain/address that can receive replies. In Resend, set the `email.received` webhook destination to:
+
+```text
+https://your-project-ref.supabase.co/functions/v1/resend-inbound
+```
+
+Set the signing secret shown in that webhook's details as a Supabase Edge Function secret, then apply the migration and deploy the receiver:
+
+```sh
+npx supabase secrets set RESEND_WEBHOOK_SECRET="whsec_your_webhook_signing_secret"
+npx supabase db push --linked
+npx supabase functions deploy resend-inbound
+```
+
+The receiver verifies Resend's signature, retrieves the message body from Resend, and links it to the most recent sent message from the same sender address. Replies without a matching recorded outbound recipient are acknowledged but not stored. Refresh the Replies page to load newly received messages. Keep the signing secret server-side; never add it to Vite environment variables or frontend code.
+
+In **Email Drafts**, write a one-off message to any recipient address, or select up to 10 eligible prospects, preview and edit each individual email, confirm you have a lawful basis to contact the recipients, then send. The configured postal address and an opt-out instruction are appended automatically. Each website prospect in a batch must have a completed audit; its PDF report is attached. Prospects without a website receive a separate introduction without an audit attachment. Previously contacted recipients are clearly labeled and require an explicit confirmation before resending. Suppressed addresses and prospects marked Do Not Contact remain blocked. The server caps sending at 50 messages per rolling 24 hours.
 
 
 ```sh

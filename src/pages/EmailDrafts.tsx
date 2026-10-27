@@ -243,14 +243,16 @@ export function EmailDraftsPage() {
     if (!prospect.email?.trim()) return 'No email address'
     if (prospect.do_not_contact) return 'Do not contact'
     if (suppressedEmails.has(prospect.email.trim().toLowerCase())) return 'On suppression list'
-    if (alreadyEmailedProspects.has(prospect.id)) return 'Already emailed'
-    if (alreadyEmailedAddresses.has(prospect.email.trim().toLowerCase())) return 'Email address already contacted'
     if (
       prospect.website &&
       !hasMatchingWebsiteAnalysis(prospect, analysisByProspect.get(prospect.id))
     ) return 'Analyze website first'
     return null
   }
+
+  const hasPreviousSend = (prospect: OutreachProspect) =>
+    alreadyEmailedProspects.has(prospect.id) ||
+    (!!prospect.email && alreadyEmailedAddresses.has(prospect.email.trim().toLowerCase()))
 
   const prepareOutreachPreviews = () => {
     const selectedProspects = outreachProspectRows.filter((prospect: OutreachProspect) =>
@@ -353,10 +355,6 @@ export function EmailDraftsPage() {
         throw new Error('Enter both a subject and an email message.')
       }
       if (suppressedEmails.has(emailAddress)) throw new Error('This address is on your suppression list.')
-      if (alreadyEmailedAddresses.has(emailAddress)) {
-        throw new Error('This address has already received an email from this account.')
-      }
-
       const functionClient = supabase as typeof supabase & {
         functions: {
           invoke: (
@@ -509,12 +507,9 @@ export function EmailDraftsPage() {
             className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-arlotech focus:outline-none focus:ring-2 focus:ring-arlotech/20"
           />
         </label>
-        {manualRecipient.trim() && (suppressedEmails.has(manualRecipient.trim().toLowerCase()) ||
-          alreadyEmailedAddresses.has(manualRecipient.trim().toLowerCase())) && (
+        {manualRecipient.trim() && suppressedEmails.has(manualRecipient.trim().toLowerCase()) && (
           <p className="text-sm text-red-700">
-            {suppressedEmails.has(manualRecipient.trim().toLowerCase())
-              ? 'This address is on your suppression list and cannot be contacted.'
-              : 'An email has already been sent to this address from your account.'}
+            This address is on your suppression list and cannot be contacted.
           </p>
         )}
         {manualRecipient.trim() && manualRecipientDoNotContact && (
@@ -565,9 +560,13 @@ export function EmailDraftsPage() {
               : manualSendResult.error || 'The email was not sent.'}
           </p>
         )}
+        {manualRecipient.trim() && alreadyEmailedAddresses.has(manualRecipient.trim().toLowerCase()) && (
+          <p className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm font-medium text-amber-900">
+            Previously contacted: this address has received an email from your account. You can resend, but please review the message carefully.
+          </p>
+        )}
         <div className="flex justify-end">
           <Button
-            onClick={() => manualSendMutation.mutate()}
             disabled={
               manualSendMutation.isPending ||
               !manualRecipient.trim() ||
@@ -577,9 +576,18 @@ export function EmailDraftsPage() {
               !!suppressionError ||
               !!sentHistoryError ||
               suppressedEmails.has(manualRecipient.trim().toLowerCase()) ||
-              alreadyEmailedAddresses.has(manualRecipient.trim().toLowerCase()) ||
               manualRecipientDoNotContact
             }
+            onClick={() => {
+              const normalizedRecipient = manualRecipient.trim().toLowerCase()
+              if (alreadyEmailedAddresses.has(normalizedRecipient)) {
+                const confirmed = window.confirm(
+                  `You have emailed ${normalizedRecipient} before. Do you want to send this email again?`,
+                )
+                if (!confirmed) return
+              }
+              manualSendMutation.mutate()
+            }}
           >
             <Send className="h-4 w-4" />
             {manualSendMutation.isPending ? 'Sending...' : 'Send email'}
@@ -640,11 +648,20 @@ export function EmailDraftsPage() {
                     aria-label={`Select ${prospect.business_name} for outreach`}
                   />
                   <span className="min-w-0 flex-1">
-                    <span className="block break-words text-sm font-medium text-slate-800">{prospect.business_name}</span>
+                    <span className="flex flex-wrap items-center gap-2 break-words text-sm font-medium text-slate-800">
+                      {prospect.business_name}
+                      {hasPreviousSend(prospect) && (
+                        <span className="rounded-full border border-amber-300 bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-900">
+                          Previously contacted
+                        </span>
+                      )}
+                    </span>
                     <span className="block break-all text-xs text-slate-500">{prospect.email || 'No email address'}</span>
                     <span className="mt-1 block text-xs text-slate-500">
                       {blockReason
                         ? blockReason
+                        : hasPreviousSend(prospect)
+                          ? 'Review before sending again'
                         : prospect.website
                           ? 'Website audit attached'
                           : 'No-website introduction'}
@@ -696,6 +713,11 @@ export function EmailDraftsPage() {
                     <div className="min-w-0">
                       <p className="break-words text-sm font-medium text-slate-800">{prospect.business_name}</p>
                       <p className="break-all text-xs text-slate-500">{prospect.email}</p>
+                      {hasPreviousSend(prospect) && (
+                        <p className="mt-1 inline-block rounded-full border border-amber-300 bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-900">
+                          Previously contacted — resend confirmation required
+                        </p>
+                      )}
                       {preview.has_website_report && (
                         <p className="mt-1 text-xs text-green-700">A personalized website report will be attached.</p>
                       )}
@@ -751,8 +773,7 @@ export function EmailDraftsPage() {
               </span>
             </label>
             <p className="text-xs text-amber-800">
-              Small reviewed batches help reduce risk but cannot guarantee delivery to the inbox. Recipients already emailed,
-              marked Do Not Contact, or on your suppression list are excluded.
+              Small reviewed batches help reduce risk but cannot guarantee delivery to the inbox. Previously contacted recipients are labeled and require confirmation. Do Not Contact and suppressed recipients remain excluded.
             </p>
             <div className="flex justify-end">
               <Button
@@ -761,7 +782,14 @@ export function EmailDraftsPage() {
                     toast.error('Every message needs a subject and body.')
                     return
                   }
-                  if (window.confirm(`Send these ${outreachPreviews.length} individual emails now?`)) {
+                  const previouslyContacted = outreachPreviews.flatMap((preview) => {
+                    const prospect = outreachProspectRows.find((item) => item.id === preview.prospect_id)
+                    return prospect && hasPreviousSend(prospect) ? [`${prospect.business_name} (${prospect.email})`] : []
+                  })
+                  const warning = previouslyContacted.length
+                    ? `\n\nPreviously contacted:\n${previouslyContacted.join('\n')}\n\nDo you want to resend to these recipients?`
+                    : ''
+                  if (window.confirm(`Send these ${outreachPreviews.length} individual emails now?${warning}`)) {
                     sendOutreachMutation.mutate()
                   }
                 }}

@@ -1,1 +1,4 @@
 project_id = "vfgaqyatzyrsdjdsejie"
+
+[functions.resend-inbound]
+verify_jwt = false

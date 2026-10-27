@@ -97,6 +97,7 @@ export interface EmailMessage {
   provider: string | null
   provider_message_id: string | null
   recipient_email: string | null
+  sender_email: string | null
   direction: string
   subject: string
   body: string

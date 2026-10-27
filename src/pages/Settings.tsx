@@ -19,24 +19,38 @@ export function SettingsPage() {
       ])
       if (error) throw error
       if (userError) throw userError
-      return { profile: data, email: userData.session?.user?.email || '' }
+      const user = userData.session?.user
+      return {
+        id: userId,
+        profile: data,
+        email: user?.email || '',
+        fullName: data?.full_name || user?.user_metadata?.full_name || '',
+        companyName: data?.company_name || user?.user_metadata?.company_name || '',
+      }
     },
   })
 
-  const fullName = editedProfile && profile?.profile && editedProfile.id === profile.profile.id
+  const fullName = editedProfile && editedProfile.id === profile?.id
     ? editedProfile.fullName
-    : profile?.profile?.full_name || ''
-  const companyName = editedProfile && profile?.profile && editedProfile.id === profile.profile.id
+    : profile?.fullName || ''
+  const companyName = editedProfile && editedProfile.id === profile?.id
     ? editedProfile.companyName
-    : profile?.profile?.company_name || ''
+    : profile?.companyName || ''
 
   const saveMutation = useMutation({
     mutationFn: async () => {
       const userId = await getCurrentUserId()
       const { data, error } = await supabase
         .from('profiles')
-        .update({ full_name: fullName.trim(), company_name: companyName.trim() })
-        .eq('id', userId)
+        .upsert(
+          {
+            id: userId,
+            full_name: fullName.trim(),
+            email: profile?.email || '',
+            company_name: companyName.trim(),
+          },
+          { onConflict: 'id' },
+        )
         .select('id')
         .maybeSingle()
       if (error) throw error
@@ -83,11 +97,8 @@ export function SettingsPage() {
             <input id="profile-company" value={companyName} onChange={(event) => setEditedProfile({ id: profile?.profile?.id || '', fullName, companyName: event.target.value })} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-arlotech focus:outline-none focus:ring-2 focus:ring-arlotech/20" />
           </div>
         </div>
-        {!profile?.profile && (
-          <p className="text-sm text-amber-700">A profile record has not been created for this account, so account details cannot be saved yet.</p>
-        )}
         <div className="flex justify-end">
-          <Button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending || !profile?.profile}>
+          <Button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}>
             {saveMutation.isPending ? 'Saving...' : 'Save Profile'}
           </Button>
         </div>
@@ -95,8 +106,8 @@ export function SettingsPage() {
 
       <Card className="space-y-2 p-6">
         <h2 className="text-lg font-semibold text-slate-800">Email integrations</h2>
-        <p className="text-sm text-slate-600">No email provider is connected. Gmail, Outlook, and other external connections are not implemented yet, so drafts stay in this app and are not sent.</p>
-        <p className="text-sm text-slate-500">Connect a provider only after its authentication and secure server-side send workflow have been configured.</p>
+        <p className="text-sm text-slate-600">Outreach messages are sent securely through the configured Resend integration.</p>
+        <p className="text-sm text-slate-500">Resend API credentials are managed server-side and are never exposed in these settings.</p>
       </Card>
     </div>
   )
