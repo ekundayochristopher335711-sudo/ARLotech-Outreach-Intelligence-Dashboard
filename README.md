@@ -54,10 +54,12 @@ AI website analysis and outreach generation require their respective server-side
 The Website Intelligence page orchestrates three Supabase Edge Functions:
 
 - `pagespeed-insights` — calls the Google PageSpeed Insights API (Lighthouse) for performance, accessibility, SEO and best-practices scores plus audit details.
-- `extract-content` — fetches the target page server-side and extracts title, meta, headings, text, links, images, schema.org, etc.
+- `extract-content` — fetches the target page server-side and extracts title, meta, headings, text, links, images, schema.org, etc. For client-rendered pages, contact extraction also checks a small number of bounded same-origin JavaScript bundles for embedded email and telephone links.
 - `gemini-analysis` — sends the extracted content + PageSpeed data to the Gemini API and returns an AI summary, score explanation, recommendations and observations.
 
 The combined report is stored in the `website_analyses` Supabase table.
+
+Website audit PDFs separate scored Lighthouse measurements and direct page-inspection findings from AI-assisted suggestions. They deduplicate repeated findings, explain the PageSpeed score calculation, and include resource-level evidence when the audit provides it.
 
 ### Configure secrets (server-side, never exposed to the browser)
 

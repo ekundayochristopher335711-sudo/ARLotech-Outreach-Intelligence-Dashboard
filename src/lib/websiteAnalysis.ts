@@ -112,6 +112,39 @@ function scoreToNumber(score: number | null | undefined): number | null {
   return Math.round(score * 100)
 }
 
+function canonicalAuditKey(audit: any) {
+  const id = typeof audit?.id === 'string' ? audit.id : ''
+  if (/unused-javascript/i.test(id)) return 'unused-javascript'
+  if (/legacy-javascript/i.test(id)) return 'legacy-javascript'
+  if (/forced-reflow/i.test(id)) return 'forced-reflow'
+  return id || String(audit?.title ?? '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+}
+
+function auditRecommendation(auditId: string, title: string) {
+  if (/unused-javascript/i.test(auditId)) {
+    return 'Inspect the listed script URLs, remove unused code where practical, and split or defer non-critical code. Re-run the same PageSpeed test to measure the change.'
+  }
+  if (/legacy-javascript/i.test(auditId)) {
+    return 'Review the listed scripts and build targets; reduce unnecessary legacy transforms or polyfills while preserving support for the browsers your visitors use.'
+  }
+  if (/forced-reflow/i.test(auditId)) {
+    return 'Profile the listed script and DOM activity; batch layout reads before writes and avoid repeated geometry reads after DOM or style changes.'
+  }
+  if (/render-blocking-resources/i.test(auditId)) {
+    return 'Review the listed CSS and script resources; defer non-critical scripts and load non-critical styles without blocking the first render.'
+  }
+  return `Review the affected resources for “${title}”, apply the relevant Lighthouse remediation, then repeat the same test to confirm the result.`
+}
+
+function affectedResources(details: any): string[] {
+  const items = Array.isArray(details?.items) ? details.items : []
+  const urls: string[] = items.flatMap((item: any): string[] => {
+    const url = item?.url ?? item?.source?.url ?? item?.node?.snippet ?? item?.node?.selector
+    return typeof url === 'string' && url.trim() ? [url.trim()] : []
+  })
+  return [...new Set(urls)].slice(0, 3)
+}
+
 export async function analyzeWebsite(url: string, prospectId: string | null = null) {
   const userId = await getCurrentUserId()
 
@@ -144,33 +177,53 @@ export async function analyzeWebsite(url: string, prospectId: string | null = nu
   const hasPageSpeed = scores.length > 0
   const overall = hasPageSpeed
     ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length)
-    : 50
+    : null
 
   const audits = pagespeed?.lighthouseResult?.audits || {}
-  const failedAudits = Object.values(audits)
-    .filter((a: any) => a?.score !== null && a?.score !== undefined && a.score < 1)
-    .slice(0, 25)
+  const auditCategories = new Map<string, string>()
+  for (const [category, details] of Object.entries(cats)) {
+    for (const auditRef of (details as any)?.auditRefs ?? []) {
+      if (typeof auditRef?.id === 'string') auditCategories.set(auditRef.id, category)
+    }
+  }
+  const failedAudits = new Map<string, any>()
+  for (const [auditId, audit] of Object.entries(audits) as Array<[string, any]>) {
+    if (
+      typeof audit?.score !== 'number' ||
+      audit.score >= 1 ||
+      ['informative', 'manual', 'notApplicable', 'error'].includes(audit.scoreDisplayMode)
+    ) continue
+    const key = canonicalAuditKey({ ...audit, id: auditId })
+    if (key && !failedAudits.has(key)) failedAudits.set(key, { ...audit, id: auditId })
+  }
 
   const findings: any[] = [
-    ...failedAudits.map((a: any, idx: number) => ({
-      id: `ps-${idx}`,
-      title: a.title,
-      evidence: a.displayValue || '',
-      explanation: a.description || '',
-      recommended_fix: a.description || '',
-      potential_benefit: '',
-      priority: (a.score ?? 0) < 0.5 ? 'high' : 'medium',
+    ...[...failedAudits.values()].map((audit: any) => ({
+      id: `ps-${audit.id}`,
+      audit_id: audit.id,
+      source: 'lighthouse',
+      category: auditCategories.get(audit.id) ?? null,
+      title: audit.title,
+      evidence: audit.displayValue || '',
+      display_value: audit.displayValue || '',
+      explanation: audit.description || '',
+      recommended_fix: auditRecommendation(audit.id, audit.title || 'this issue'),
+      affected_resources: affectedResources(audit.details),
+      opportunity_ms: audit.details?.overallSavingsMs ?? null,
+      opportunity_bytes: audit.details?.overallSavingsBytes ?? null,
+      priority: audit.score < 0.5 ? 'high' : audit.score < 0.9 ? 'medium' : 'low',
       confidence: 'high',
       status: 'open',
     })),
   ]
 
-  ;(gemini.parsed?.recommendations || []).forEach((r: string, idx: number) => {
+  ;(gemini.parsed?.recommendations || []).slice(0, 8).forEach((r: string, idx: number) => {
     findings.push({
       id: `ai-${idx}`,
+      source: 'ai',
       title: r,
-      evidence: 'AI-generated',
-      explanation: r,
+      evidence: null,
+      explanation: 'AI-assisted suggestion; not a measured Lighthouse or direct HTML observation.',
       recommended_fix: r,
       potential_benefit: '',
       priority: 'medium',
@@ -182,6 +235,7 @@ export async function analyzeWebsite(url: string, prospectId: string | null = nu
   if (content.h1Count === 0) {
     findings.push({
       id: 'content-h1',
+      source: 'content',
       title: 'Missing H1 heading',
       evidence: 'No H1 tag found',
       explanation: 'Page has no H1 heading, which is important for SEO.',
@@ -195,6 +249,7 @@ export async function analyzeWebsite(url: string, prospectId: string | null = nu
   if (content.images.missingAlt > 0) {
     findings.push({
       id: 'content-alt',
+      source: 'content',
       title: `${content.images.missingAlt} images missing alt text`,
       evidence: `${content.images.missingAlt} of ${content.images.total} images`,
       explanation: 'Images without alt text hurt accessibility and SEO.',
@@ -208,6 +263,7 @@ export async function analyzeWebsite(url: string, prospectId: string | null = nu
   if (!content.metaDescription) {
     findings.push({
       id: 'content-meta',
+      source: 'content',
       title: 'Missing meta description',
       evidence: 'No meta description found',
       explanation: 'Meta description helps search engines and click-through rates.',
@@ -262,5 +318,3 @@ export async function analyzeWebsite(url: string, prospectId: string | null = nu
     perfScore,
   }
 }
-
-

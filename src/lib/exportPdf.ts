@@ -36,11 +36,24 @@ interface PdfMessage {
 }
 
 interface PdfFinding {
+  id?: string | null
   title?: string | null
   priority?: string | null
   evidence?: string | null
   explanation?: string | null
   recommended_fix?: string | null
+  source?: string | null
+  audit_id?: string | null
+  category?: string | null
+  display_value?: string | null
+  opportunity_ms?: number | null
+  opportunity_bytes?: number | null
+  affected_resources?: string[] | null
+}
+
+interface NormalizedPdfFinding extends PdfFinding {
+  sourceLabel: 'Measured' | 'Page inspection' | 'AI-assisted suggestion' | 'Unverified'
+  dedupeKey: string
 }
 
 function displayDate(value?: string | null) {
@@ -49,7 +62,7 @@ function displayDate(value?: string | null) {
   return Number.isNaN(date.getTime()) ? 'Not recorded' : date.toLocaleString()
 }
 
-function createReport(title: string, subtitle: string) {
+function createReport(title: string, subtitle: string, brand = 'OUTREACH INTELLIGENCE') {
   const doc = new jsPDF()
   let y = 55
 
@@ -64,7 +77,7 @@ function createReport(title: string, subtitle: string) {
     doc.text('ARLOTECH', LEFT + 8, 15)
     doc.setFont('helvetica', 'normal')
     doc.setFontSize(8)
-    doc.text('OUTREACH INTELLIGENCE', LEFT + 8, 21)
+    doc.text(brand, LEFT + 8, 21)
     doc.setTextColor(148, 190, 195)
     doc.setFont('helvetica', 'bold')
     doc.setFontSize(7)
@@ -157,7 +170,13 @@ function createReport(title: string, subtitle: string) {
       doc.setFont('helvetica', 'normal')
       doc.setFontSize(7)
       doc.setTextColor(...MUTED)
-      doc.text('Prepared with ArloTech Outreach Intelligence', LEFT, PAGE_HEIGHT - 8)
+      doc.text(
+        brand === 'WEB INTELLIGENCE'
+          ? 'ArloTech Web Intelligence  |  Lighthouse + page inspection'
+          : 'Prepared with ArloTech Outreach Intelligence',
+        LEFT,
+        PAGE_HEIGHT - 8,
+      )
       doc.text(`${page} / ${pageCount}`, RIGHT, PAGE_HEIGHT - 8, { align: 'right' })
     }
     doc.save(filename)
@@ -265,67 +284,189 @@ export function exportRepliesPdf(messages: PdfMessage[], prospectNames: Map<stri
   report.finish('arlotech-replies-report.pdf')
 }
 
+function normalizedFindingKey(finding: PdfFinding) {
+  const raw = String(finding.title || finding.recommended_fix || '').toLowerCase()
+  if (/unused\s+(?:javascript|js)|(?:javascript|js)\s+(?:is\s+)?unused/.test(raw)) return 'unused-javascript'
+  if (/legacy\s+(?:javascript|js)|(?:javascript|js)\s+legacy/.test(raw)) return 'legacy-javascript'
+  if (/forced\s+reflow|layout\s+thrash/.test(raw)) return 'forced-reflow'
+  if (/render.blocking/.test(raw)) return 'render-blocking-resources'
+  return raw
+    .replace(/\bjavascript\b/g, 'js')
+    .replace(/\bwebsite\b|\bpage\b|\bsite\b/g, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+}
+
+function findingSource(finding: PdfFinding): NormalizedPdfFinding['sourceLabel'] {
+  if (finding.source === 'lighthouse' || finding.id?.startsWith('ps-')) return 'Measured'
+  if (finding.source === 'content' || finding.id?.startsWith('content-')) return 'Page inspection'
+  if (finding.source === 'ai' || finding.id?.startsWith('ai-') || finding.evidence === 'AI-generated') {
+    return 'AI-assisted suggestion'
+  }
+  return 'Unverified'
+}
+
+function normalizePdfFindings(findings: PdfFinding[]) {
+  const unique = new Map<string, NormalizedPdfFinding>()
+  for (const finding of findings) {
+    const dedupeKey = normalizedFindingKey(finding)
+    if (!dedupeKey) continue
+    const normalized = { ...finding, dedupeKey, sourceLabel: findingSource(finding) }
+    const existing = unique.get(dedupeKey)
+    const sourceRank = (source: NormalizedPdfFinding['sourceLabel']) =>
+      source === 'Measured' ? 3 : source === 'Page inspection' ? 2 : source === 'Unverified' ? 1 : 0
+    if (!existing || sourceRank(normalized.sourceLabel) > sourceRank(existing.sourceLabel)) {
+      unique.set(dedupeKey, normalized)
+    }
+  }
+  return [...unique.values()]
+}
+
+function formatOpportunity(finding: PdfFinding) {
+  const values: string[] = []
+  if (typeof finding.opportunity_ms === 'number' && finding.opportunity_ms > 0) {
+    values.push(`${(finding.opportunity_ms / 1000).toFixed(1)} s`)
+  }
+  if (typeof finding.opportunity_bytes === 'number' && finding.opportunity_bytes > 0) {
+    values.push(`${(finding.opportunity_bytes / 1024).toFixed(0)} KB`)
+  }
+  return values.length ? `Estimated opportunity: ${values.join(' · ')}` : null
+}
+
 function buildWebsiteAnalysisPdf(analysis: Record<string, any>) {
   const rec = analysis?.record || analysis || {}
   const url = rec.website_url ?? rec.url ?? 'Website not recorded'
-  const report = createReport('Website intelligence', `${url} | Analyzed ${displayDate(rec.analyzed_at)}`)
-  const score = rec.overall_score
-  const findings: PdfFinding[] = Array.isArray(rec.findings) ? rec.findings : []
-  const positives: Array<string | { title?: string | null }> = Array.isArray(rec.positive_observations)
+  let hostname = url
+  try {
+    hostname = new URL(/^https?:\/\//i.test(url) ? url : `https://${url}`).hostname.replace(/^www\./i, '')
+  } catch {
+    hostname = String(url)
+  }
+  const report = createReport('Website audit', `${hostname}  |  Assessed ${displayDate(rec.analyzed_at)}`, 'WEB INTELLIGENCE')
+  const categoryScores = rec.category_scores && typeof rec.category_scores === 'object'
+    ? Object.entries(rec.category_scores).filter((entry): entry is [string, number] =>
+        typeof entry[1] === 'number' && Number.isFinite(entry[1]),
+      )
+    : []
+  const scoreIsCalculated = categoryScores.length > 0
+  const score = scoreIsCalculated
+    ? Math.round(categoryScores.reduce((total, [, value]) => total + value, 0) / categoryScores.length)
+    : typeof rec.overall_score === 'number' && Number.isFinite(rec.overall_score)
+      ? rec.overall_score
+      : null
+  const allFindings: PdfFinding[] = Array.isArray(rec.findings) ? rec.findings : []
+  const uniqueFindings = normalizePdfFindings(allFindings)
+  const measuredFindings = uniqueFindings.filter(
+    (finding) => finding.sourceLabel === 'Measured' || finding.sourceLabel === 'Page inspection',
+  )
+  const unverifiedFindings = uniqueFindings.filter(
+    (finding) => finding.sourceLabel === 'AI-assisted suggestion' || finding.sourceLabel === 'Unverified',
+  )
+  const findings = measuredFindings
+    .sort((left, right) => {
+      const rank = (priority?: string | null) =>
+        priority?.toLowerCase() === 'high' ? 0 : priority?.toLowerCase() === 'medium' ? 1 : 2
+      return rank(left.priority) - rank(right.priority)
+    })
+  const primaryFindings = findings.slice(0, 8)
+  const positives: Array<string | { title?: string | null; evidence?: string | null }> = Array.isArray(rec.positive_observations)
     ? rec.positive_observations
     : []
 
-  report.addSection('Assessment overview')
+  report.addSection('Assessment at a glance')
   report.addMetricCards([
-    ['Overall score', score === null || score === undefined ? 'N/A' : `${score} / 100`],
-    ['Findings identified', findings.length],
+    ['PageSpeed score', score === null ? 'Not available' : `${score} / 100`],
+    ['Verified unique issues', findings.length],
   ])
   report.addParagraph(
-    'Prepared with ArloTech Website Intelligence using Lighthouse performance and quality metrics, website content inspection, and automated recommendations.',
-    { size: 9 },
+    score === null
+      ? 'A PageSpeed score was unavailable for this assessment. The findings below are reported separately and do not imply a numeric overall score.'
+      : scoreIsCalculated
+        ? `The PageSpeed score is the rounded arithmetic mean of the available Lighthouse category scores (${categoryScores.map(([key, value]) => `${key.replace(/-/g, ' ')} ${value}`).join(', ')}). It summarizes those measurements; it is not a count of issues or an independent quality certification.`
+        : `A score of ${score} / 100 was stored for this earlier assessment, but its category scores are unavailable, so its calculation cannot be reconstructed from the saved data.`,
+    { size: 8.5 },
   )
 
-  const analysisSummary = rec.ai_analysis?.summary
-  const scoreExplanation = rec.ai_analysis?.score_explanation
-  if (analysisSummary || scoreExplanation) {
-    report.addSection('Executive summary')
-    if (analysisSummary) report.addParagraph(analysisSummary)
-    if (scoreExplanation) report.addParagraph(scoreExplanation)
-  }
+  report.addSection('Assessment scope')
+  report.addParagraph(
+    'This assessment covers the website page and technical signals observed at the time shown above. It does not identify a website owner or prospective recipient.',
+    { size: 8.5 },
+  )
 
-  if (rec.category_scores && Object.keys(rec.category_scores).length > 0) {
-    report.addSection('Category scores')
+  if (categoryScores.length > 0) {
+    report.addSection('PageSpeed category scores')
     report.addMetricCards(
-      Object.entries(rec.category_scores).map(([key, value]) => [
+      categoryScores.map(([key, value]) => [
         key.replace(/-/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase()),
-        value === null || value === undefined ? 'N/A' : `${value} / 100`,
+        `${value} / 100`,
       ]),
     )
   }
 
-  report.addSection(`Priority findings (${findings.length})`)
-  if (findings.length === 0) {
-    report.addParagraph('No findings were recorded for this assessment.')
+  report.addSection(`Verified observations (${findings.length} unique)`)
+  if (primaryFindings.length === 0) {
+    report.addParagraph('No scored Lighthouse issues or direct page-inspection issues were recorded.')
   } else {
-    findings.forEach((finding, index) => {
-      report.ensureSpace(16)
-      report.addParagraph(`${index + 1}. ${finding.title || 'Untitled finding'}`, { bold: true, color: NAVY })
-      if (finding.priority) report.addParagraph(`Priority: ${finding.priority}`, { size: 8, color: TEAL })
-      if (finding.evidence) report.addParagraph(`Evidence: ${finding.evidence}`, { size: 8 })
-      if (finding.explanation) report.addParagraph(finding.explanation, { size: 9 })
-      if (finding.recommended_fix) {
-        report.addParagraph(`Recommended action: ${finding.recommended_fix}`, { size: 9, bold: true })
+    primaryFindings.forEach((finding, index) => {
+      report.ensureSpace(20)
+      report.addParagraph(`${index + 1}. ${finding.title || 'Untitled finding'}`, { bold: true, color: NAVY, size: 9.5 })
+      const metadata = [
+        finding.sourceLabel,
+        finding.category?.replace(/-/g, ' '),
+        finding.priority ? `${finding.priority} priority` : null,
+      ].filter(Boolean)
+      report.addParagraph(metadata.join('  |  '), { size: 7.5, color: TEAL })
+      const evidence = finding.display_value || finding.evidence
+      if (evidence && evidence !== 'AI-generated') report.addParagraph(`Observed: ${evidence}`, { size: 8 })
+      const opportunity = formatOpportunity(finding)
+      if (opportunity) report.addParagraph(opportunity, { size: 7.5 })
+      if (finding.explanation && finding.sourceLabel !== 'Measured') {
+        report.addParagraph(finding.explanation, { size: 8 })
       }
-      report.y += 3
+      if (finding.recommended_fix) {
+        report.addParagraph(`Suggested action: ${finding.recommended_fix}`, { size: 8, bold: true })
+      }
+      const resources = finding.affected_resources?.filter(Boolean).slice(0, 3) ?? []
+      for (const resource of resources) {
+        report.addParagraph(`Affected resource: ${resource}`, { size: 7, color: MUTED, indent: 3 })
+      }
+      report.y += 1
     })
   }
 
-  if (positives.length > 0) {
-    report.addSection(`Strengths observed (${positives.length})`)
-    positives.forEach((item) => {
-      report.addParagraph(`- ${typeof item === 'string' ? item : item.title || 'Positive observation'}`)
+  if (findings.length > primaryFindings.length) {
+    report.addParagraph(`${findings.length - primaryFindings.length} additional unique lower-priority observations are available in the dashboard.`, {
+      size: 7.5,
+      color: MUTED,
     })
   }
+
+  if (unverifiedFindings.length > 0) {
+    report.addSection(`AI-assisted suggestions (${unverifiedFindings.length}; not measured findings)`)
+    unverifiedFindings.slice(0, 3).forEach((finding) => {
+      report.addParagraph(finding.title || finding.recommended_fix || 'Review this suggestion manually.', { size: 8 })
+    })
+    if (unverifiedFindings.length > 3) {
+      report.addParagraph(`${unverifiedFindings.length - 3} further suggestions omitted for brevity.`, { size: 7.5, color: MUTED })
+    }
+  }
+
+  if (positives.length > 0) {
+    const measuredPositives = positives.filter((item) =>
+      typeof item === 'object' && item.evidence !== 'AI-generated',
+    )
+    if (measuredPositives.length > 0) {
+      report.addSection('Observed strengths')
+      measuredPositives.slice(0, 4).forEach((item) => {
+        report.addParagraph(`- ${typeof item === 'string' ? item : item.title || 'Positive observation'}`, { size: 8 })
+      })
+    }
+  }
+
+  report.addParagraph(
+    'Method: Lighthouse/PageSpeed measurements and a direct HTML page inspection at the time shown above. Results can vary by device, network, location, and page state. Recommendations should be confirmed by inspecting the affected resources before implementation.',
+    { size: 7, color: MUTED },
+  )
 
   return {
     report,

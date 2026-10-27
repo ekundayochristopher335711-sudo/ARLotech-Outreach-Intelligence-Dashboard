@@ -31,6 +31,62 @@ function allMatches(html: string, re: RegExp): string[] {
   return out
 }
 
+async function fetchSameOriginScripts(html: string, pageUrl: string): Promise<string[]> {
+  const pageOrigin = new URL(pageUrl).origin
+  const scriptUrls = new Set<string>()
+  for (const [, attributes] of html.matchAll(/<script\b([^>]*)>/gi)) {
+    const source = attributes.match(/(?:^|\s)src\s*=\s*(["'])(.*?)\1/i)?.[2]
+    if (!source) continue
+    try {
+      const scriptUrl = new URL(source, pageUrl)
+      if (scriptUrl.origin === pageOrigin && ['http:', 'https:'].includes(scriptUrl.protocol)) {
+        scriptUrls.add(scriptUrl.href)
+      }
+    } catch {
+      continue
+    }
+    if (scriptUrls.size >= 4) break
+  }
+
+  return Promise.all([...scriptUrls].map(async (scriptUrl) => {
+    try {
+      const response = await fetch(scriptUrl, {
+        headers: { Accept: 'application/javascript, text/javascript, */*;q=0.1' },
+        redirect: 'error',
+        signal: AbortSignal.timeout(5000),
+      })
+      if (!response.ok) return ''
+
+      const contentLength = Number(response.headers.get('content-length'))
+      if (Number.isFinite(contentLength) && contentLength > 1_000_000) {
+        console.warn('Skipping oversized same-origin contact script:', scriptUrl)
+        return ''
+      }
+
+      const reader = response.body?.getReader()
+      if (!reader) return ''
+      const decoder = new TextDecoder()
+      let text = ''
+      let bytesRead = 0
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        bytesRead += value.byteLength
+        if (bytesRead > 1_000_000) {
+          await reader.cancel()
+          console.warn('Skipping oversized same-origin contact script:', scriptUrl)
+          return ''
+        }
+        text += decoder.decode(value, { stream: true })
+      }
+      return text + decoder.decode()
+    } catch (error) {
+      console.warn('Unable to inspect same-origin contact script:', scriptUrl, error)
+      return ''
+    }
+  }))
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
@@ -82,6 +138,7 @@ serve(async (req) => {
     }
     const html = await res.text()
     const finalUrl = res.url
+    const contactSources = [html, ...(await fetchSameOriginScripts(html, finalUrl))]
 
     const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)
     const title = titleMatch ? titleMatch[1].replace(/\s+/g, ' ').trim() : null
@@ -154,13 +211,23 @@ serve(async (req) => {
     const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g
     const phoneRegex = /(?:\+?\d{1,3}[\s.-]?)?(?:\(?\d{3}\)?[\s.-]?)?\d{3}[\s.-]?\d{4}/g
     const emails = new Set<string>()
-    for (const m of html.matchAll(emailRegex)) emails.add(m[0].toLowerCase())
-    for (const m of html.matchAll(/mailto:([^"'>\s]+)/gi)) {
-      try { emails.add(decodeURIComponent(m[1].split('?')[0]).toLowerCase()) } catch { emails.add(m[1].split('?')[0].toLowerCase()) }
+    for (const source of contactSources) {
+      for (const m of source.matchAll(emailRegex)) emails.add(m[0].toLowerCase())
+      for (const m of source.matchAll(/mailto:([^"'>\s]+)/gi)) {
+        try { emails.add(decodeURIComponent(m[1].split('?')[0]).toLowerCase()) } catch { emails.add(m[1].split('?')[0].toLowerCase()) }
+      }
     }
     const phones = new Set<string>()
     for (const m of html.matchAll(phoneRegex)) phones.add(m[0].trim())
-    for (const m of html.matchAll(/tel:([^"'>\s]+)/gi)) phones.add(decodeURIComponent(m[1]))
+    for (const source of contactSources) {
+      for (const m of source.matchAll(/tel:([^"'>\s]+)/gi)) {
+        let phone: string
+        try { phone = decodeURIComponent(m[1]) } catch { phone = m[1] }
+        if (/^\+?[\d\s().-]{7,20}$/.test(phone) && (phone.match(/\d/g)?.length ?? 0) >= 7) {
+          phones.add(phone)
+        }
+      }
+    }
 
     const result = {
       url,
