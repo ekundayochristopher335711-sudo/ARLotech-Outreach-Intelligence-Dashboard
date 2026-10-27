@@ -1,4 +1,5 @@
 import { supabase, getCurrentUserId } from '@/lib/supabase'
+import { lighthouseRecommendation } from '@/lib/lighthouseRecommendations'
 
 export interface ExtractedContent {
   url: string
@@ -120,22 +121,6 @@ function canonicalAuditKey(audit: any) {
   return id || String(audit?.title ?? '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
 }
 
-function auditRecommendation(auditId: string, title: string) {
-  if (/unused-javascript/i.test(auditId)) {
-    return 'Inspect the listed script URLs, remove unused code where practical, and split or defer non-critical code. Re-run the same PageSpeed test to measure the change.'
-  }
-  if (/legacy-javascript/i.test(auditId)) {
-    return 'Review the listed scripts and build targets; reduce unnecessary legacy transforms or polyfills while preserving support for the browsers your visitors use.'
-  }
-  if (/forced-reflow/i.test(auditId)) {
-    return 'Profile the listed script and DOM activity; batch layout reads before writes and avoid repeated geometry reads after DOM or style changes.'
-  }
-  if (/render-blocking-resources/i.test(auditId)) {
-    return 'Review the listed CSS and script resources; defer non-critical scripts and load non-critical styles without blocking the first render.'
-  }
-  return `Review the affected resources for “${title}”, apply the relevant Lighthouse remediation, then repeat the same test to confirm the result.`
-}
-
 function affectedResources(details: any): string[] {
   const items = Array.isArray(details?.items) ? details.items : []
   const urls: string[] = items.flatMap((item: any): string[] => {
@@ -207,7 +192,7 @@ export async function analyzeWebsite(url: string, prospectId: string | null = nu
       evidence: audit.displayValue || '',
       display_value: audit.displayValue || '',
       explanation: audit.description || '',
-      recommended_fix: auditRecommendation(audit.id, audit.title || 'this issue'),
+      recommended_fix: lighthouseRecommendation(audit.id, audit.title || 'this issue'),
       affected_resources: affectedResources(audit.details),
       opportunity_ms: audit.details?.overallSavingsMs ?? null,
       opportunity_bytes: audit.details?.overallSavingsBytes ?? null,

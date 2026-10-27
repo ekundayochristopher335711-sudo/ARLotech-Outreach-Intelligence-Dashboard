@@ -1,4 +1,5 @@
 import jsPDF from 'jspdf'
+import { lighthouseRecommendation } from '@/lib/lighthouseRecommendations'
 
 const PAGE_WIDTH = 210
 const PAGE_HEIGHT = 297
@@ -60,6 +61,20 @@ function displayDate(value?: string | null) {
   if (!value) return 'Not recorded'
   const date = new Date(value)
   return Number.isNaN(date.getTime()) ? 'Not recorded' : date.toLocaleString()
+}
+
+function useTeamVoice(value: string) {
+  return value
+    .replace(/\bI['’]m\b/g, "we're")
+    .replace(/\bI['’]ve\b/g, "we've")
+    .replace(/\bI['’]ll\b/g, "we'll")
+    .replace(/\bI['’]d\b/g, "we'd")
+    .replace(/\bmy\b/gi, 'our')
+    .replace(/\bmine\b/gi, 'ours')
+    .replace(/\bme\b/gi, 'us')
+    .replace(/\bI\b/g, (pronoun, offset, text) =>
+      offset === 0 || /[.!?]\s*$/.test(text.slice(0, offset)) ? 'We' : 'we',
+    )
 }
 
 function createReport(title: string, subtitle: string, brand = 'OUTREACH INTELLIGENCE') {
@@ -369,6 +384,9 @@ function buildWebsiteAnalysisPdf(analysis: Record<string, any>) {
       return rank(left.priority) - rank(right.priority)
     })
   const primaryFindings = findings.slice(0, 8)
+  const findingCountLabel = primaryFindings.length === findings.length
+    ? `Verified observations (${primaryFindings.length})`
+    : `Verified observations (${primaryFindings.length} shown)`
   const positives: Array<string | { title?: string | null; evidence?: string | null }> = Array.isArray(rec.positive_observations)
     ? rec.positive_observations
     : []
@@ -376,7 +394,7 @@ function buildWebsiteAnalysisPdf(analysis: Record<string, any>) {
   report.addSection('Assessment at a glance')
   report.addMetricCards([
     ['PageSpeed score', score === null ? 'Not available' : `${score} / 100`],
-    ['Verified unique issues', findings.length],
+    ['Verified observations shown', primaryFindings.length],
   ])
   report.addParagraph(
     score === null
@@ -389,7 +407,7 @@ function buildWebsiteAnalysisPdf(analysis: Record<string, any>) {
 
   report.addSection('Assessment scope')
   report.addParagraph(
-    'This assessment covers the website page and technical signals observed at the time shown above. It does not identify a website owner or prospective recipient.',
+    'We assessed the website page and technical signals observed at the time shown above. This report focuses on site observations and does not identify a website owner or prospective recipient.',
     { size: 8.5 },
   )
 
@@ -403,7 +421,7 @@ function buildWebsiteAnalysisPdf(analysis: Record<string, any>) {
     )
   }
 
-  report.addSection(`Verified observations (${findings.length} unique)`)
+  report.addSection(findingCountLabel)
   if (primaryFindings.length === 0) {
     report.addParagraph('No scored Lighthouse issues or direct page-inspection issues were recorded.')
   } else {
@@ -423,8 +441,12 @@ function buildWebsiteAnalysisPdf(analysis: Record<string, any>) {
       if (finding.explanation && finding.sourceLabel !== 'Measured') {
         report.addParagraph(finding.explanation, { size: 8 })
       }
-      if (finding.recommended_fix) {
-        report.addParagraph(`Suggested action: ${finding.recommended_fix}`, { size: 8, bold: true })
+      if (finding.recommended_fix || finding.sourceLabel === 'Measured') {
+        const auditId = finding.audit_id || finding.id?.replace(/^ps-/, '') || ''
+        const recommendation = finding.sourceLabel === 'Measured'
+          ? lighthouseRecommendation(auditId, finding.title || 'this issue')
+          : finding.recommended_fix
+        if (recommendation) report.addParagraph(`Our recommendation: ${useTeamVoice(recommendation)}`, { size: 8, bold: true })
       }
       const resources = finding.affected_resources?.filter(Boolean).slice(0, 3) ?? []
       for (const resource of resources) {
@@ -435,7 +457,7 @@ function buildWebsiteAnalysisPdf(analysis: Record<string, any>) {
   }
 
   if (findings.length > primaryFindings.length) {
-    report.addParagraph(`${findings.length - primaryFindings.length} additional unique lower-priority observations are available in the dashboard.`, {
+    report.addParagraph(`${findings.length - primaryFindings.length} additional unique observations are not included in this PDF; view them in the dashboard.`, {
       size: 7.5,
       color: MUTED,
     })
@@ -444,7 +466,9 @@ function buildWebsiteAnalysisPdf(analysis: Record<string, any>) {
   if (unverifiedFindings.length > 0) {
     report.addSection(`AI-assisted suggestions (${unverifiedFindings.length}; not measured findings)`)
     unverifiedFindings.slice(0, 3).forEach((finding) => {
-      report.addParagraph(finding.title || finding.recommended_fix || 'Review this suggestion manually.', { size: 8 })
+      const suggestion = useTeamVoice(finding.title || finding.recommended_fix || 'Review this suggestion manually.')
+      const recommendation = /^we recommend\b/i.test(suggestion) ? suggestion : `We recommend: ${suggestion}`
+      report.addParagraph(recommendation, { size: 8 })
     })
     if (unverifiedFindings.length > 3) {
       report.addParagraph(`${unverifiedFindings.length - 3} further suggestions omitted for brevity.`, { size: 7.5, color: MUTED })
@@ -464,7 +488,7 @@ function buildWebsiteAnalysisPdf(analysis: Record<string, any>) {
   }
 
   report.addParagraph(
-    'Method: Lighthouse/PageSpeed measurements and a direct HTML page inspection at the time shown above. Results can vary by device, network, location, and page state. Recommendations should be confirmed by inspecting the affected resources before implementation.',
+    'Method: We used Lighthouse/PageSpeed measurements and direct HTML page inspection at the time shown above. Results can vary by device, network, location, and page state. We recommend confirming the affected resources before implementation.',
     { size: 7, color: MUTED },
   )
 
