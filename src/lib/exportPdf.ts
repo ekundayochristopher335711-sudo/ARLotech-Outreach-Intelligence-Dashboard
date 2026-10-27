@@ -376,7 +376,10 @@ function recommendationConcept(title: string) {
   return null
 }
 
-function buildWebsiteAnalysisPdf(analysis: Record<string, any>, preparedFor?: string | null) {
+function buildWebsiteAnalysisPdf(
+  analysis: Record<string, any>,
+  preparedFor?: { businessName: string; verified: boolean } | null,
+) {
   const rec = analysis?.record || analysis || {}
   const url = rec.website_url ?? rec.url ?? 'Website not recorded'
   let hostname = url
@@ -386,7 +389,9 @@ function buildWebsiteAnalysisPdf(analysis: Record<string, any>, preparedFor?: st
     hostname = String(url)
   }
   const report = createReport('Website audit', `${hostname}  |  Assessed ${displayDate(rec.analyzed_at)}`, 'WEB INTELLIGENCE')
-  const verifiedBusinessName = preparedFor?.trim() || rec.prospect?.business_name?.trim() || null
+  const verifiedBusinessName = (preparedFor?.verified ? preparedFor.businessName.trim() : null) || (
+    rec.prospect?.business_name_verified === true ? rec.prospect.business_name?.trim() : null
+  )
   const assessedAddress = /^https?:\/\//i.test(url)
     ? url
     : hostname === 'Website not recorded'
@@ -432,17 +437,23 @@ function buildWebsiteAnalysisPdf(analysis: Record<string, any>, preparedFor?: st
   const positives: Array<string | { title?: string | null; evidence?: string | null }> = Array.isArray(rec.positive_observations)
     ? rec.positive_observations
     : []
+  const aiAnalysis = rec.ai_analysis && typeof rec.ai_analysis === 'object' ? rec.ai_analysis : {}
+  const visualAudit = aiAnalysis.visual_audit && typeof aiAnalysis.visual_audit === 'object'
+    ? aiAnalysis.visual_audit
+    : null
+  const visualPages = Array.isArray(visualAudit?.pages) ? visualAudit.pages : []
+  const visualObservations = Array.isArray(visualAudit?.observations) ? visualAudit.observations : []
 
   report.addSection('Assessment at a glance')
   report.addMetricCards([
-    ['PageSpeed score', score === null ? 'Not available' : `${score} / 100`],
+    ['Average Lighthouse category score', score === null ? 'Not available' : `${score} / 100`],
     ['Verified observations shown', primaryFindings.length],
   ])
   report.addParagraph(
     score === null
-      ? 'A PageSpeed score was unavailable for this assessment. The findings below are reported separately and do not imply a numeric overall score.'
+      ? 'A Lighthouse category average was unavailable for this assessment. The findings below are reported separately and do not imply a numeric overall score.'
       : scoreIsCalculated
-        ? `The PageSpeed score is the rounded arithmetic mean of the available Lighthouse category scores (${categoryScores.map(([key, value]) => `${key.replace(/-/g, ' ')} ${value}`).join(', ')}). It summarizes those measurements; it is not a count of issues or an independent quality certification.`
+        ? `The ArloTech composite score is the rounded arithmetic mean of the available Lighthouse category scores (${categoryScores.map(([key, value]) => `${key.replace(/-/g, ' ')} ${value}`).join(', ')}). It summarizes those measurements; it is not a count of issues, a Lighthouse metric, or an independent quality certification.`
         : `A score of ${score} / 100 was stored for this earlier assessment, but its category scores are unavailable, so its calculation cannot be reconstructed from the saved data.`,
     { size: 8.5 },
   )
@@ -528,6 +539,50 @@ function buildWebsiteAnalysisPdf(analysis: Record<string, any>, preparedFor?: st
     })
   }
 
+  if (visualAudit) {
+    report.addSection(`Visual review to validate (${visualObservations.length} observations)`)
+    report.addParagraph(
+      'AI-assisted review of initial-load screenshots. These observations are not measured defects and should be confirmed by a person. Menus, forms, and other interactive states were not tested.',
+      { size: 8, color: MUTED },
+    )
+    if (visualPages.length === 0) {
+      report.addParagraph('No screenshots were available for this review.')
+    } else {
+      const savedCount = visualPages.filter((page: any) => typeof page.image_path === 'string').length
+      report.addParagraph(`Screenshots saved: ${savedCount} of ${visualPages.length} attempted page/viewports.`)
+      visualPages.forEach((page: any) => {
+        report.addParagraph(
+          `${page.page_label || 'Page'} (${page.viewport || 'unknown viewport'}): ${page.page_url || 'URL unavailable'}`,
+          { size: 7.5, color: MUTED },
+        )
+        if (page.error) report.addParagraph(`Capture note: ${page.error}`, { size: 7.5, color: MUTED })
+      })
+    }
+    if (visualObservations.length === 0) {
+      report.addParagraph(visualPages.some((page: any) => typeof page.image_path === 'string')
+        ? 'No clear visual defects were identified in the saved screenshots. This does not confirm that all layouts or interactive states work correctly.'
+        : 'No visual observations are available because no screenshot was saved. The page appearance was not assessed.')
+    } else {
+      visualObservations.forEach((observation: any, index: number) => {
+        report.ensureSpace(15)
+        report.addParagraph(`${index + 1}. ${observation.title || 'Visual observation'}`, {
+          bold: true,
+          color: NAVY,
+          size: 9,
+        })
+        report.addParagraph(
+          `${observation.viewport || 'unknown viewport'} | ${observation.severity || 'unrated'} priority | ${Math.round((observation.confidence || 0) * 100)}% AI confidence`,
+          { size: 7.5, color: TEAL },
+        )
+        report.addParagraph(observation.evidence || 'No visual evidence summary was returned.', { size: 8 })
+        if (observation.page_url) report.addParagraph(`Page: ${observation.page_url}`, { size: 7.5, color: MUTED })
+        if (observation.recommended_fix) {
+          report.addParagraph(`Suggested check: ${observation.recommended_fix}`, { size: 8, bold: true })
+        }
+      })
+    }
+  }
+
   if (positives.length > 0) {
     const measuredPositives = positives.filter((item) =>
       typeof item === 'object' && item.evidence !== 'AI-generated',
@@ -580,6 +635,9 @@ export function exportWebsiteAnalysisPdf(analysis: Record<string, any>) {
   report.finish(filename)
 }
 
-export function createWebsiteAnalysisPdfBase64(analysis: Record<string, any>, preparedFor?: string | null) {
+export function createWebsiteAnalysisPdfBase64(
+  analysis: Record<string, any>,
+  preparedFor?: { businessName: string; verified: boolean } | null,
+) {
   return buildWebsiteAnalysisPdf(analysis, preparedFor).report.toBase64()
 }

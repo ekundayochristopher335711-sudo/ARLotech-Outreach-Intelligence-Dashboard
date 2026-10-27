@@ -1,5 +1,13 @@
 import { supabase, getCurrentUserId } from '@/lib/supabase'
 import { lighthouseRecommendation } from '@/lib/lighthouseRecommendations'
+import {
+  extractPageSpeedScreenshot,
+  MAX_VISUAL_REVIEW_PAGES,
+  selectVisualReviewPages,
+  type StoredVisualPage,
+  type VisualAudit,
+  type VisualScreenshot,
+} from '@/lib/visualReview'
 
 export interface ExtractedContent {
   url: string
@@ -18,6 +26,7 @@ export interface ExtractedContent {
   wordCount: number
   textExcerpt: string
   links: { total: number; internal: number; external: number; externalDomains: string[] }
+  navigationPages?: Array<{ label: string; url: string }>
   images: { total: number; missingAlt: number }
   schema: string[]
   h1Count: number
@@ -47,6 +56,15 @@ export interface GeminiResult {
     seo_notes?: string[]
     content_notes?: string[]
     positive_observations?: string[]
+    visual_observations?: Array<{
+      page_url: string
+      viewport: 'desktop' | 'mobile'
+      title: string
+      evidence: string
+      severity: 'high' | 'medium' | 'low'
+      confidence: number
+      recommended_fix?: string
+    }>
   } | null
   model: string
 }
@@ -91,8 +109,15 @@ export async function generateGeminiAnalysis(payload: {
   url: string
   content: ExtractedContent
   pagespeed: PageSpeedResult
+  visualScreenshots?: VisualScreenshot[]
 }): Promise<GeminiResult> {
-  const { data, error } = await (supabase as any).functions.invoke('gemini-analysis', { body: payload })
+  const { fullPageScreenshot: _fullPageScreenshot, ...lighthouseResult } = payload.pagespeed.lighthouseResult
+  const { data, error } = await (supabase as any).functions.invoke('gemini-analysis', {
+    body: {
+      ...payload,
+      pagespeed: { ...payload.pagespeed, lighthouseResult },
+    },
+  })
   if (error) {
     let detail = error.message || 'gemini-analysis failed'
     try {
@@ -130,7 +155,11 @@ function affectedResources(details: any): string[] {
   return [...new Set(urls)].slice(0, 3)
 }
 
-export async function analyzeWebsite(url: string, prospectId: string | null = null) {
+export async function analyzeWebsite(
+  url: string,
+  prospectId: string | null = null,
+  includeVisualReview = false,
+) {
   const userId = await getCurrentUserId()
 
   const content = await extractContent(url)
@@ -148,7 +177,72 @@ export async function analyzeWebsite(url: string, prospectId: string | null = nu
     }
   }
 
-  const gemini = await generateGeminiAnalysis({ url, content, pagespeed })
+  const visualPages: Array<{
+    page_url: string
+    page_label: string
+    viewport: 'desktop' | 'mobile'
+    screenshot: VisualScreenshot | null
+    error?: string
+  }> = []
+  let gemini: GeminiResult
+  if (includeVisualReview) {
+    const pages = selectVisualReviewPages(
+      content.finalUrl || url,
+      content.navigationPages ?? [],
+      MAX_VISUAL_REVIEW_PAGES,
+    )
+    const addScreenshot = (
+      page: { url: string; label: string },
+      viewport: 'desktop' | 'mobile',
+      result: PageSpeedResult | null,
+      error?: string,
+    ) => {
+      const image = extractPageSpeedScreenshot(result?.lighthouseResult.fullPageScreenshot)
+      visualPages.push({
+        page_url: page.url,
+        page_label: page.label,
+        viewport,
+        screenshot: image ? { ...image, page_url: page.url, page_label: page.label, viewport } : null,
+        ...(!image ? { error: error || 'PageSpeed did not return a usable screenshot.' } : {}),
+      })
+    }
+
+    const home = pages[0]
+    addScreenshot(
+      home,
+      pagespeed.strategy === 'mobile' ? 'mobile' : 'desktop',
+      pagespeed,
+      'The primary PageSpeed result did not include a usable screenshot.',
+    )
+
+    const mobilePages = pagespeed.strategy === 'mobile' ? pages.slice(1) : pages
+    const mobileResults = await Promise.all(mobilePages.map(async (page) => {
+      try {
+        return { page, result: await runPageSpeed(page.url, 'mobile') }
+      } catch (error) {
+        return {
+          page,
+          result: null,
+          error: error instanceof Error ? error.message : 'Mobile screenshot request failed.',
+        }
+      }
+    }))
+    for (const { page, result, error } of mobileResults) {
+      addScreenshot(page, 'mobile', result, error)
+    }
+
+    const screenshotPages: VisualScreenshot[] = visualPages.flatMap((page) =>
+      page.screenshot ? [page.screenshot] : [],
+    )
+    gemini = await generateGeminiAnalysis({
+      url,
+      content,
+      pagespeed: { ...pagespeed, lighthouseResult: { ...pagespeed.lighthouseResult, fullPageScreenshot: undefined } },
+      visualScreenshots: screenshotPages,
+    })
+  } else {
+    gemini = await generateGeminiAnalysis({ url, content, pagespeed })
+  }
 
   const cats = pagespeed?.lighthouseResult?.categories || {}
   const categoryScores: Record<string, number | null> = {}
@@ -294,10 +388,106 @@ export async function analyzeWebsite(url: string, prospectId: string | null = nu
 
   if (error) throw error
 
+  const pagespeedSummary = {
+    ...pagespeed,
+    lighthouseResult: { ...pagespeed.lighthouseResult, fullPageScreenshot: undefined },
+  }
+
+  if (includeVisualReview) {
+    const savedPages: StoredVisualPage[] = await Promise.all(visualPages.map(async (page, index) => {
+      if (!page.screenshot) {
+        return {
+          page_url: page.page_url,
+          page_label: page.page_label,
+          viewport: page.viewport,
+          image_path: null,
+          error: page.error,
+        }
+      }
+
+      const extension = page.screenshot.mime_type === 'image/png' ? 'png' :
+        page.screenshot.mime_type === 'image/webp' ? 'webp' : 'jpg'
+      const imagePath = `${userId}/${data.id}/${index}-${page.viewport}.${extension}`
+      const bytes = Uint8Array.from(atob(page.screenshot.data), (character) => character.charCodeAt(0))
+      const { error: uploadError } = await supabase.storage
+        .from('website-audit-screenshots')
+        .upload(imagePath, new Blob([bytes], { type: page.screenshot.mime_type }), {
+          contentType: page.screenshot.mime_type,
+          upsert: false,
+        })
+
+      return {
+        page_url: page.page_url,
+        page_label: page.page_label,
+        viewport: page.viewport,
+        image_path: uploadError ? null : imagePath,
+        ...(uploadError ? { error: `Screenshot storage failed: ${uploadError.message}` } : {}),
+      }
+    }))
+    const availablePageViewports = new Set(
+      visualPages.filter((page) => page.screenshot).map((page) => `${page.page_url}|${page.viewport}`),
+    )
+    const observations = (gemini.parsed?.visual_observations ?? [])
+      .filter((observation) =>
+        availablePageViewports.has(`${observation.page_url}|${observation.viewport}`) &&
+        typeof observation.title === 'string' &&
+        observation.title.trim().length > 0 &&
+        typeof observation.evidence === 'string' &&
+        ['high', 'medium', 'low'].includes(observation.severity) &&
+        Number.isFinite(observation.confidence) &&
+        observation.confidence >= 0 &&
+        observation.confidence <= 1,
+      )
+      .slice(0, 15)
+      .map((observation) => ({
+        ...observation,
+        title: observation.title.trim().slice(0, 200),
+        evidence: observation.evidence.trim().slice(0, 800),
+        confidence: Math.round(observation.confidence * 100) / 100,
+        recommended_fix: typeof observation.recommended_fix === 'string'
+          ? observation.recommended_fix.trim().slice(0, 500)
+          : undefined,
+      }))
+    const successfulScreenshots = savedPages.filter((page) => page.image_path).length
+    const visualAudit: VisualAudit = {
+      status: successfulScreenshots === 0
+        ? 'unavailable'
+        : savedPages.some((page) => !page.image_path)
+          ? 'partial'
+          : 'completed',
+      pages: savedPages,
+      observations,
+    }
+    const { data: updatedRecord, error: updateError } = await supabase
+      .from('website_analyses')
+      .update({
+        ai_analysis: {
+          ...(gemini.parsed ?? {}),
+          text: gemini.text,
+          visual_audit: visualAudit,
+        },
+      })
+      .eq('id', data.id)
+      .eq('user_id', userId)
+      .select()
+      .single()
+    if (updateError) throw updateError
+
+    return {
+      record: updatedRecord,
+      content,
+      pagespeed: pagespeedSummary,
+      gemini,
+      overallScore: overall,
+      seoScore,
+      perfScore,
+    }
+  }
+
   return {
     record: data,
     content,
-    pagespeed,
+    pagespeed: pagespeedSummary,
     gemini,
     overallScore: overall,
     seoScore,

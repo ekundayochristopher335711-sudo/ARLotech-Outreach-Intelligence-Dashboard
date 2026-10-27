@@ -18,6 +18,7 @@ export interface Prospect {
   id: string
   user_id: string
   business_name: string
+  business_name_verified: boolean
   contact_name: string
   email: string | null
   website: string | null

@@ -1,15 +1,20 @@
 import react from '@vitejs/plugin-react'
-import { defineConfig } from 'vite'
-import path from 'path'
+import { defineConfig } from 'vitest/config'
+import { dirname, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
-// https://vite.dev/config/
+const rootDirectory = dirname(fileURLToPath(import.meta.url))
+
 export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, './src'),
+      '@': resolve(rootDirectory, './src'),
     },
   },
+  test: {
+    include: ['src/**/*.test.ts', 'supabase/functions/**/*.test.ts'],
+    environment: 'node',
+  },
 })
-
 

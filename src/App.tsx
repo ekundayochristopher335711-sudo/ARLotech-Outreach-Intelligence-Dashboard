@@ -1,5 +1,5 @@
 import { Toaster } from 'sonner'
-import { useState } from 'react'
+import { lazy, Suspense, useState } from 'react'
 import {
   BrowserRouter,
   Navigate,
@@ -7,19 +7,30 @@ import {
   Route,
 } from 'react-router-dom'
 import { Menu } from 'lucide-react'
-import { AuthProvider, useAuth } from '@/hooks/useAuth'
+import { AuthProvider } from '@/hooks/useAuth'
+import { useAuth } from '@/hooks/useAuthState'
 import { Sidebar } from '@/components/layout/Sidebar'
-import { LoginPage } from '@/pages/Login'
-import { DashboardPage } from '@/pages/Dashboard'
-import { NewProspectPage, ProspectsPage } from '@/pages/Prospects'
-import { ProspectDetails } from '@/pages/ProspectDetails'
-import { CampaignsPage } from '@/pages/Campaigns'
-import { RepliesPage } from '@/pages/Replies'
-import { FollowUpsPage } from '@/pages/FollowUps'
-import { EmailDraftsPage } from '@/pages/EmailDrafts'
-import { WebsiteIntelligencePage } from '@/pages/WebsiteIntelligence'
-import { AnalyticsDashboard } from '@/pages/Analytics'
-import { SettingsPage } from '@/pages/Settings'
+
+const LoginPage = lazy(() => import('@/pages/Login').then((module) => ({ default: module.LoginPage })))
+const DashboardPage = lazy(() => import('@/pages/Dashboard').then((module) => ({ default: module.DashboardPage })))
+const ProspectsPage = lazy(() => import('@/pages/Prospects').then((module) => ({ default: module.ProspectsPage })))
+const NewProspectPage = lazy(() => import('@/pages/Prospects').then((module) => ({ default: module.NewProspectPage })))
+const ProspectDetails = lazy(() => import('@/pages/ProspectDetails').then((module) => ({ default: module.ProspectDetails })))
+const CampaignsPage = lazy(() => import('@/pages/Campaigns').then((module) => ({ default: module.CampaignsPage })))
+const RepliesPage = lazy(() => import('@/pages/Replies').then((module) => ({ default: module.RepliesPage })))
+const FollowUpsPage = lazy(() => import('@/pages/FollowUps').then((module) => ({ default: module.FollowUpsPage })))
+const EmailDraftsPage = lazy(() => import('@/pages/EmailDrafts').then((module) => ({ default: module.EmailDraftsPage })))
+const WebsiteIntelligencePage = lazy(() => import('@/pages/WebsiteIntelligence').then((module) => ({ default: module.WebsiteIntelligencePage })))
+const AnalyticsDashboard = lazy(() => import('@/pages/Analytics').then((module) => ({ default: module.AnalyticsDashboard })))
+const SettingsPage = lazy(() => import('@/pages/Settings').then((module) => ({ default: module.SettingsPage })))
+
+function PageLoading() {
+  return (
+    <div className="flex min-h-40 items-center justify-center" role="status" aria-live="polite">
+      <span className="text-sm text-slate-500">Loading page...</span>
+    </div>
+  )
+}
 
 function PublicRoute({ children }: { children: React.ReactNode }) {
   const { session, loading } = useAuth()
@@ -93,19 +104,21 @@ function AppShell() {
         </header>
         <div className="min-w-0 flex-1 overflow-auto">
           <main className="min-h-full p-4 lg:p-6">
-            <Routes>
-              <Route index element={<DashboardPage />} />
-              <Route path="prospects" element={<ProspectsPage />} />
-              <Route path="prospects/new" element={<NewProspectPage />} />
-              <Route path="prospects/:id" element={<ProspectDetails />} />
-              <Route path="campaigns" element={<CampaignsPage />} />
-              <Route path="replies" element={<RepliesPage />} />
-              <Route path="follow-ups" element={<FollowUpsPage />} />
-              <Route path="email-drafts" element={<EmailDraftsPage />} />
-              <Route path="website-intelligence" element={<WebsiteIntelligencePage />} />
-              <Route path="analytics" element={<AnalyticsDashboard />} />
-              <Route path="settings" element={<SettingsPage />} />
-            </Routes>
+            <Suspense fallback={<PageLoading />}>
+              <Routes>
+                <Route index element={<DashboardPage />} />
+                <Route path="prospects" element={<ProspectsPage />} />
+                <Route path="prospects/new" element={<NewProspectPage />} />
+                <Route path="prospects/:id" element={<ProspectDetails />} />
+                <Route path="campaigns" element={<CampaignsPage />} />
+                <Route path="replies" element={<RepliesPage />} />
+                <Route path="follow-ups" element={<FollowUpsPage />} />
+                <Route path="email-drafts" element={<EmailDraftsPage />} />
+                <Route path="website-intelligence" element={<WebsiteIntelligencePage />} />
+                <Route path="analytics" element={<AnalyticsDashboard />} />
+                <Route path="settings" element={<SettingsPage />} />
+              </Routes>
+            </Suspense>
           </main>
         </div>
       </div>
@@ -118,7 +131,16 @@ export default function App() {
     <AuthProvider>
       <BrowserRouter>
         <Routes>
-          <Route path="/login" element={<PublicRoute><LoginPage /></PublicRoute>} />
+          <Route
+            path="/login"
+            element={
+              <PublicRoute>
+                <Suspense fallback={<PageLoading />}>
+                  <LoginPage />
+                </Suspense>
+              </PublicRoute>
+            }
+          />
           <Route
             path="/*"
             element={

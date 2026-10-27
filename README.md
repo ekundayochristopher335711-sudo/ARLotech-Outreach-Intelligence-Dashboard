@@ -9,7 +9,7 @@ Requirements: Node.js 20.19+ or 22.12+ and npm.
 1. Install packages:
 
    ```sh
-   npm ci
+   npm ci --legacy-peer-deps
    ```
 
 2. Create a Supabase project. Apply `supabase/migrations/20240101_01_create_core_tables.sql` in the Supabase SQL Editor, or link the Supabase CLI to the project and run:
@@ -32,7 +32,11 @@ Requirements: Node.js 20.19+ or 22.12+ and npm.
    npm run dev
    ```
 
-The migration enables row-level security and scopes records to their owning Supabase user.
+The migrations enable row-level security and scope records to their owning Supabase user. After pulling schema changes, apply pending migrations before deploying frontend code:
+
+```sh
+npm run supabase:migrate
+```
 
 ## Deploy
 
@@ -60,6 +64,12 @@ The Website Intelligence page orchestrates three Supabase Edge Functions:
 The combined report is stored in the `website_analyses` Supabase table.
 
 Website audit PDFs identify the linked prospect when available, include all unique measured/page-inspection observations, explain the PageSpeed score calculation, distinguish Lighthouse estimates from measured results, and provide contextual recommendations to validate. Reports conclude with a concise, evidence-based next step.
+
+The displayed ArloTech composite score is the rounded arithmetic mean of available Lighthouse category scores; it is not an official Lighthouse score. Prospect business names default to unverified and appear as the report recipient only after an account user verifies them in the prospect record.
+
+Website Intelligence can also run an optional visual review. It uses PageSpeed's rendered screenshots for the homepage (desktop and mobile where available) and up to three same-origin links discovered inside navigation landmarks (mobile). Screenshots are saved in a private, user-scoped Supabase Storage bucket, and Gemini returns AI-assisted visual observations for human review. This is a bounded initial-load crawl; it does not click menus, submit forms, test interactive states, or guarantee that visual observations are correct. It makes additional PageSpeed requests.
+
+Before deploying the visual review, apply the pending migrations and redeploy the updated `extract-content` and `gemini-analysis` functions. Migration `20261027220000_create_visual_audit_screenshots.sql` creates the private screenshot bucket.
 
 ### Configure secrets (server-side, never exposed to the browser)
 
@@ -118,4 +128,5 @@ In **Email Drafts**, write a one-off message to any recipient address, or select
 ```sh
 npm run build
 npm run lint
+npm test
 ```

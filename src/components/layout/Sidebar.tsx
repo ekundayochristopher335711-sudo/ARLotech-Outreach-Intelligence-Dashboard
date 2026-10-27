@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { NavLink } from 'react-router-dom'
 import {
   LayoutDashboard,
@@ -14,7 +14,8 @@ import {
   ChevronRight,
   Plane,
 } from 'lucide-react'
-import { useAuth } from '@/hooks/useAuth'
+import { useAuth } from '@/hooks/useAuthState'
+import { useAccessibleDialog } from '@/hooks/useAccessibleDialog'
 
 interface NavItem {
   label: string
@@ -48,19 +49,9 @@ export function Sidebar({
   const [signingOut, setSigningOut] = useState(false)
   const [signOutError, setSignOutError] = useState('')
   const { signOut } = useAuth()
+  const sidebarRef = useAccessibleDialog<HTMLElement>(mobileOpen, () => setMobileOpen(false), true)
 
   const toggleCollapse = () => setCollapsed((v) => !v)
-
-  useEffect(() => {
-    if (!mobileOpen) return
-
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setMobileOpen(false)
-    }
-
-    window.addEventListener('keydown', closeOnEscape)
-    return () => window.removeEventListener('keydown', closeOnEscape)
-  }, [mobileOpen, setMobileOpen])
 
   const handleSignOut = async () => {
     setSigningOut(true)
@@ -78,6 +69,7 @@ export function Sidebar({
   return (
     <>
       <aside
+        ref={sidebarRef}
         id="app-sidebar"
         className={`fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-slate-200 bg-white transition-all duration-300 lg:relative lg:inset-y-auto lg:left-auto lg:translate-x-0 ${
           collapsed ? 'lg:w-20' : 'lg:w-64'
@@ -85,6 +77,10 @@ export function Sidebar({
           mobileOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
         aria-label="Main navigation"
+        role={mobileOpen ? 'dialog' : undefined}
+        aria-modal={mobileOpen ? true : undefined}
+        aria-hidden={!mobileOpen ? undefined : false}
+        tabIndex={mobileOpen ? -1 : undefined}
       >
         <div className="flex items-center justify-between h-16 px-4 border-b border-slate-200">
           <div className="flex items-center gap-2">

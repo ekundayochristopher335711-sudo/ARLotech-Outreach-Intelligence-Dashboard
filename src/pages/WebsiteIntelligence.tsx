@@ -3,19 +3,22 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Card } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
-import { Input } from '@/components/ui/Input'
 import { getCurrentUserId, supabase } from '@/lib/supabase'
 import { analyzeWebsite } from '@/lib/websiteAnalysis'
 import { exportWebsiteAnalysisPdf } from '@/lib/exportPdf'
 import { toast } from 'sonner'
 import { format } from 'date-fns'
 import { Globe, AlertCircle, Clock, Loader2, Search, X, Download, Copy } from 'lucide-react'
+import { useAccessibleDialog } from '@/hooks/useAccessibleDialog'
+import { VisualReviewPanel } from '@/components/website-intelligence/VisualReviewPanel'
 
 export function WebsiteIntelligencePage() {
   const queryClient = useQueryClient()
   const [url, setUrl] = useState('')
+  const [includeVisualReview, setIncludeVisualReview] = useState(true)
   const [lastResult, setLastResult] = useState<any>(null)
   const [selected, setSelected] = useState<any>(null)
+  const selectedDialogRef = useAccessibleDialog<HTMLDivElement>(!!selected, () => setSelected(null))
 
   const { data: analyses, isLoading } = useQuery({
     queryKey: ['/website-analyses'],
@@ -23,7 +26,7 @@ export function WebsiteIntelligencePage() {
       const userId = await getCurrentUserId()
       const { data, error } = await supabase
         .from('website_analyses')
-        .select('*, prospect:prospects(business_name)')
+        .select('*, prospect:prospects(business_name, business_name_verified)')
         .eq('user_id', userId)
         .order('analyzed_at', { ascending: false })
         .limit(20)
@@ -33,7 +36,8 @@ export function WebsiteIntelligencePage() {
   })
 
   const mutation = useMutation({
-    mutationFn: async (targetUrl: string) => analyzeWebsite(targetUrl),
+    mutationFn: async (input: { url: string; includeVisualReview: boolean }) =>
+      analyzeWebsite(input.url, null, input.includeVisualReview),
     onSuccess: (result: any) => {
       setLastResult(result)
       setUrl('')
@@ -50,7 +54,7 @@ export function WebsiteIntelligencePage() {
     if (!url.trim()) return
     let target = url.trim()
     if (!/^https?:\/\//i.test(target)) target = 'https://' + target
-    mutation.mutate(target)
+    mutation.mutate({ url: target, includeVisualReview })
   }
 
   const handleCopyReport = (analysis: any) => {
@@ -101,6 +105,21 @@ export function WebsiteIntelligencePage() {
             )}
           </Button>
         </form>
+        <label className="mt-4 flex items-start gap-2 text-sm text-slate-700">
+          <input
+            type="checkbox"
+            checked={includeVisualReview}
+            onChange={(event) => setIncludeVisualReview(event.target.checked)}
+            disabled={mutation.isPending}
+            className="mt-1"
+          />
+          <span>
+            Include visual review
+            <span className="block text-xs text-slate-500">
+              Up to four same-site navigation pages; homepage desktop and mobile, other pages mobile. This uses additional PageSpeed requests.
+            </span>
+          </span>
+        </label>
         {mutation.isError && (
           <p className="mt-3 text-sm text-red-600">
             {mutation.error instanceof Error ? mutation.error.message : 'Analysis failed'}
@@ -108,7 +127,7 @@ export function WebsiteIntelligencePage() {
         )}
         {mutation.isPending && (
           <p className="mt-3 text-xs text-slate-500">
-            Running PageSpeed Insights, extracting content, and generating AI explanation. This may take 20-40 seconds.
+            Running PageSpeed Insights, extracting content, and generating the report. Visual review may take longer because it checks up to four pages.
           </p>
         )}
       </Card>
@@ -130,7 +149,7 @@ export function WebsiteIntelligencePage() {
           {lastResult.overallScore !== undefined && (
             <div>
               <div className="flex justify-between text-sm text-slate-600 mb-1">
-                <span>Overall Score</span>
+                <span>ArloTech composite score</span>
                 <span className="font-semibold">{lastResult.overallScore}/100</span>
               </div>
               <div className="h-2 rounded-full bg-slate-100">
@@ -163,6 +182,7 @@ export function WebsiteIntelligencePage() {
               <p className="text-sm text-slate-600">{lastResult.gemini.parsed.score_explanation}</p>
             </div>
           )}
+          <VisualReviewPanel audit={lastResult.record?.ai_analysis?.visual_audit} />
           {lastResult.gemini?.parsed?.seo_notes?.length ? (
             <div>
               <h3 className="text-sm font-semibold text-slate-700 mb-1">SEO Notes</h3>
@@ -214,7 +234,13 @@ export function WebsiteIntelligencePage() {
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {analyses?.map((analysis: any) => (
-          <div key={analysis.id} onClick={() => setSelected(analysis)} className="cursor-pointer rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition-shadow hover:shadow-md">
+          <button
+            key={analysis.id}
+            type="button"
+            onClick={() => setSelected(analysis)}
+            aria-label={`View website analysis for ${analysis.website_url}`}
+            className="w-full cursor-pointer rounded-xl border border-slate-200 bg-white p-5 text-left shadow-sm transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-arlotech"
+          >
             <div className="flex items-start justify-between mb-3">
               <div className="flex items-center gap-2">
                 <Globe className="h-5 w-5 text-arlotech" />
@@ -226,7 +252,7 @@ export function WebsiteIntelligencePage() {
             {analysis.overall_score !== null && (
               <div className="mb-3">
                 <div className="flex justify-between text-sm text-slate-600 mb-1">
-                  <span>Overall Score</span>
+                  <span>ArloTech composite score</span>
                   <span>{analysis.overall_score}/100</span>
                 </div>
                 <div className="h-2 rounded-full bg-slate-100">
@@ -258,7 +284,7 @@ export function WebsiteIntelligencePage() {
               <AlertCircle className="h-3 w-3" />
               {analysis.findings?.length ?? 0} findings • {analysis.positive_observations?.length ?? 0} positives
             </div>
-          </div>
+          </button>
         )) || (
           <div className="col-span-3 text-center py-12">
             <p className="text-sm text-slate-500">No analyses yet. Enter a website URL to get started.</p>
@@ -268,9 +294,17 @@ export function WebsiteIntelligencePage() {
 
       {selected && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setSelected(null)}>
-          <div className="max-h-[90vh] w-full max-w-3xl overflow-auto rounded-xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+          <div
+            ref={selectedDialogRef}
+            className="max-h-[90vh] w-full max-w-3xl overflow-auto rounded-xl bg-white p-6 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="analysis-dialog-title"
+            tabIndex={-1}
+          >
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold text-slate-800">{selected.website_url}</h2>
+              <h2 id="analysis-dialog-title" className="text-lg font-semibold text-slate-800">{selected.website_url}</h2>
               <div className="flex gap-2">
                 <Button variant="secondary" size="sm" onClick={() => handleCopyReport(selected)}><Copy className="h-4 w-4" /></Button>
                 <Button variant="secondary" size="sm" onClick={() => handleDownloadReport(selected)}><Download className="h-4 w-4" /></Button>
@@ -281,7 +315,7 @@ export function WebsiteIntelligencePage() {
             {selected.overall_score !== null && (
               <div className="mb-4">
                 <div className="flex justify-between text-sm text-slate-600 mb-1">
-                  <span>Overall Score</span>
+                  <span>ArloTech composite score</span>
                   <span>{selected.overall_score}/100</span>
                 </div>
                 <div className="h-2 rounded-full bg-slate-100">
@@ -303,6 +337,8 @@ export function WebsiteIntelligencePage() {
                 </div>
               </div>
             )}
+
+            <VisualReviewPanel audit={selected.ai_analysis?.visual_audit} />
 
             <div className="mb-4">
               <h3 className="text-sm font-semibold text-slate-700 mb-2">Findings ({selected.findings?.length ?? 0})</h3>
@@ -339,5 +375,3 @@ export function WebsiteIntelligencePage() {
     </div>
   )
 }
-
-

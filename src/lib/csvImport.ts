@@ -2,7 +2,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import * as Papa from 'papaparse'
 import { z } from 'zod'
-import { useAuth } from '@/hooks/useAuth'
+import { useAuth } from '@/hooks/useAuthState'
 import { supabase } from '@/lib/supabase'
 import { type Prospect, type ImportSummary } from '@/types'
 import { ImportResultSchema } from '@/lib/validation'
@@ -196,6 +196,7 @@ export async function importLeadsInternal(
 
       const prospect: Omit<Prospect, 'id' | 'created_at' | 'updated_at'> = {
         business_name: businessName,
+        business_name_verified: false,
         contact_name: contactName,
         email: normalizedEmail,
         website: rawWebsite || null,

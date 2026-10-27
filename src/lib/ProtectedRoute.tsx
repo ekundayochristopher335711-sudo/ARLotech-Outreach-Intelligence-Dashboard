@@ -1,6 +1,6 @@
 import { type ReactElement } from 'react'
 import { Navigate } from 'react-router-dom'
-import { useAuth } from '@/hooks/useAuth'
+import { useAuth } from '@/hooks/useAuthState'
 
 export function ProtectedRoute({ children }: { children: ReactElement }) {
   const { session, loading } = useAuth()

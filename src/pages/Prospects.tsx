@@ -6,9 +6,10 @@ import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import { useCsvImport } from '@/lib/csvImport'
 import { ProspectTable } from '@/components/dashboard/ProspectTable'
-import { useAuth } from '@/hooks/useAuth'
+import { useAuth } from '@/hooks/useAuthState'
 import { supabase } from '@/lib/supabase'
 import { type Prospect, type ImportSummary } from '@/types'
+import { deleteOwnedProspect } from '@/lib/prospectRepository'
 import { type ImportResultRow, importLeadsInternal } from '@/lib/csvImport'
 import { extractLeadsFromText } from '@/lib/leadExtraction'
 import { enrichAndAnalyzeProspect, type EnrichmentResult } from '@/lib/leadEnrichment'
@@ -97,12 +98,7 @@ export function ProspectsPage() {
     mutationFn: async (prospectId: string) => {
       const userId = session?.user.id
       if (!userId) throw new Error('You must be signed in to delete prospects.')
-      const { error } = await supabase
-        .from('prospects')
-        .delete()
-        .eq('id', prospectId)
-        .eq('user_id', userId)
-      if (error) throw error
+      await deleteOwnedProspect(supabase, prospectId, userId)
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['/prospects'] })

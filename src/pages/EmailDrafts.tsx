@@ -14,7 +14,7 @@ const MAX_OUTREACH_BATCH_SIZE = 10
 
 type OutreachProspect = Pick<
   Prospect,
-  'id' | 'business_name' | 'contact_name' | 'email' | 'website' | 'business_category' | 'do_not_contact'
+  'id' | 'business_name' | 'business_name_verified' | 'contact_name' | 'email' | 'website' | 'business_category' | 'do_not_contact'
 >
 
 interface OutreachSendResult {
@@ -148,7 +148,7 @@ export function EmailDraftsPage() {
       const userId = await getCurrentUserId()
       const { data, error } = await supabase
         .from('prospects')
-        .select('id, business_name, contact_name, email, website, business_category, do_not_contact')
+        .select('id, business_name, business_name_verified, contact_name, email, website, business_category, do_not_contact')
         .eq('user_id', userId)
         .order('business_name')
         .limit(500)
@@ -300,7 +300,10 @@ export function EmailDraftsPage() {
             ? {
                 attachment: {
                   filename: `website-review-${safeFilename}.pdf`,
-                  content: createWebsiteAnalysisPdfBase64(analysis, prospect.business_name),
+                  content: createWebsiteAnalysisPdfBase64(analysis, {
+                    businessName: prospect.business_name,
+                    verified: prospect.business_name_verified,
+                  }),
                 },
               }
             : {}),

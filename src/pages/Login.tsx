@@ -29,17 +29,18 @@ export function LoginPage() {
     e.preventDefault()
     setLoading(true)
     setError('')
-    const { error } = await supabase.auth.signInWithPassword({ email, password })
-    if (error) {
-      setError(
-        typeof error.message === 'string'
-          ? error.message
-          : JSON.stringify(error),
-      )
-    } else {
-      navigate('/', { replace: true })
+    try {
+      const { error } = await supabase.auth.signInWithPassword({ email, password })
+      if (error) {
+        setError(error.message)
+      } else {
+        navigate('/', { replace: true })
+      }
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Sign in failed. Please try again.')
+    } finally {
+      setLoading(false)
     }
-    setLoading(false)
   }
 
   return (
@@ -65,7 +66,7 @@ export function LoginPage() {
           </div>
           <form onSubmit={handleSubmit} className="space-y-4">
             {error && (
-              <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-600">
+              <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-600">
                 {error}
               </div>
             )}
@@ -76,6 +77,7 @@ export function LoginPage() {
               <input
                 id="email"
                 type="email"
+                autoComplete="username"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-arlotech focus:outline-none focus:ring-2 focus:ring-arlotech/20"
@@ -90,6 +92,7 @@ export function LoginPage() {
               <input
                 id="password"
                 type="password"
+                autoComplete="current-password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-arlotech focus:outline-none focus:ring-2 focus:ring-arlotech/20"

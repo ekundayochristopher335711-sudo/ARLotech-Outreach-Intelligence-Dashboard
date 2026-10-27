@@ -1,0 +1,2 @@
+ALTER TABLE public.prospects
+  ADD COLUMN IF NOT EXISTS business_name_verified BOOLEAN NOT NULL DEFAULT FALSE;

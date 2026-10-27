@@ -1,4 +1,10 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
+import { assertSafeExternalUrl, isPublicIpAddress } from './safety.ts'
+import { extractNavigationPages } from './navigation.ts'
+
+const MAX_HTML_BYTES = 2_000_000
+const MAX_REDIRECTS = 5
+const FETCH_TIMEOUT_MS = 10_000
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -31,6 +37,85 @@ function allMatches(html: string, re: RegExp): string[] {
   return out
 }
 
+async function assertPublicDestination(url: URL) {
+  assertSafeExternalUrl(url)
+  const hostname = url.hostname.replace(/^\[|\]$/g, '')
+  if (/^\d{1,3}(?:\.\d{1,3}){3}$/.test(hostname) || hostname.includes(':')) return
+
+  const results = await Promise.allSettled([
+    Deno.resolveDns(hostname, 'A'),
+    Deno.resolveDns(hostname, 'AAAA'),
+  ])
+  const addresses = results.flatMap((result) => result.status === 'fulfilled' ? result.value : [])
+  if (addresses.length === 0) {
+    throw new Error('The website hostname could not be resolved to a public address.')
+  }
+  if (addresses.some((address) => !isPublicIpAddress(address))) {
+    throw new Error('Private or local website destinations are not supported.')
+  }
+}
+
+async function readBoundedText(response: Response, maxBytes: number): Promise<string> {
+  const contentLength = Number(response.headers.get('content-length'))
+  if (Number.isFinite(contentLength) && contentLength > maxBytes) {
+    await response.body?.cancel()
+    throw new Error('The website response is too large to inspect.')
+  }
+
+  const reader = response.body?.getReader()
+  if (!reader) return ''
+  const decoder = new TextDecoder()
+  let text = ''
+  let bytesRead = 0
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    bytesRead += value.byteLength
+    if (bytesRead > maxBytes) {
+      await reader.cancel()
+      throw new Error('The website response is too large to inspect.')
+    }
+    text += decoder.decode(value, { stream: true })
+  }
+  return text + decoder.decode()
+}
+
+async function fetchPublicPage(startUrl: string) {
+  let currentUrl = new URL(startUrl)
+  for (let redirectCount = 0; redirectCount <= MAX_REDIRECTS; redirectCount += 1) {
+    await assertPublicDestination(currentUrl)
+    const response = await fetch(currentUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (compatible; ArloTechWebsiteAudit/1.0)',
+        Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
+      },
+      redirect: 'manual',
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    })
+    if ([301, 302, 303, 307, 308].includes(response.status)) {
+      const location = response.headers.get('location')
+      await response.body?.cancel()
+      if (!location) throw new Error('The website returned a redirect without a destination.')
+      if (redirectCount === MAX_REDIRECTS) throw new Error('The website exceeded the redirect limit.')
+      currentUrl = new URL(location, currentUrl)
+      continue
+    }
+    if (!response.ok) {
+      await response.body?.cancel()
+      throw new Error(`Failed to fetch URL: ${response.status} ${response.statusText}`)
+    }
+    const contentType = response.headers.get('content-type')?.toLowerCase() ?? ''
+    if (contentType && !/(?:text\/html|application\/xhtml\+xml)/.test(contentType)) {
+      await response.body?.cancel()
+      throw new Error('The website URL did not return an HTML page.')
+    }
+    const html = await readBoundedText(response, MAX_HTML_BYTES)
+    return { html, finalUrl: currentUrl.href, status: response.status }
+  }
+  throw new Error('The website exceeded the redirect limit.')
+}
+
 async function fetchSameOriginScripts(html: string, pageUrl: string): Promise<string[]> {
   const pageOrigin = new URL(pageUrl).origin
   const scriptUrls = new Set<string>()
@@ -40,6 +125,7 @@ async function fetchSameOriginScripts(html: string, pageUrl: string): Promise<st
     try {
       const scriptUrl = new URL(source, pageUrl)
       if (scriptUrl.origin === pageOrigin && ['http:', 'https:'].includes(scriptUrl.protocol)) {
+        assertSafeExternalUrl(scriptUrl)
         scriptUrls.add(scriptUrl.href)
       }
     } catch {
@@ -50,7 +136,9 @@ async function fetchSameOriginScripts(html: string, pageUrl: string): Promise<st
 
   return Promise.all([...scriptUrls].map(async (scriptUrl) => {
     try {
-      const response = await fetch(scriptUrl, {
+      const url = new URL(scriptUrl)
+      await assertPublicDestination(url)
+      const response = await fetch(url, {
         headers: { Accept: 'application/javascript, text/javascript, */*;q=0.1' },
         redirect: 'error',
         signal: AbortSignal.timeout(5000),
@@ -105,39 +193,7 @@ serve(async (req) => {
       throw new Error('Only http/https URLs are supported')
     }
 
-    const userAgents = [
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15',
-      'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)',
-    ]
-
-    let res: Response | null = null
-    let lastFetchError: string | null = null
-    for (const ua of userAgents) {
-      try {
-        res = await fetch(url, {
-          headers: {
-            'User-Agent': ua,
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-            'Accept-Language': 'en-US,en;q=0.9',
-            'Cache-Control': 'no-cache',
-          },
-          redirect: 'follow',
-        })
-        if (res.ok) break
-        lastFetchError = `Failed to fetch URL: ${res.status} ${res.statusText}`
-        // Retry with a different UA on 403/401/429/5xx
-        if (![403, 401, 429, 500, 502, 503, 504].includes(res.status)) break
-      } catch (e) {
-        lastFetchError = e instanceof Error ? e.message : 'fetch failed'
-      }
-    }
-
-    if (!res || !res.ok) {
-      throw new Error(lastFetchError || 'Failed to fetch URL')
-    }
-    const html = await res.text()
-    const finalUrl = res.url
+    const { html, finalUrl, status } = await fetchPublicPage(parsed.href)
     const contactSources = [html, ...(await fetchSameOriginScripts(html, finalUrl))]
 
     const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)
@@ -232,7 +288,7 @@ serve(async (req) => {
     const result = {
       url,
       finalUrl,
-      status: res.status,
+      status,
       title,
       metaDescription: description,
       robots,
@@ -251,6 +307,7 @@ serve(async (req) => {
         external: externalLinks,
         externalDomains: [...externalDomains],
       },
+      navigationPages: extractNavigationPages(html, finalUrl),
       images: {
         total: imagesTotal,
         missingAlt: imagesMissingAlt,
