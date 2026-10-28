@@ -16,7 +16,6 @@ export function LoginPage() {
   const [fingerprintHeld, setFingerprintHeld] = useState(false)
   const [scanActive, setScanActive] = useState(false)
   const [scanProgress, setScanProgress] = useState(0)
-  const [accessMessage, setAccessMessage] = useState('')
   const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const scanTimer = useRef<ReturnType<typeof setInterval> | null>(null)
   const scanFinishTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -29,8 +28,8 @@ export function LoginPage() {
 
   const setLoginMode = useCallback((nextMode: LoginMode) => {
     setMode(nextMode)
-    setAccessMessage(nextMode === 'blacksite' ? 'COVERT INTERFACE UNLOCKED' : 'STANDARD INTERFACE RESTORED')
     try { localStorage.setItem('arlotech-login-mode', nextMode) } catch { /* storage is optional */ }
+    window.dispatchEvent(new Event('arlotech-mode-change'))
   }, [])
 
   const clearScanTimers = useCallback(() => {
@@ -44,7 +43,6 @@ export function LoginPage() {
     clearScanTimers()
     setScanActive(false)
     setScanProgress(0)
-    setAccessMessage('BIOMETRIC SIMULATION CANCELLED')
   }, [clearScanTimers])
 
   const startFingerprintHold = () => {
@@ -55,7 +53,6 @@ export function LoginPage() {
     if (holdTimer.current) clearTimeout(holdTimer.current)
     holdStarted.current = true
     setFingerprintHeld(true)
-    setAccessMessage('KEEP HOLDING // 5 SECONDS')
     holdTimer.current = setTimeout(() => {
       holdStarted.current = false
       setFingerprintHeld(false)
@@ -69,7 +66,6 @@ export function LoginPage() {
     if (holdTimer.current) clearTimeout(holdTimer.current)
     holdTimer.current = null
     setFingerprintHeld(false)
-    setAccessMessage('FINGERPRINT SEQUENCE ABORTED')
   }
 
   const startEyeScan = () => {
@@ -80,7 +76,6 @@ export function LoginPage() {
     clearScanTimers()
     setScanProgress(0)
     setScanActive(true)
-    setAccessMessage('EYE SCAN SIMULATION // INITIALIZING')
     const startedAt = Date.now()
     scanTimer.current = setInterval(() => {
       const progress = Math.min(100, ((Date.now() - startedAt) / 7000) * 100)
@@ -102,7 +97,7 @@ export function LoginPage() {
     if (!scanActive) return
     const cancelOnOutsideAction = (event: PointerEvent) => {
       const target = event.target
-      if (target instanceof Element && target.closest('.eye-scan-panel, .eye-scan-trigger')) return
+      if (target instanceof Element && target.closest('.eye-scan-panel')) { cancelEyeScan(); return }
       cancelEyeScan()
     }
     const cancelOnKey = () => cancelEyeScan()
@@ -147,6 +142,7 @@ export function LoginPage() {
   return (
     <main className={`login-shell ${isBlacksite ? 'login-blacksite' : 'login-standard'}`}>
       <div className="login-noise" aria-hidden="true" />
+      {isBlacksite && <div className="matrix-rain" aria-hidden="true"><div>{Array.from({ length: 34 }, (_, i) => <span key={i}>{Array.from({ length: 34 }, (_, j) => ((i * 13 + j * 7 + i * j) % 2)).join(' ')}</span>)}</div></div>}
       <header className="login-topbar">
         <a className="login-brand" href="/login" aria-label="Arlotech login home">
           <span className="login-brand-mark"><Fingerprint size={21} strokeWidth={1.8} /></span>
@@ -186,16 +182,14 @@ export function LoginPage() {
               onKeyDown={(event) => { if ((event.key === ' ' || event.key === 'Enter') && !event.repeat) { event.preventDefault(); startFingerprintHold() } }}
               onKeyUp={(event) => { if (event.key === ' ' || event.key === 'Enter') endFingerprintHold() }}
               onContextMenu={(event) => event.preventDefault()}
-              aria-label={isBlacksite ? 'Hold to restore standard interface' : 'Hold fingerprint for five seconds to unlock covert interface'}
+              aria-label={isBlacksite ? 'Fingerprint sensor' : 'Fingerprint sensor'}
             >
-              <span className="fingerprint-trigger-ring"><Fingerprint size={27} strokeWidth={1.35} /></span>
-              <span className="fingerprint-trigger-copy"><strong>{fingerprintHeld ? 'VERIFYING PRINT… KEEP HOLDING' : isBlacksite ? 'HOLD TO EXIT COVERT MODE' : 'HOLD TO AUTHORIZE'}</strong><small>{fingerprintHeld ? 'RELEASE EARLY TO CANCEL' : 'PRESS AND HOLD FOR 5 SECONDS'}</small></span>
+              <span className="fingerprint-trigger-ring"><Fingerprint size={43} strokeWidth={1.25} /></span>
               <span className="fingerprint-hold-meter"><i /></span>
             </button>
-            <button type="button" className="eye-scan-trigger" onClick={startEyeScan}>
-              <ScanEye size={17} /><span><strong>{isBlacksite ? 'RESTORE STANDARD UI' : 'DESKTOP // EYE SCAN'}</strong><small>{isBlacksite ? 'RETURN TO NORMAL INTERFACE' : '7-SECOND VISUAL AUTH SIMULATION'}</small></span><span className="eye-scan-arrow">↗</span>
+            <button type="button" className="eye-scan-trigger" onClick={startEyeScan} aria-label="Activate eye scan">
+              <ScanEye size={27} strokeWidth={1.3} />
             </button>
-            <div className={`access-feedback ${accessMessage ? 'has-message' : ''}`} aria-live="polite"><span className="feedback-led" />{accessMessage || (isBlacksite ? 'COVERT INTERFACE ACTIVE' : 'SECONDARY ACCESS PROTOCOL STANDBY')}</div>
           </div>
 
           <div className="login-feature-row">
@@ -238,16 +232,14 @@ export function LoginPage() {
       </div>
       {scanActive && (
         <div className="eye-scan-overlay" role="dialog" aria-modal="true" aria-label="Eye scan simulation in progress" onPointerDown={(event) => { if (event.target === event.currentTarget) cancelEyeScan() }}>
-          <div className="eye-scan-panel">
+          <div className="eye-scan-panel" onPointerDown={cancelEyeScan}>
             <button type="button" className="eye-scan-cancel" onClick={cancelEyeScan} aria-label="Cancel eye scan"><X size={17} /></button>
             <div className="scan-panel-kicker"><span className="status-pulse" /> SIMULATED BIOMETRIC GATEWAY</div>
             <div className="eye-visual"><div className="eye-target"><Eye size={76} strokeWidth={1.1} /><span className="eye-target-corner corner-tl" /><span className="eye-target-corner corner-tr" /><span className="eye-target-corner corner-bl" /><span className="eye-target-corner corner-br" /></div><div className="eye-beam" /><div className="eye-crosshair" /></div>
             <h2>RETINAL HANDSHAKE</h2>
-            <p>Visual authentication animation only. No camera is accessed and no biometric data is collected.</p>
             <div className="scan-progress-meta"><span>SEQUENCE INTEGRITY</span><strong>{Math.floor(scanProgress)}%</strong></div>
             <div className="scan-progress-track"><i style={{ width: `${scanProgress}%` }} /></div>
-            <div className="scan-countdown-copy">{scanProgress < 100 ? 'HOLD POSITION // DO NOT INTERACT' : 'HANDSHAKE COMPLETE'}</div>
-            <button type="button" className="scan-abort-button" onClick={cancelEyeScan}>CANCEL SEQUENCE <X size={14} /></button>
+
           </div>
         </div>
       )}

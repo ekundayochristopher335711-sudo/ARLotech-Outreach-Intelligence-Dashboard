@@ -1,5 +1,5 @@
 import { Toaster } from 'sonner'
-import { lazy, Suspense, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import {
   BrowserRouter,
   Navigate,
@@ -74,6 +74,23 @@ function AppShell() {
     try { return localStorage.getItem('arlotech-login-mode') === 'blacksite' } catch { return false }
   })
 
+  useEffect(() => {
+    const syncMode = () => {
+      try {
+        setBlacksite(localStorage.getItem('arlotech-login-mode') === 'blacksite')
+      } catch {
+        setBlacksite(false)
+      }
+    }
+
+    window.addEventListener('arlotech-mode-change', syncMode)
+    window.addEventListener('storage', syncMode)
+    return () => {
+      window.removeEventListener('arlotech-mode-change', syncMode)
+      window.removeEventListener('storage', syncMode)
+    }
+  }, [])
+
   const toggleTheme = () => {
     const nextBlacksite = !blacksite
     setBlacksite(nextBlacksite)
@@ -82,6 +99,7 @@ function AppShell() {
     } catch {
       // Theme selection still works for the current session when storage is unavailable.
     }
+    window.dispatchEvent(new Event('arlotech-mode-change'))
   }
 
   const closeSidebar = () => setMobileOpen(false)
