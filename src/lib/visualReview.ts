@@ -36,6 +36,15 @@ export interface VisualAudit {
   status: 'completed' | 'partial' | 'unavailable'
   pages: StoredVisualPage[]
   observations: VisualObservation[]
+  discovered_page_count?: number
+}
+
+export function formatVisualCaptureError(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error)
+  if (/FAILED_DOCUMENT_REQUEST|ERR_TIMED_OUT/i.test(message)) {
+    return 'PageSpeed/Lighthouse timed out while loading this page, so this viewport screenshot could not be captured.'
+  }
+  return message.length > 300 ? `${message.slice(0, 297)}...` : message
 }
 
 export function selectVisualReviewPages(

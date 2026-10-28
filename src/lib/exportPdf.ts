@@ -545,6 +545,12 @@ function buildWebsiteAnalysisPdf(
       'AI-assisted review of initial-load screenshots. These observations are not measured defects and should be confirmed by a person. Menus, forms, and other interactive states were not tested.',
       { size: 8, color: MUTED },
     )
+    if (visualAudit.discovered_page_count === 1) {
+      report.addParagraph(
+        'No additional same-site page links were found in the initial HTML. JavaScript-rendered navigation may require a browser-based crawl.',
+        { size: 7.5, color: MUTED },
+      )
+    }
     if (visualPages.length === 0) {
       report.addParagraph('No screenshots were available for this review.')
     } else {

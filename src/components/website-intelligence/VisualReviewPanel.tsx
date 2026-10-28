@@ -81,6 +81,11 @@ export function VisualReviewPanel({ audit }: { audit?: VisualAudit | null }) {
         <p className="mt-1 text-xs text-slate-500">
           Initial-load screenshots only. Menus, forms, and other interactive states were not tested.
         </p>
+        {audit.discovered_page_count === 1 && (
+          <p className="mt-1 text-xs text-amber-700">
+            No additional same-site page links were found in the initial HTML. JavaScript-rendered navigation may require a browser-based crawl.
+          </p>
+        )}
       </div>
 
       {error && <p role="alert" className="text-sm text-red-600">{error}</p>}

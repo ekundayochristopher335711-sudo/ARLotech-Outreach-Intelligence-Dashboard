@@ -2,6 +2,7 @@ import { supabase, getCurrentUserId } from '@/lib/supabase'
 import { lighthouseRecommendation } from '@/lib/lighthouseRecommendations'
 import {
   extractPageSpeedScreenshot,
+  formatVisualCaptureError,
   MAX_VISUAL_REVIEW_PAGES,
   selectVisualReviewPages,
   type StoredVisualPage,
@@ -184,6 +185,7 @@ export async function analyzeWebsite(
     screenshot: VisualScreenshot | null
     error?: string
   }> = []
+  let discoveredPageCount = 0
   let gemini: GeminiResult
   if (includeVisualReview) {
     const pages = selectVisualReviewPages(
@@ -191,6 +193,7 @@ export async function analyzeWebsite(
       content.navigationPages ?? [],
       MAX_VISUAL_REVIEW_PAGES,
     )
+    discoveredPageCount = pages.length
     const addScreenshot = (
       page: { url: string; label: string },
       viewport: 'desktop' | 'mobile',
@@ -223,7 +226,7 @@ export async function analyzeWebsite(
         return {
           page,
           result: null,
-          error: error instanceof Error ? error.message : 'Mobile screenshot request failed.',
+          error: formatVisualCaptureError(error),
         }
       }
     }))
@@ -457,6 +460,7 @@ export async function analyzeWebsite(
           : 'completed',
       pages: savedPages,
       observations,
+      discovered_page_count: discoveredPageCount,
     }
     const { data: updatedRecord, error: updateError } = await supabase
       .from('website_analyses')

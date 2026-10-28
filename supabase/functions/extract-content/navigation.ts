@@ -11,8 +11,8 @@ export function extractNavigationPages(html: string, pageUrl: string, limit = 10
   if (limit <= 0) return []
   const pages = new Map<string, NavigationPage>()
 
-  for (const [, navHtml] of html.matchAll(/<nav\b[^>]*>([\s\S]*?)<\/nav>/gi)) {
-    for (const [, attributes, body] of navHtml.matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a>/gi)) {
+  const collectLinks = (source: string) => {
+    for (const [, attributes, body] of source.matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a>/gi)) {
       const href = attributes.match(/(?:^|\s)href\s*=\s*(["'])(.*?)\1/i)?.[2]
       if (!href || href.startsWith('#')) continue
 
@@ -30,12 +30,18 @@ export function extractNavigationPages(html: string, pageUrl: string, limit = 10
         if (url === pageUrl || pages.has(url)) continue
         const label = body.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()
         pages.set(url, { label: label.slice(0, 100) || target.pathname, url })
-        if (pages.size >= limit) return [...pages.values()]
+        if (pages.size >= limit) return
       } catch {
         continue
       }
     }
   }
 
+  for (const [, navHtml] of html.matchAll(/<nav\b[^>]*>([\s\S]*?)<\/nav>/gi)) {
+    collectLinks(navHtml)
+    if (pages.size >= limit) return [...pages.values()]
+  }
+
+  if (pages.size === 0) collectLinks(html)
   return [...pages.values()]
 }

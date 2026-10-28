@@ -29,4 +29,29 @@ describe('extractNavigationPages', () => {
 
     expect(pages).toEqual([{ label: 'One', url: 'https://example.com/one' }])
   })
+
+  it('falls back to same-origin links outside navigation landmarks when none are found inside nav', () => {
+    const pages = extractNavigationPages(`
+      <main>
+        <a href="/services">Services</a>
+        <a href="/contact">Contact</a>
+        <a href="#about">About section</a>
+        <a href="https://external.example/">External</a>
+      </main>
+    `, 'https://example.com/')
+
+    expect(pages).toEqual([
+      { label: 'Services', url: 'https://example.com/services' },
+      { label: 'Contact', url: 'https://example.com/contact' },
+    ])
+  })
+
+  it('prefers navigation links over other same-origin links', () => {
+    const pages = extractNavigationPages(`
+      <nav><a href="/services">Services</a></nav>
+      <main><a href="/contact">Contact</a></main>
+    `, 'https://example.com/')
+
+    expect(pages).toEqual([{ label: 'Services', url: 'https://example.com/services' }])
+  })
 })
