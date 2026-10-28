@@ -6,7 +6,7 @@ import {
   Routes,
   Route,
 } from 'react-router-dom'
-import { Menu } from 'lucide-react'
+import { Menu, Activity, Terminal, Zap } from 'lucide-react'
 import { AuthProvider } from '@/hooks/useAuth'
 import { useAuth } from '@/hooks/useAuthState'
 import { Sidebar } from '@/components/layout/Sidebar'
@@ -70,11 +70,24 @@ function PrivateRoute({ children }: { children: React.ReactNode }) {
 
 function AppShell() {
   const [mobileOpen, setMobileOpen] = useState(false)
+  const [blacksite, setBlacksite] = useState(() => {
+    try { return localStorage.getItem('arlotech-login-mode') === 'blacksite' } catch { return false }
+  })
+
+  const toggleTheme = () => {
+    const nextBlacksite = !blacksite
+    setBlacksite(nextBlacksite)
+    try {
+      localStorage.setItem('arlotech-login-mode', nextBlacksite ? 'blacksite' : 'standard')
+    } catch {
+      // Theme selection still works for the current session when storage is unavailable.
+    }
+  }
 
   const closeSidebar = () => setMobileOpen(false)
 
   return (
-    <div className="flex h-dvh overflow-hidden">
+    <div className={`app-shell flex h-dvh overflow-hidden ${blacksite ? 'theme-blacksite' : 'theme-standard'}`} data-theme={blacksite ? 'blacksite' : 'standard'}>
       {mobileOpen && (
         <button
           type="button"
@@ -88,11 +101,11 @@ function AppShell() {
         setMobileOpen={setMobileOpen}
         onNavigate={closeSidebar}
       />
-      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-        <header className="flex h-14 shrink-0 items-center gap-3 border-b border-slate-200 bg-white px-4 lg:hidden">
+      <div className="app-workspace flex min-w-0 flex-1 flex-col overflow-hidden">
+        <header className="app-topbar flex h-14 shrink-0 items-center gap-3 border-b border-slate-200 bg-white px-4 lg:px-6">
           <button
             type="button"
-            className="rounded-md p-2 text-slate-600 hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-arlotech"
+            className="rounded-md p-2 text-slate-600 hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-arlotech lg:hidden"
             onClick={() => setMobileOpen(true)}
             aria-label="Open navigation menu"
             aria-controls="app-sidebar"
@@ -100,10 +113,23 @@ function AppShell() {
           >
             <Menu className="h-5 w-5" />
           </button>
-          <span className="text-sm font-semibold text-slate-800">Arlotech AI</span>
+          <span className="topbar-brand text-sm font-semibold text-slate-800">ARLOTECH <span>INTELLIGENCE</span></span>
+          <div className="topbar-system-status"><span className="status-live-dot" /> <span>{blacksite ? 'SECURE NODE // ACTIVE' : 'WORKSPACE ONLINE'}</span><span className="topbar-divider">/</span><span className="topbar-clock">{blacksite ? 'TRACE: NULL' : 'OUTREACH CONSOLE'}</span></div>
+          <button
+            type="button"
+            className="app-mode-toggle"
+            onClick={toggleTheme}
+            aria-label={`Switch to ${blacksite ? 'standard' : 'blacksite'} visual theme`}
+            aria-pressed={blacksite}
+          >
+            {blacksite ? <Terminal size={14} /> : <Zap size={14} />}
+            <span>{blacksite ? 'BLACKSITE' : 'STANDARD'}</span>
+            <span className={`app-toggle-track ${blacksite ? 'is-on' : ''}`} aria-hidden="true"><i /></span>
+          </button>
+          <div className="topbar-mark" aria-hidden="true"><Activity size={16} /><span>AOI</span></div>
         </header>
         <div className="min-w-0 flex-1 overflow-auto">
-          <main className="min-h-full p-4 lg:p-6">
+          <main className="app-main min-h-full p-4 lg:p-7">
             <Suspense fallback={<PageLoading />}>
               <Routes>
                 <Route index element={<DashboardPage />} />

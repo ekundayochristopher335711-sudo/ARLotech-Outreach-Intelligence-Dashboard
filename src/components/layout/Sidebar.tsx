@@ -13,6 +13,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Plane,
+  Shield,
+  Radio,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuthState'
 import { useAccessibleDialog } from '@/hooks/useAccessibleDialog'
@@ -71,7 +73,7 @@ export function Sidebar({
       <aside
         ref={sidebarRef}
         id="app-sidebar"
-        className={`fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-slate-200 bg-white transition-all duration-300 lg:relative lg:inset-y-auto lg:left-auto lg:translate-x-0 ${
+        className={`app-sidebar fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-slate-200 bg-white transition-all duration-300 lg:relative lg:inset-y-auto lg:left-auto lg:translate-x-0 ${
           collapsed ? 'lg:w-20' : 'lg:w-64'
         } ${
           mobileOpen ? 'translate-x-0' : '-translate-x-full'
@@ -82,11 +84,11 @@ export function Sidebar({
         aria-hidden={!mobileOpen ? undefined : false}
         tabIndex={mobileOpen ? -1 : undefined}
       >
-        <div className="flex items-center justify-between h-16 px-4 border-b border-slate-200">
+        <div className="sidebar-brand-row flex items-center justify-between h-16 px-4 border-b border-slate-200">
           <div className="flex items-center gap-2">
-            <img src="/favicon.svg" alt="" className="h-8 w-8 rounded-lg" />
-            <span className={`text-sm font-bold text-slate-800 ${collapsed ? 'lg:hidden' : ''}`}>
-              ArloTech
+            <span className="sidebar-brand-mark"><Shield size={17} /></span>
+            <span className={`sidebar-brand-copy text-sm font-bold text-slate-800 ${collapsed ? 'lg:hidden' : ''}`}>
+              ARLOTECH<span>INTELLIGENCE</span>
             </span>
           </div>
           <button
@@ -101,7 +103,8 @@ export function Sidebar({
           </button>
         </div>
 
-        <div className="flex-1 py-4 px-3 space-y-1 overflow-y-auto">
+        <div className="sidebar-section-label">SYSTEM NAVIGATION</div>
+        <div className="sidebar-nav flex-1 py-2 px-3 space-y-1 overflow-y-auto">
           {navItems.map((item) => (
             <div key={item.path}>
               <NavLink
@@ -127,7 +130,8 @@ export function Sidebar({
           ))}
         </div>
 
-        <div className="p-4 border-t border-slate-200">
+        <div className="sidebar-footer p-4 border-t border-slate-200">
+          <div className={`sidebar-node ${collapsed ? 'lg:hidden' : ''}`}><Radio size={14} /><span><strong>NODE 01</strong><small>CONNECTION SECURE</small></span><i /></div>
           {signOutError && (
             <p className="mb-2 text-xs text-red-600" role="alert">
               {signOutError}
