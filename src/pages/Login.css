@@ -45,3 +45,18 @@
 @media(min-width:1000px){.fingerprint-trigger{display:none!important}.eye-scan-trigger{right:18px;width:56px;height:56px}.covert-access-zone{margin-top:0;min-height:80px;margin-bottom:18px}.login-standard .covert-access-zone{margin-top:0;min-height:80px}}
 @media(max-width:999px){.eye-scan-trigger{display:none!important}.covert-access-zone{margin-top:18px;margin-bottom:0;min-height:104px}.login-blacksite .covert-access-zone{margin-top:18px;margin-bottom:0;min-height:144px}.login-blacksite .fingerprint-trigger{display:flex!important}}
 @media(max-width:560px){.login-blacksite .login-layout{padding-top:30px}.login-blacksite .intro-visual{height:210px}.login-blacksite .covert-access-zone{min-height:120px}.login-blacksite .fingerprint-trigger{width:120px;height:120px;min-height:120px}.login-blacksite .fingerprint-trigger-ring{width:96px;height:96px}.matrix-rain{opacity:.6}.matrix-rain>div{gap:8px}}
+
+/* Final access-panel treatment: the fingerprint graphic inside the square is the only mode control. */
+.login-shell .visual-core.fingerprint-trigger{appearance:none;z-index:4;cursor:pointer;padding:0;color:var(--login-accent);background:transparent;border:1px solid rgba(var(--login-accent-rgb),.58);touch-action:none;user-select:none;outline:none}
+.login-shell .visual-core.fingerprint-trigger .fingerprint-trigger-ring{width:100%;height:100%;border:0;border-radius:inherit;background:rgba(var(--login-accent-rgb),.09);display:grid;place-items:center;box-shadow:inset 0 0 28px rgba(var(--login-accent-rgb),.08);transition:background .2s,box-shadow .2s}
+.login-shell .visual-core.fingerprint-trigger:hover,.login-shell .visual-core.fingerprint-trigger:focus-visible{box-shadow:0 0 0 7px rgba(var(--login-accent-rgb),.07),0 0 38px rgba(var(--login-accent-rgb),.18)}
+.login-shell .visual-core.fingerprint-trigger.is-holding .fingerprint-trigger-ring{animation:fingerprint-pulse .75s ease-in-out infinite;background:rgba(var(--login-accent-rgb),.2);box-shadow:inset 0 0 36px rgba(var(--login-accent-rgb),.18),0 0 35px rgba(var(--login-accent-rgb),.24)}
+.login-shell .visual-core .fingerprint-hold-meter{bottom:0;left:12%;width:76%;height:2px;position:absolute;background:transparent}
+.login-shell .visual-core.is-holding .fingerprint-hold-meter i{animation:hold-meter 5s linear forwards}
+.login-shell .covert-access-zone,.login-shell .eye-scan-trigger,.eye-scan-overlay{display:none!important}
+@media(min-width:1000px){.login-shell .visual-core.fingerprint-trigger{display:grid!important;width:105px;height:105px;min-height:0;left:50%;top:47%;transform:translate(-50%,-50%);position:absolute}.login-shell .visual-core .fingerprint-trigger-ring svg{width:48px;height:48px}}
+@media(max-width:999px){.login-shell .visual-core.fingerprint-trigger{display:grid!important;width:100px;height:100px;min-height:0;left:50%;top:47%;transform:translate(-50%,-50%);position:absolute}}
+.login-blacksite .matrix-rain{position:fixed;inset:0;z-index:0;opacity:.96;mask-image:linear-gradient(90deg,transparent 0%,#000 8%,#000 92%,transparent 100%)}
+.login-blacksite .matrix-rain>div{inset:-110% 0 0;animation:matrix-drift 16s linear infinite}
+.login-blacksite .matrix-rain span{font-size:clamp(14px,1.25vw,19px);line-height:1.9;color:#6cff5c;text-shadow:0 0 7px #37ff39,0 0 20px #00d51b,0 0 35px #00a516}
+.login-blacksite .login-topbar,.login-blacksite .login-layout,.login-blacksite .login-bottomline{z-index:2}

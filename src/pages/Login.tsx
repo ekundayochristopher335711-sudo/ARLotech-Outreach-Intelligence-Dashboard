@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowUpRight, AudioLines, Check, Eye, Fingerprint, KeyRound, LockKeyhole, ShieldCheck, Terminal, X, ScanEye } from 'lucide-react'
+import { ArrowUpRight, AudioLines, Check, Fingerprint, KeyRound, LockKeyhole, ShieldCheck, Terminal } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import './Login.css'
 
@@ -14,11 +14,8 @@ export function LoginPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [fingerprintHeld, setFingerprintHeld] = useState(false)
-  const [scanActive, setScanActive] = useState(false)
-  const [scanProgress, setScanProgress] = useState(0)
+  const [matrixStreams, setMatrixStreams] = useState<string[]>(() => Array.from({ length: 34 }, () => Array.from({ length: 34 }, () => Math.random() > .5 ? '1' : '0').join(' ')))
   const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const scanTimer = useRef<ReturnType<typeof setInterval> | null>(null)
-  const scanFinishTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const holdStarted = useRef(false)
   const [mode, setMode] = useState<LoginMode>(() => {
     try {
@@ -32,31 +29,14 @@ export function LoginPage() {
     window.dispatchEvent(new Event('arlotech-mode-change'))
   }, [])
 
-  const clearScanTimers = useCallback(() => {
-    if (scanTimer.current) clearInterval(scanTimer.current)
-    if (scanFinishTimer.current) clearTimeout(scanFinishTimer.current)
-    scanTimer.current = null
-    scanFinishTimer.current = null
-  }, [])
-
-  const cancelEyeScan = useCallback(() => {
-    clearScanTimers()
-    setScanActive(false)
-    setScanProgress(0)
-  }, [clearScanTimers])
-
   const startFingerprintHold = () => {
-    if (mode === 'blacksite') {
-      setLoginMode('standard')
-      return
-    }
     if (holdTimer.current) clearTimeout(holdTimer.current)
     holdStarted.current = true
     setFingerprintHeld(true)
     holdTimer.current = setTimeout(() => {
       holdStarted.current = false
       setFingerprintHeld(false)
-      setLoginMode('blacksite')
+      setLoginMode(mode === 'blacksite' ? 'standard' : 'blacksite')
     }, 5000)
   }
 
@@ -68,51 +48,15 @@ export function LoginPage() {
     setFingerprintHeld(false)
   }
 
-  const startEyeScan = () => {
-    if (mode === 'blacksite') {
-      setLoginMode('standard')
-      return
-    }
-    clearScanTimers()
-    setScanProgress(0)
-    setScanActive(true)
-    const startedAt = Date.now()
-    scanTimer.current = setInterval(() => {
-      const progress = Math.min(100, ((Date.now() - startedAt) / 7000) * 100)
-      setScanProgress(progress)
-      if (progress >= 100 && scanTimer.current) {
-        clearInterval(scanTimer.current)
-        scanTimer.current = null
-      }
-    }, 50)
-    scanFinishTimer.current = setTimeout(() => {
-      clearScanTimers()
-      setScanActive(false)
-      setScanProgress(0)
-      setLoginMode('blacksite')
-    }, 7000)
-  }
-
   useEffect(() => {
-    if (!scanActive) return
-    const cancelOnOutsideAction = (event: PointerEvent) => {
-      const target = event.target
-      if (target instanceof Element && target.closest('.eye-scan-panel')) { cancelEyeScan(); return }
-      cancelEyeScan()
-    }
-    const cancelOnKey = () => cancelEyeScan()
-    document.addEventListener('pointerdown', cancelOnOutsideAction, true)
-    document.addEventListener('keydown', cancelOnKey, true)
-    return () => {
-      document.removeEventListener('pointerdown', cancelOnOutsideAction, true)
-      document.removeEventListener('keydown', cancelOnKey, true)
-    }
-  }, [scanActive, cancelEyeScan])
+    if (mode !== 'blacksite') return
+    const timer = window.setInterval(() => setMatrixStreams((columns) => columns.map((column) => column.split(' ').map((bit) => Math.random() > .58 ? (Math.random() > .5 ? '1' : '0') : bit).join(' '))), 280)
+    return () => window.clearInterval(timer)
+  }, [mode])
 
   useEffect(() => () => {
     if (holdTimer.current) clearTimeout(holdTimer.current)
-    clearScanTimers()
-  }, [clearScanTimers])
+  }, [])
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -142,10 +86,10 @@ export function LoginPage() {
   return (
     <main className={`login-shell ${isBlacksite ? 'login-blacksite' : 'login-standard'}`}>
       <div className="login-noise" aria-hidden="true" />
-      {isBlacksite && <div className="matrix-rain" aria-hidden="true"><div>{Array.from({ length: 34 }, (_, i) => <span key={i}>{Array.from({ length: 34 }, (_, j) => ((i * 13 + j * 7 + i * j) % 2)).join(' ')}</span>)}</div></div>}
+      {isBlacksite && <div className="matrix-rain" aria-hidden="true"><div>{matrixStreams.map((column, i) => <span key={i} style={{ animationDelay: `${-(i % 12) * 1.6}s`, animationDuration: `${13 + (i % 8) * 2}s` }}>{column}</span>)}</div></div>}
       <header className="login-topbar">
         <a className="login-brand" href="/login" aria-label="Arlotech login home">
-          <span className="login-brand-mark"><Fingerprint size={21} strokeWidth={1.8} /></span>
+          <span className="login-brand-mark"><ShieldCheck size={21} strokeWidth={1.7} /><i className="login-brand-signal" /></span>
           <span>ARLOTECH<span className="login-brand-sub"> / OUTREACH INTELLIGENCE</span></span>
         </a>
         <div className="login-top-actions">
@@ -161,20 +105,12 @@ export function LoginPage() {
             ? 'A secure command environment for prospect intelligence, campaign operations, and precision outreach.'
             : 'One command center for prospect research, sharper outreach, and turning opportunities into real conversations.'}</p>
 
-          <div className="intro-visual" aria-hidden="true">
+          <div className="intro-visual">
             <div className="visual-grid" />
             <div className="visual-orbit orbit-one" /><div className="visual-orbit orbit-two" />
-            <div className="visual-core"><div className="core-inner"><Fingerprint size={48} strokeWidth={1.15} /></div></div>
-            <div className="visual-scanline" />
-            <div className="visual-label label-left"><span>ENCRYPTION</span><strong>AES-256</strong></div>
-            <div className="visual-label label-right"><span>AUTH STATUS</span><strong><i /> VERIFIED</strong></div>
-            <div className="visual-coordinate">{isBlacksite ? 'NODE: 0xA7 // TRACE: NULL' : 'ARLOTECH INTELLIGENCE SYSTEMS'}</div>
-          </div>
-
-          <div className="covert-access-zone" aria-label="Optional interface access gestures">
             <button
               type="button"
-              className={`fingerprint-trigger ${fingerprintHeld ? 'is-holding' : ''}`}
+              className={`visual-core fingerprint-trigger ${fingerprintHeld ? 'is-holding' : ''}`}
               onPointerDown={(event) => { event.preventDefault(); startFingerprintHold() }}
               onPointerUp={endFingerprintHold}
               onPointerLeave={endFingerprintHold}
@@ -182,14 +118,12 @@ export function LoginPage() {
               onKeyDown={(event) => { if ((event.key === ' ' || event.key === 'Enter') && !event.repeat) { event.preventDefault(); startFingerprintHold() } }}
               onKeyUp={(event) => { if (event.key === ' ' || event.key === 'Enter') endFingerprintHold() }}
               onContextMenu={(event) => event.preventDefault()}
-              aria-label={isBlacksite ? 'Fingerprint sensor' : 'Fingerprint sensor'}
-            >
-              <span className="fingerprint-trigger-ring"><Fingerprint size={43} strokeWidth={1.25} /></span>
-              <span className="fingerprint-hold-meter"><i /></span>
-            </button>
-            <button type="button" className="eye-scan-trigger" onClick={startEyeScan} aria-label="Activate eye scan">
-              <ScanEye size={27} strokeWidth={1.3} />
-            </button>
+              aria-label="Fingerprint sensor"
+            ><span className="fingerprint-trigger-ring core-inner"><Fingerprint size={48} strokeWidth={1.15} /></span><span className="fingerprint-hold-meter"><i /></span></button>
+            <div className="visual-scanline" />
+            <div className="visual-label label-left"><span>ENCRYPTION</span><strong>AES-256</strong></div>
+            <div className="visual-label label-right"><span>{isBlacksite ? 'NODE STATUS' : 'AUTH STATUS'}</span><strong><i /> {isBlacksite ? 'AWAITING OPERATOR' : 'VERIFIED'}</strong></div>
+            <div className="visual-coordinate">{isBlacksite ? 'BLACKSITE // ACCESS LAYER 09' : 'ARLOTECH INTELLIGENCE SYSTEMS'}</div>
           </div>
 
           <div className="login-feature-row">
@@ -230,19 +164,6 @@ export function LoginPage() {
           <div className="login-footnote"><span>© {currentYear} ARLOTECH DIGITAL SOLUTIONS</span><span><i /> SYSTEMS OPERATIONAL</span></div>
         </section>
       </div>
-      {scanActive && (
-        <div className="eye-scan-overlay" role="dialog" aria-modal="true" aria-label="Eye scan simulation in progress" onPointerDown={(event) => { if (event.target === event.currentTarget) cancelEyeScan() }}>
-          <div className="eye-scan-panel" onPointerDown={cancelEyeScan}>
-            <button type="button" className="eye-scan-cancel" onClick={cancelEyeScan} aria-label="Cancel eye scan"><X size={17} /></button>
-            <div className="scan-panel-kicker"><span className="status-pulse" /> SIMULATED BIOMETRIC GATEWAY</div>
-            <div className="eye-visual"><div className="eye-target"><Eye size={76} strokeWidth={1.1} /><span className="eye-target-corner corner-tl" /><span className="eye-target-corner corner-tr" /><span className="eye-target-corner corner-bl" /><span className="eye-target-corner corner-br" /></div><div className="eye-beam" /><div className="eye-crosshair" /></div>
-            <h2>RETINAL HANDSHAKE</h2>
-            <div className="scan-progress-meta"><span>SEQUENCE INTEGRITY</span><strong>{Math.floor(scanProgress)}%</strong></div>
-            <div className="scan-progress-track"><i style={{ width: `${scanProgress}%` }} /></div>
-
-          </div>
-        </div>
-      )}
       <div className="login-bottomline"><span>OUTREACH INTELLIGENCE PLATFORM</span><span>{isBlacksite ? 'NO SIGNAL. NO TRACE. JUST INTELLIGENCE.' : 'RESEARCH BETTER. REACH OUT SMARTER.'}</span><span>BUILD 2.6.10 <b>●</b></span></div>
     </main>
   )

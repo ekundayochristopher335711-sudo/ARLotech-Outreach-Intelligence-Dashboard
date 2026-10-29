@@ -6,9 +6,10 @@ import {
   Routes,
   Route,
 } from 'react-router-dom'
-import { Menu, Activity, Terminal, Zap } from 'lucide-react'
+import { Menu, Activity, RadioTower, Crosshair, DatabaseZap } from 'lucide-react'
 import { AuthProvider } from '@/hooks/useAuth'
 import { useAuth } from '@/hooks/useAuthState'
+import { useLocation } from 'react-router-dom'
 import { Sidebar } from '@/components/layout/Sidebar'
 
 const LoginPage = lazy(() => import('@/pages/Login').then((module) => ({ default: module.LoginPage })))
@@ -25,10 +26,16 @@ const AnalyticsDashboard = lazy(() => import('@/pages/Analytics').then((module) 
 const SettingsPage = lazy(() => import('@/pages/Settings').then((module) => ({ default: module.SettingsPage })))
 
 function PageLoading() {
-  return (
-    <div className="flex min-h-40 items-center justify-center" role="status" aria-live="polite">
-      <span className="text-sm text-slate-500">Loading page...</span>
+  const blacksite = (() => { try { return localStorage.getItem('arlotech-login-mode') === 'blacksite' } catch { return false } })()
+  return blacksite ? (
+    <div className="blacksite-loading" role="status" aria-live="polite">
+      <div className="loading-sigil"><span /><span /><span /></div>
+      <strong>RECONSTRUCTING WORKSPACE</strong>
+      <div className="loading-track"><i /></div>
+      <small>ROUTING SIGNAL // VALIDATING LOCAL MODULES</small>
     </div>
+  ) : (
+    <div className="standard-loading" role="status" aria-live="polite"><div className="animate-spin h-8 w-8 border-b-2 border-arlotech rounded-full" /><span>Loading workspace…</span></div>
   )
 }
 
@@ -68,21 +75,27 @@ function PrivateRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>
 }
 
+function MatrixBackdrop() {
+  const [streams, setStreams] = useState<string[]>(() => Array.from({ length: 64 }, () => Array.from({ length: 42 }, () => Math.random() > .5 ? '1' : '0').join('\n')))
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setStreams((current) => current.map((stream) => stream.split('\n').map((bit) => Math.random() > .58 ? (Math.random() > .5 ? '1' : '0') : bit).join('\n')))
+    }, 190)
+    return () => window.clearInterval(timer)
+  }, [])
+  return <div className="blacksite-matrix-field" aria-hidden="true">{streams.map((stream, index) => <span key={index} style={{ animationDelay: `${-(index % 13) * 1.7}s`, animationDuration: `${12 + (index % 9) * 2}s` }}>{stream}</span>)}</div>
+}
+
 function AppShell() {
   const [mobileOpen, setMobileOpen] = useState(false)
+  const location = useLocation()
   const [blacksite, setBlacksite] = useState(() => {
     try { return localStorage.getItem('arlotech-login-mode') === 'blacksite' } catch { return false }
   })
 
-  useEffect(() => {
-    const syncMode = () => {
-      try {
-        setBlacksite(localStorage.getItem('arlotech-login-mode') === 'blacksite')
-      } catch {
-        setBlacksite(false)
-      }
-    }
 
+  useEffect(() => {
+    const syncMode = () => setBlacksite(localStorage.getItem('arlotech-login-mode') === 'blacksite')
     window.addEventListener('arlotech-mode-change', syncMode)
     window.addEventListener('storage', syncMode)
     return () => {
@@ -91,21 +104,24 @@ function AppShell() {
     }
   }, [])
 
-  const toggleTheme = () => {
-    const nextBlacksite = !blacksite
-    setBlacksite(nextBlacksite)
-    try {
-      localStorage.setItem('arlotech-login-mode', nextBlacksite ? 'blacksite' : 'standard')
-    } catch {
-      // Theme selection still works for the current session when storage is unavailable.
-    }
-    window.dispatchEvent(new Event('arlotech-mode-change'))
-  }
-
   const closeSidebar = () => setMobileOpen(false)
+  const blacksiteCopy: Record<string, { title: string; sub: string }> = {
+    '/': { title: 'COMMAND DECK', sub: 'LIVE CAMPAIGN TELEMETRY' },
+    '/prospects': { title: 'TARGET REGISTRY', sub: 'LEAD ACQUISITION & DOSSIERS' },
+    '/prospects/new': { title: 'NEW DOSSIER', sub: 'TARGET RECORD INITIALIZATION' },
+    '/website-intelligence': { title: 'SURFACE RECON', sub: 'DOMAIN INTELLIGENCE & EXPOSURE REVIEW' },
+    '/campaigns': { title: 'DEPLOYMENT CONTROL', sub: 'OUTBOUND OPERATION SEQUENCING' },
+    '/email-drafts': { title: 'PAYLOAD LAB', sub: 'MESSAGE ASSEMBLY & DELIVERY PREP' },
+    '/replies': { title: 'INTERCEPTS', sub: 'INBOUND SIGNALS & RESPONSE TRIAGE' },
+    '/follow-ups': { title: 'EXTRACTION QUEUE', sub: 'PENDING CONTACT RECOVERY' },
+    '/analytics': { title: 'SIGNAL ANALYSIS', sub: 'PERFORMANCE INTELLIGENCE' },
+    '/settings': { title: 'SYSTEM CONTROLS', sub: 'NODE CONFIGURATION' },
+  }
+  const activeBlacksiteCopy = blacksiteCopy[location.pathname] || (location.pathname.startsWith('/prospects/') ? { title: 'TARGET DOSSIER', sub: 'RECORD INTELLIGENCE' } : { title: 'FIELD OPERATIONS', sub: 'INTELLIGENCE CHANNEL ACTIVE' })
 
   return (
-    <div className={`app-shell flex h-dvh overflow-hidden ${blacksite ? 'theme-blacksite' : 'theme-standard'}`} data-theme={blacksite ? 'blacksite' : 'standard'}>
+    <div className={`app-shell flex h-dvh overflow-hidden ${blacksite ? 'theme-blacksite' : 'theme-standard'}`} data-theme={blacksite ? 'blacksite' : 'standard'} data-route={location.pathname}>
+      {blacksite && <MatrixBackdrop />}
       {mobileOpen && (
         <button
           type="button"
@@ -131,22 +147,12 @@ function AppShell() {
           >
             <Menu className="h-5 w-5" />
           </button>
-          <span className="topbar-brand text-sm font-semibold text-slate-800">ARLOTECH <span>INTELLIGENCE</span></span>
-          <div className="topbar-system-status"><span className="status-live-dot" /> <span>{blacksite ? 'SECURE NODE // ACTIVE' : 'WORKSPACE ONLINE'}</span><span className="topbar-divider">/</span><span className="topbar-clock">{blacksite ? 'TRACE: NULL' : 'OUTREACH CONSOLE'}</span></div>
-          <button
-            type="button"
-            className="app-mode-toggle"
-            onClick={toggleTheme}
-            aria-label={`Switch to ${blacksite ? 'standard' : 'blacksite'} visual theme`}
-            aria-pressed={blacksite}
-          >
-            {blacksite ? <Terminal size={14} /> : <Zap size={14} />}
-            <span>{blacksite ? 'BLACKSITE' : 'STANDARD'}</span>
-            <span className={`app-toggle-track ${blacksite ? 'is-on' : ''}`} aria-hidden="true"><i /></span>
-          </button>
-          <div className="topbar-mark" aria-hidden="true"><Activity size={16} /><span>AOI</span></div>
+          <span className="topbar-brand text-sm font-semibold text-slate-800">{blacksite ? 'BLACKSITE // 09' : 'ARLOTECH'} <span>{blacksite ? 'GHOST PROTOCOL' : 'INTELLIGENCE'}</span></span>
+          <div className="topbar-system-status"><span className="status-live-dot" /> <span>{blacksite ? 'UPLINK ESTABLISHED' : 'WORKSPACE ONLINE'}</span><span className="topbar-divider">/</span><span className="topbar-clock">{blacksite ? 'TRACE NULL // UPLINK LIVE' : 'OUTREACH CONSOLE'}</span></div>
+          <div className="topbar-mark" aria-hidden="true">{blacksite ? <RadioTower size={16} /> : <Activity size={16} />}<span>{blacksite ? 'NODE 09' : 'AOI'}</span></div>
         </header>
         <div className="min-w-0 flex-1 overflow-auto">
+          {blacksite && <div className="blacksite-command-ribbon"><span><Crosshair size={13}/> {activeBlacksiteCopy.title}</span><span><DatabaseZap size={13}/> {activeBlacksiteCopy.sub}</span><span className="ribbon-trace">TRACE ROUTE // MASKED</span></div>}
           <main className="app-main min-h-full p-4 lg:p-7">
             <Suspense fallback={<PageLoading />}>
               <Routes>

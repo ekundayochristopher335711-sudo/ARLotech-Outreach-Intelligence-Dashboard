@@ -48,6 +48,8 @@ export function Sidebar({
   onNavigate: () => void
 }) {
   const [collapsed, setCollapsed] = useState(false)
+  const blacksite = (() => { try { return localStorage.getItem('arlotech-login-mode') === 'blacksite' } catch { return false } })()
+  const displayLabels: Record<string, string> = blacksite ? { '/': 'Command Deck', '/prospects': 'Target Registry', '/website-intelligence': 'Surface Recon', '/campaigns': 'Transmission Ops', '/email-drafts': 'Payload Lab', '/replies': 'Intercepts', '/follow-ups': 'Extraction Queue', '/analytics': 'Signal Analysis', '/settings': 'System Config' } : {}
   const [signingOut, setSigningOut] = useState(false)
   const [signOutError, setSignOutError] = useState('')
   const { signOut } = useAuth()
@@ -86,9 +88,9 @@ export function Sidebar({
       >
         <div className="sidebar-brand-row flex items-center justify-between h-16 px-4 border-b border-slate-200">
           <div className="flex items-center gap-2">
-            <span className="sidebar-brand-mark"><Shield size={17} /></span>
+            <span className="sidebar-brand-mark"><Shield size={17} /><i className="brand-sigil-cut" /></span>
             <span className={`sidebar-brand-copy text-sm font-bold text-slate-800 ${collapsed ? 'lg:hidden' : ''}`}>
-              ARLOTECH<span>INTELLIGENCE</span>
+              {blacksite ? <>BLACKSITE<span>FIELD OPERATIONS</span></> : <>ARLOTECH<span>INTELLIGENCE</span></>}
             </span>
           </div>
           <button
@@ -103,7 +105,7 @@ export function Sidebar({
           </button>
         </div>
 
-        <div className="sidebar-section-label">SYSTEM NAVIGATION</div>
+        <div className="sidebar-section-label">{blacksite ? 'OPERATIONAL SECTORS' : 'SYSTEM NAVIGATION'}</div>
         <div className="sidebar-nav flex-1 py-2 px-3 space-y-1 overflow-y-auto">
           {navItems.map((item) => (
             <div key={item.path}>
@@ -124,14 +126,14 @@ export function Sidebar({
                 }}
               >
                 <item.icon className="h-4 w-4" />
-                <span className={`truncate ${collapsed ? 'lg:hidden' : ''}`}>{item.label}</span>
+                <span className={`truncate ${collapsed ? 'lg:hidden' : ''}`}>{displayLabels[item.path] || item.label}</span>
               </NavLink>
             </div>
           ))}
         </div>
 
         <div className="sidebar-footer p-4 border-t border-slate-200">
-          <div className={`sidebar-node ${collapsed ? 'lg:hidden' : ''}`}><Radio size={14} /><span><strong>NODE 01</strong><small>CONNECTION SECURE</small></span><i /></div>
+          <div className={`sidebar-node ${collapsed ? 'lg:hidden' : ''}`}><Radio size={14} /><span><strong>{blacksite ? 'GHOST NODE 09' : 'NODE 01'}</strong><small>{blacksite ? 'SIGNAL OBFUSCATED' : 'CONNECTION SECURE'}</small></span><i /></div>
           {signOutError && (
             <p className="mb-2 text-xs text-red-600" role="alert">
               {signOutError}
@@ -144,7 +146,7 @@ export function Sidebar({
             disabled={signingOut}
           >
             <LogOut className="h-4 w-4" />
-            <span className={collapsed ? 'lg:hidden' : ''}>{signingOut ? 'Logging out...' : 'Log out'}</span>
+            <span className={collapsed ? 'lg:hidden' : ''}>{signingOut ? (blacksite ? 'Terminating session…' : 'Logging out...') : (blacksite ? 'Terminate Session' : 'Log out')}</span>
           </button>
         </div>
 
