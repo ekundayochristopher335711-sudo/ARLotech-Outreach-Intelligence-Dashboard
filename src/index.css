@@ -194,7 +194,7 @@ html {
 .app-shell.theme-blacksite .app-main{position:relative;z-index:1;padding:30px!important;font-family:'DM Mono','SFMono-Regular',Consolas,monospace!important;color:#dce8d8}
 .app-shell.theme-blacksite .app-main h1,.app-shell.theme-blacksite .app-main h2,.app-shell.theme-blacksite .app-main h3{font-family:'DM Mono',monospace!important;text-transform:uppercase;letter-spacing:.015em!important;color:#d8ffd0!important;text-shadow:0 0 20px #68ff3912}
 .app-shell.theme-blacksite .app-main .rounded-xl.border,.app-shell.theme-blacksite .app-main .rounded-xl.border-slate-200,.app-shell.theme-blacksite .app-main [class*="rounded-lg"][class*="border"]{border-radius:0!important;border-color:#274324!important;background:linear-gradient(135deg,#0a110a,#050905)!important;box-shadow:inset 0 1px #9dff3908,0 14px 35px #0008!important}
-.app-shell.theme-blacksite .app-main .rounded-xl.border:before{content:'INTEL BLOCK';position:absolute;top:-7px;left:15px;padding:0 7px;background:#050905;color:#6fae64;font:7px 'DM Mono',monospace;letter-spacing:.15em}
+.app-shell.theme-blacksite .app-main .rounded-xl.border:before{content:'INTEL BLOCK';position:absolute;top:-7px;left:15px;display:block;width:max-content;max-width:none;height:auto;padding:0 7px;background:#050905;color:#6fae64;font:7px/1 'DM Mono',monospace;letter-spacing:.15em;white-space:nowrap;word-break:keep-all;overflow-wrap:normal}
 .app-shell.theme-blacksite .app-main button{border-radius:0!important;font-family:'DM Mono',monospace!important;letter-spacing:.035em}
 .app-shell.theme-blacksite .app-main button.bg-arlotech,.app-shell.theme-blacksite .app-main .bg-arlotech{background:#8cff51!important;color:#061006!important;box-shadow:0 0 18px #75ff3b18}
 .app-shell.theme-blacksite .app-main table{border-collapse:separate;border-spacing:0 3px}.app-shell.theme-blacksite .app-main table thead{background:#0a1509!important}.app-shell.theme-blacksite .app-main table tbody tr{background:#070d07!important}.app-shell.theme-blacksite .app-main th{padding-top:13px;padding-bottom:13px;letter-spacing:.16em!important}.app-shell.theme-blacksite .app-main td{border-top:1px solid #152915;border-bottom:1px solid #152915}
@@ -329,7 +329,7 @@ html {
   .app-shell.theme-blacksite .sidebar-node strong{font-size:11px!important}
   .app-shell.theme-blacksite .sidebar-node small{font-size:10px!important}
   .app-shell.theme-blacksite .sidebar-footer button{min-height:44px;font-size:11px!important;letter-spacing:.06em!important}
-  .app-shell.theme-blacksite .app-main .rounded-xl.border:before{font-size:9px!important;letter-spacing:.08em!important}
+  .app-shell.theme-blacksite .app-main .rounded-xl.border:before{width:max-content!important;max-width:none!important;height:auto!important;font-size:9px!important;line-height:1!important;letter-spacing:.08em!important;white-space:nowrap!important;word-break:keep-all!important;overflow-wrap:normal!important}
 }
 @media(max-width:360px){
   .app-shell .topbar-brand span,.app-shell.theme-blacksite .blacksite-command-ribbon .ribbon-trace{display:none}
