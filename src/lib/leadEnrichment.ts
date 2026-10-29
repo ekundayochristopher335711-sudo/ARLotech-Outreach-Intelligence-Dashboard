@@ -74,7 +74,7 @@ export async function enrichAndAnalyzeProspect(prospect: Prospect): Promise<Enri
       result.error = `Contact lookup failed: ${err instanceof Error ? err.message : 'Unknown error'}`
     }
 
-    const analysis = await analyzeWebsite(prospect.website, prospect.id)
+    const analysis = await analyzeWebsite(prospect.website, prospect.id, true)
     result.analysis_score = analysis.overallScore
 
     const draft = await generateOutreachDraft({

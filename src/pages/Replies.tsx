@@ -5,6 +5,7 @@ import { toast } from 'sonner'
 import { Badge } from '@/components/ui/Badge'
 import { Card } from '@/components/ui/Card'
 import { exportRepliesPdf } from '@/lib/exportPdf'
+import { splitReplyText } from '@/lib/replyText'
 import { getCurrentUserId, supabase } from '@/lib/supabase'
 import type { EmailMessage, Prospect } from '@/types'
 
@@ -134,8 +135,10 @@ export function RepliesPage() {
           </div>
         ) : (
           <div className="space-y-3">
-            {repliedMessages.map((message) => (
-              <article key={message.id} className="rounded-lg border border-slate-200 p-4">
+            {repliedMessages.map((message) => {
+              const reply = splitReplyText(message.body || '')
+              return (
+                <article key={message.id} className="rounded-lg border border-slate-200 p-4">
                 <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
                     <Badge variant="success">{message.direction === 'inbound' ? 'Received' : 'Replied'}</Badge>
@@ -155,9 +158,16 @@ export function RepliesPage() {
                   </span>
                 </div>
                 <h3 className="font-medium text-slate-800">{message.subject || '(No subject)'}</h3>
-                <p className="mt-2 whitespace-pre-wrap text-sm text-slate-600">{message.body || '(No message content)'}</p>
-              </article>
-            ))}
+                <p className="mt-2 whitespace-pre-wrap text-sm text-slate-600">{reply.readableText || '(No message content)'}</p>
+                {reply.quotedText && (
+                  <details className="mt-3 text-xs text-slate-500">
+                    <summary className="cursor-pointer select-none">Show quoted message</summary>
+                    <p className="mt-2 whitespace-pre-wrap border-l-2 border-slate-200 pl-3">{reply.quotedText}</p>
+                  </details>
+                )}
+                </article>
+              )
+            })}
           </div>
         )}
       </Card>
@@ -186,7 +196,14 @@ export function RepliesPage() {
                   </span>
                 </div>
                 <h3 className="font-medium text-slate-800">{message.subject || '(No subject)'}</h3>
-                <p className="mt-2 line-clamp-3 whitespace-pre-wrap text-sm text-slate-600">{message.body || '(No message content)'}</p>
+                <details className="mt-2">
+                  <summary className="cursor-pointer select-none text-sm font-medium text-arlotech">
+                    View full sent message
+                  </summary>
+                  <p className="mt-2 whitespace-pre-wrap break-words text-sm text-slate-600">
+                    {message.body || '(No message content)'}
+                  </p>
+                </details>
               </article>
             ))}
           </div>

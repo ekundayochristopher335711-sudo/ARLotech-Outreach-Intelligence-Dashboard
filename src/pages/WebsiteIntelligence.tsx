@@ -15,7 +15,6 @@ import { VisualReviewPanel } from '@/components/website-intelligence/VisualRevie
 export function WebsiteIntelligencePage() {
   const queryClient = useQueryClient()
   const [url, setUrl] = useState('')
-  const [includeVisualReview, setIncludeVisualReview] = useState(true)
   const [lastResult, setLastResult] = useState<any>(null)
   const [selected, setSelected] = useState<any>(null)
   const selectedDialogRef = useAccessibleDialog<HTMLDivElement>(!!selected, () => setSelected(null))
@@ -36,8 +35,8 @@ export function WebsiteIntelligencePage() {
   })
 
   const mutation = useMutation({
-    mutationFn: async (input: { url: string; includeVisualReview: boolean }) =>
-      analyzeWebsite(input.url, null, input.includeVisualReview),
+    mutationFn: async (input: { url: string }) =>
+      analyzeWebsite(input.url, null, true),
     onSuccess: (result: any) => {
       setLastResult(result)
       setUrl('')
@@ -54,7 +53,7 @@ export function WebsiteIntelligencePage() {
     if (!url.trim()) return
     let target = url.trim()
     if (!/^https?:\/\//i.test(target)) target = 'https://' + target
-    mutation.mutate({ url: target, includeVisualReview })
+    mutation.mutate({ url: target })
   }
 
   const handleCopyReport = (analysis: any) => {
@@ -105,21 +104,9 @@ export function WebsiteIntelligencePage() {
             )}
           </Button>
         </form>
-        <label className="mt-4 flex items-start gap-2 text-sm text-slate-700">
-          <input
-            type="checkbox"
-            checked={includeVisualReview}
-            onChange={(event) => setIncludeVisualReview(event.target.checked)}
-            disabled={mutation.isPending}
-            className="mt-1"
-          />
-          <span>
-            Include visual review
-            <span className="block text-xs text-slate-500">
-              Up to four same-site navigation pages; homepage desktop and mobile, other pages mobile. This uses additional PageSpeed requests.
-            </span>
-          </span>
-        </label>
+        <p className="mt-3 text-xs text-slate-500">
+          Visual review is included automatically for the homepage and up to three same-site pages.
+        </p>
         {mutation.isError && (
           <p className="mt-3 text-sm text-red-600">
             {mutation.error instanceof Error ? mutation.error.message : 'Analysis failed'}
