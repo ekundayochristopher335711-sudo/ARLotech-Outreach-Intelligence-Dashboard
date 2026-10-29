@@ -13,7 +13,6 @@ import {
   ChevronLeft,
   ChevronRight,
   Plane,
-  Shield,
   Radio,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuthState'
@@ -86,9 +85,9 @@ export function Sidebar({
         aria-hidden={!mobileOpen ? undefined : false}
         tabIndex={mobileOpen ? -1 : undefined}
       >
-        <div className="sidebar-brand-row flex items-center justify-between h-16 px-4 border-b border-slate-200">
+        <div className="sidebar-brand-row flex items-center justify-between h-20 px-4 border-b border-slate-200">
           <div className="flex items-center gap-2">
-            <span className="sidebar-brand-mark"><Shield size={17} /><i className="brand-sigil-cut" /></span>
+            <img src={blacksite ? '/blacksite%20logo.jpg' : '/logo.jpg'} alt="ArloTech" className="h-8 w-auto" />
             <span className={`sidebar-brand-copy text-sm font-bold text-slate-800 ${collapsed ? 'lg:hidden' : ''}`}>
               {blacksite ? <>BLACKSITE<span>FIELD OPERATIONS</span></> : <>ARLOTECH<span>INTELLIGENCE</span></>}
             </span>

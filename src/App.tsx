@@ -136,20 +136,20 @@ function AppShell() {
         onNavigate={closeSidebar}
       />
       <div className="app-workspace flex min-w-0 flex-1 flex-col overflow-hidden">
-        <header className="app-topbar flex h-14 shrink-0 items-center gap-3 border-b border-slate-200 bg-white px-4 lg:px-6">
+        <header className="app-topbar flex h-20 shrink-0 items-center gap-4 border-b border-slate-200 bg-white px-4 lg:px-8">
           <button
             type="button"
-            className="rounded-md p-2 text-slate-600 hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-arlotech lg:hidden"
+            className="rounded-md p-2.5 text-slate-600 hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-arlotech lg:hidden"
             onClick={() => setMobileOpen(true)}
             aria-label="Open navigation menu"
             aria-controls="app-sidebar"
             aria-expanded={mobileOpen}
           >
-            <Menu className="h-5 w-5" />
+            <Menu className="h-6 w-6" />
           </button>
-          <span className="topbar-brand flex items-center" aria-label="ArloTech">{blacksite ? <img src="/blacksite%20logo.jpg" alt="ArloTech Blacksite" className="h-8 w-auto" /> : <img src="/logo.jpg" alt="ArloTech" className="h-8 w-auto" />}</span>
+          <span className="topbar-brand flex items-center" aria-label="ArloTech">{blacksite ? <img src="/blacksite%20logo.jpg" alt="ArloTech Blacksite" className="h-10 w-auto" /> : <img src="/logo.jpg" alt="ArloTech" className="h-10 w-auto" />}</span>
           <div className="topbar-system-status"><span className="status-live-dot" /> <span>{blacksite ? 'UPLINK ESTABLISHED' : 'WORKSPACE ONLINE'}</span><span className="topbar-divider">/</span><span className="topbar-clock">{blacksite ? 'TRACE NULL // UPLINK LIVE' : 'OUTREACH CONSOLE'}</span></div>
-          <div className="topbar-mark" aria-hidden="true">{blacksite ? <RadioTower size={16} /> : <Activity size={16} />}<span>{blacksite ? 'NODE 09' : 'AOI'}</span></div>
+          <div className="topbar-mark" aria-hidden="true">{blacksite ? <RadioTower size={18} /> : <Activity size={18} />}<span>{blacksite ? 'NODE 09' : 'AOI'}</span></div>
         </header>
         <div className="min-w-0 flex-1 overflow-auto">
           {blacksite && <div className="blacksite-command-ribbon"><span><Crosshair size={13}/> {activeBlacksiteCopy.title}</span><span><DatabaseZap size={13}/> {activeBlacksiteCopy.sub}</span><span className="ribbon-trace">TRACE ROUTE // MASKED</span></div>}
