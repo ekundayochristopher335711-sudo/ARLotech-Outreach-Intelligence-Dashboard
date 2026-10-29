@@ -283,12 +283,56 @@ html {
 @keyframes blacksite-skeleton{0%,100%{opacity:.45}50%{opacity:.8}}
 @keyframes sigil-rotate{to{transform:rotate(360deg)}}
 @keyframes loading-trace{from{transform:translateX(-8%)}to{transform:translateX(205%)}}
-@media(max-width:1023px){.app-shell.theme-blacksite .app-sidebar{position:fixed!important;inset:0 auto 0 0!important;width:min(278px,calc(100vw - 2rem))!important;min-width:min(278px,calc(100vw - 2rem))!important;max-width:calc(100vw - 2rem);flex-shrink:0;overflow-y:auto;overscroll-behavior:contain;z-index:50!important}.app-shell.theme-blacksite .app-topbar{height:76px!important;min-height:76px!important;padding:12px 12px 26px!important}.app-shell.theme-blacksite .app-topbar:after{left:12px;font-size:6px;letter-spacing:.1em}.app-shell.theme-blacksite .blacksite-command-ribbon{padding:8px 12px!important;gap:9px!important}.app-shell.theme-blacksite .app-main{padding:18px!important}.app-shell.theme-blacksite .topbar-system-status,.app-shell.theme-blacksite .topbar-mark{display:none!important}}
-@media(max-width:767px){.app-shell,.app-shell .app-workspace,.app-shell .app-main{min-width:0;width:100%}.app-shell.theme-blacksite .app-topbar{height:60px!important;min-height:60px!important;padding:8px 12px!important;gap:8px!important}.app-shell.theme-blacksite .app-topbar:after{display:none}.app-shell.theme-blacksite .topbar-brand{overflow:hidden;text-overflow:ellipsis;font-size:9px!important;letter-spacing:.12em!important}.app-shell.theme-blacksite .blacksite-command-ribbon{min-height:0!important;align-items:flex-start;gap:6px 10px!important;padding:9px 12px!important;font-size:7px!important;line-height:1.5;overflow-wrap:anywhere}.app-shell.theme-blacksite .blacksite-command-ribbon .ribbon-trace{margin-left:0;padding:3px 5px}.app-shell.theme-blacksite .app-main{padding:14px!important;overflow-wrap:anywhere}.app-shell.theme-blacksite .app-main [class*="grid-cols-"]{grid-template-columns:minmax(0,1fr)!important}.app-shell.theme-blacksite .app-main table{min-width:600px}.app-shell.theme-blacksite .app-main button{min-height:40px}.app-shell.theme-blacksite .app-main input,.app-shell.theme-blacksite .app-main select,.app-shell.theme-blacksite .app-main textarea{max-width:100%;min-width:0}.app-shell.theme-blacksite .app-main pre,.app-shell.theme-blacksite .app-main code{max-width:100%;overflow-x:auto}.app-shell.theme-blacksite .sidebar-brand-row:after{font-size:6px!important}}
-@media(max-width:360px){.app-shell.theme-blacksite .topbar-brand span{display:none}.app-shell.theme-blacksite .blacksite-command-ribbon .ribbon-trace{display:none}.app-shell.theme-blacksite .app-main{padding:12px!important}}
-@media(max-width:767px){.app-shell.theme-blacksite .topbar-brand{font-size:10px!important}.app-shell.theme-blacksite .blacksite-command-ribbon{font-size:8px!important}.app-shell.theme-blacksite .app-main{font-size:12px!important}.app-shell.theme-blacksite .app-main th{font-size:10px!important}.app-shell.theme-blacksite .app-main td{font-size:11px!important}}
 .app-shell .app-workspace,.app-shell .app-main{min-width:0}
 .app-shell .app-main .overflow-auto,.app-shell .app-main .overflow-x-auto{max-width:100%;overscroll-behavior-x:contain}
-@media(max-width:767px){.app-shell .app-topbar{min-width:0}.app-shell .topbar-brand{min-width:0;overflow:hidden;text-overflow:ellipsis}.app-shell .app-main{min-width:0;max-width:100%;width:100%;overflow-wrap:anywhere}.app-shell .app-main table{min-width:600px}.app-shell .app-main input,.app-shell .app-main select,.app-shell .app-main textarea{max-width:100%;min-width:0}.app-shell .app-main pre{max-width:100%;overflow-x:auto}}
-@media(max-width:360px){.app-shell .topbar-brand span{display:none}}
+@media(max-width:1023px){
+  .app-shell.theme-blacksite .app-sidebar{position:fixed!important;inset:0 auto 0 0!important;width:min(278px,calc(100vw - 2rem))!important;min-width:min(278px,calc(100vw - 2rem))!important;max-width:calc(100vw - 2rem);flex-shrink:0;overflow-y:auto;overscroll-behavior:contain;z-index:50!important}
+  .app-shell.theme-blacksite .app-topbar{height:76px!important;min-height:76px!important;padding:12px 12px 26px!important}
+  .app-shell.theme-blacksite .app-topbar:after{left:12px;font-size:6px;letter-spacing:.1em}
+  .app-shell.theme-blacksite .blacksite-command-ribbon{padding:8px 12px!important;gap:9px!important}
+  .app-shell.theme-blacksite .app-main{padding:18px!important}
+  .app-shell.theme-blacksite .topbar-system-status,.app-shell.theme-blacksite .topbar-mark{display:none!important}
+}
+@media(max-width:767px){
+  .app-shell,.app-shell .app-workspace,.app-shell .app-main{width:100%;min-width:0}
+  .app-shell .app-topbar{min-width:0}
+  .app-shell .topbar-brand{min-width:0;overflow:hidden;text-overflow:ellipsis}
+  .app-shell .app-main{max-width:100%;overflow-wrap:anywhere}
+  .app-shell .app-main table{min-width:600px}
+  .app-shell .app-main input,.app-shell .app-main select,.app-shell .app-main textarea{max-width:100%;min-width:0}
+  .app-shell .app-main pre{max-width:100%;overflow-x:auto}
+  .app-shell.theme-blacksite .app-topbar{height:60px!important;min-height:60px!important;padding:8px 12px!important;gap:8px!important}
+  .app-shell.theme-blacksite .app-topbar:after{display:none}
+  .app-shell.theme-blacksite .topbar-brand{font-size:11px!important;letter-spacing:.08em!important}
+  .app-shell.theme-blacksite .blacksite-command-ribbon{min-height:0!important;align-items:flex-start;gap:6px 10px!important;padding:9px 12px!important;font-size:10px!important;line-height:1.5;letter-spacing:.05em!important;overflow-wrap:anywhere}
+  .app-shell.theme-blacksite .blacksite-command-ribbon .ribbon-trace{margin-left:0;padding:3px 5px}
+  .app-shell.theme-blacksite .app-main{padding:14px!important;font-size:14px!important;line-height:1.55!important}
+  .app-shell.theme-blacksite .app-main [class*="grid-cols-"]{grid-template-columns:minmax(0,1fr)!important}
+  .app-shell.theme-blacksite .app-main h1{font-size:clamp(20px,5.6vw,24px)!important;line-height:1.25!important;letter-spacing:.025em!important;text-wrap:balance}
+  .app-shell.theme-blacksite .app-main h2{font-size:16px!important;line-height:1.35!important;letter-spacing:.08em!important}
+  .app-shell.theme-blacksite .app-main h3{font-size:14px!important;line-height:1.4!important;letter-spacing:.06em!important}
+  .app-shell.theme-blacksite .app-main .text-xs{font-size:12px!important;line-height:1.45!important}
+  .app-shell.theme-blacksite .app-main .text-sm{font-size:13px!important;line-height:1.5!important}
+  .app-shell.theme-blacksite .app-main [class~="text-[8px]"],.app-shell.theme-blacksite .app-main [class~="text-[9px]"],.app-shell.theme-blacksite .app-main [class~="text-[10px]"],.app-shell.theme-blacksite .app-main [class~="text-[11px]"]{font-size:12px!important;line-height:1.45!important}
+  .app-shell.theme-blacksite .app-main p,.app-shell.theme-blacksite .app-main label,.app-shell.theme-blacksite .app-main li{line-height:1.55}
+  .app-shell.theme-blacksite .app-main button{min-height:44px;max-width:100%;padding-top:9px;padding-bottom:9px;font-size:12px!important;line-height:1.35!important;letter-spacing:.035em!important;white-space:normal;overflow-wrap:anywhere}
+  .app-shell.theme-blacksite .app-main input,.app-shell.theme-blacksite .app-main select,.app-shell.theme-blacksite .app-main textarea{font-size:16px!important;line-height:1.4!important}
+  .app-shell.theme-blacksite .app-main th,.app-shell.theme-blacksite .app-main td{font-size:12px!important;line-height:1.45!important;letter-spacing:.04em!important}
+  .app-shell.theme-blacksite .app-main .flex.items-center.justify-between{flex-wrap:wrap;gap:10px}
+  .app-shell.theme-blacksite .app-main [class*="rounded-xl"][class*="border"],.app-shell.theme-blacksite .app-main [class*="rounded-2xl"][class*="border"]{min-width:0}
+  .app-shell.theme-blacksite .sidebar-nav a{min-height:46px!important;font-size:12px!important;letter-spacing:.06em!important}
+  .app-shell.theme-blacksite .sidebar-nav a[aria-current=page]:after{font-size:10px!important}
+  .app-shell.theme-blacksite .sidebar-section-label{font-size:10px!important;letter-spacing:.12em!important}
+  .app-shell.theme-blacksite .sidebar-brand-copy{font-size:12px!important}
+  .app-shell.theme-blacksite .sidebar-brand-copy span{font-size:10px!important}
+  .app-shell.theme-blacksite .sidebar-brand-row:after{font-size:9px!important;letter-spacing:.08em!important}
+  .app-shell.theme-blacksite .sidebar-node strong{font-size:11px!important}
+  .app-shell.theme-blacksite .sidebar-node small{font-size:10px!important}
+  .app-shell.theme-blacksite .sidebar-footer button{min-height:44px;font-size:11px!important;letter-spacing:.06em!important}
+  .app-shell.theme-blacksite .app-main .rounded-xl.border:before{font-size:9px!important;letter-spacing:.08em!important}
+}
+@media(max-width:360px){
+  .app-shell .topbar-brand span,.app-shell.theme-blacksite .blacksite-command-ribbon .ribbon-trace{display:none}
+  .app-shell.theme-blacksite .app-main{padding:12px!important}
+}
 @media(prefers-reduced-motion:reduce){.app-shell.theme-blacksite .blacksite-matrix-field span,.blacksite-loading *{animation:none!important}}
