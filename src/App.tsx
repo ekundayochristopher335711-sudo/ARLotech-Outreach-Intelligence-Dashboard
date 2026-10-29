@@ -147,7 +147,7 @@ function AppShell() {
           >
             <Menu className="h-5 w-5" />
           </button>
-          <span className="topbar-brand text-sm font-semibold text-slate-800">{blacksite ? 'BLACKSITE // 09' : 'ARLOTECH'} <span>{blacksite ? 'GHOST PROTOCOL' : 'INTELLIGENCE'}</span></span>
+          <span className="topbar-brand flex items-center" aria-label="ArloTech">{blacksite ? <img src="/blacksite%20logo.jpg" alt="ArloTech Blacksite" className="h-8 w-auto" /> : <img src="/logo.jpg" alt="ArloTech" className="h-8 w-auto" />}</span>
           <div className="topbar-system-status"><span className="status-live-dot" /> <span>{blacksite ? 'UPLINK ESTABLISHED' : 'WORKSPACE ONLINE'}</span><span className="topbar-divider">/</span><span className="topbar-clock">{blacksite ? 'TRACE NULL // UPLINK LIVE' : 'OUTREACH CONSOLE'}</span></div>
           <div className="topbar-mark" aria-hidden="true">{blacksite ? <RadioTower size={16} /> : <Activity size={16} />}<span>{blacksite ? 'NODE 09' : 'AOI'}</span></div>
         </header>

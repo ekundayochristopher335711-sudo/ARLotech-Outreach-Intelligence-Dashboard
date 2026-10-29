@@ -31,6 +31,7 @@ ${positives.map((p: any) => `- ${p.title}`).join('\n') || '- None captured'}
 Requirements:
 - Professional, concise, non-spammy.
 - Mention 2-3 specific issues from the audit.
+- Mention that the attached PDF contains the full audit (score, evidence, and recommended fixes) and invite the recipient to review it.
 - Offer a quick call or audit review.
 - Include a clear CTA.
 - Return ONLY valid JSON: { "subject": string, "body": string } where body is plain text email (no markdown).`

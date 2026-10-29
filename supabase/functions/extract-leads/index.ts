@@ -18,9 +18,9 @@ serve(async (req) => {
 
 Rules:
 - Only include entries that look like real businesses.
-- Normalize website URLs to include https:// when possible.
+- Extract website URLs/domains whenever present (including links following a "Website" label or button); normalize to include https:// when possible.
 - If a field is missing, use null.
-- Do not invent emails/phones; only extract if present.
+- Do not invent emails/phones/websites; only extract if present.
 - Keep notes concise and mention source context.
 
 TEXT:

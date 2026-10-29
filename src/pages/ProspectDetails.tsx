@@ -191,7 +191,7 @@ export function ProspectDetails() {
             </p>
             <p className="flex items-center gap-2 text-slate-600">
               <Phone className="h-4 w-4 text-slate-400" />
-              {prospect.phone || 'Not provided'}
+              {prospect.phone ? (<span className="flex items-center gap-2"><a href={`tel:${prospect.phone}`} className="text-arlotech hover:underline">{prospect.phone}</a><a href={`https://wa.me/${prospect.phone.replace(/[^0-9]/g,'')}`} target="_blank" rel="noopener noreferrer" className="rounded border border-slate-200 px-2 py-0.5 text-xs text-slate-600 hover:bg-slate-100">WhatsApp</a><button type="button" onClick={() => navigator.clipboard?.writeText(prospect.phone ?? '')} className="rounded border border-slate-200 px-2 py-0.5 text-xs text-slate-600 hover:bg-slate-100">Copy</button></span>) : 'Not provided'}
             </p>
           </div>
         </Card>

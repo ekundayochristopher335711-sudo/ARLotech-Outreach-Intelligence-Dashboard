@@ -90,7 +90,7 @@ export function LoginPage() {
       <header className="login-topbar">
         <a className="login-brand" href="/login" aria-label="Arlotech login home">
           <span className="login-brand-mark"><ShieldCheck size={21} strokeWidth={1.7} /><i className="login-brand-signal" /></span>
-          <span>ARLOTECH<span className="login-brand-sub"> / OUTREACH INTELLIGENCE</span></span>
+          <img src={isBlacksite ? '/blacksite%20logo.jpg' : '/logo.jpg'} alt="ArloTech" className="h-8 w-auto" />
         </a>
         <div className="login-top-actions">
           <span className="login-secure-status"><span className="status-pulse" /> {isBlacksite ? 'COVERT NODE // ONLINE' : 'SECURE ACCESS'}</span>

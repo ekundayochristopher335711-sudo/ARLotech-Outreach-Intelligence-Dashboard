@@ -77,7 +77,7 @@ export function createOutreachPreview(
       '',
       `I reviewed ${name}'s website and noticed ${observation}.${nextStep}`,
       '',
-      'I have attached a concise website review with the supporting details and suggested improvements. Would a brief conversation about the highest-priority opportunity be useful?',
+      'I have attached a concise website review (overall score, key findings, and recommended fixes). Would a brief conversation about the highest-priority opportunity be useful?',
       '',
       'If this is not relevant, reply and let me know; I will not follow up.',
       '',
