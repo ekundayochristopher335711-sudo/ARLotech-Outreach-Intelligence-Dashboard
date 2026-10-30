@@ -86,6 +86,7 @@ export function ProspectsPage() {
   const queryClient = useQueryClient()
   const fileInput = useRef<HTMLInputElement>(null)
   const [search, setSearch] = useState('')
+  const [websiteFilter, setWebsiteFilter] = useState<'all' | 'with-website' | 'without-website'>('all')
   const [selectedProspectIds, setSelectedProspectIds] = useState<Set<string>>(() => new Set())
   const [showTextImport, setShowTextImport] = useState(false)
   const [prospectText, setProspectText] = useState('')
@@ -188,12 +189,17 @@ export function ProspectsPage() {
   const prospectRecords = (prospects ?? []) as Prospect[]
   const filteredProspects = prospectRecords.filter((prospect) => {
     const searchValue = search.trim().toLowerCase()
-    return (
+    const matchesWebsiteFilter =
+      websiteFilter === 'all' ||
+      (websiteFilter === 'with-website' && Boolean(prospect.website)) ||
+      (websiteFilter === 'without-website' && !prospect.website)
+    const matchesSearch =
       !searchValue ||
       prospect.business_name.toLowerCase().includes(searchValue) ||
       prospect.contact_name.toLowerCase().includes(searchValue) ||
-      (prospect.email ?? '').toLowerCase().includes(searchValue)
-    )
+      (prospect.email ?? '').toLowerCase().includes(searchValue) ||
+      (prospect.phone ?? '').toLowerCase().includes(searchValue)
+    return matchesWebsiteFilter && matchesSearch
   })
   const contactScanTargets = prospectRecords.filter(
     (prospect) => Boolean(prospect.website && (!prospect.email || !prospect.phone)),
@@ -224,15 +230,25 @@ export function ProspectsPage() {
       return
     }
 
-    setContactScanMode(true)
-    setEnrichmentResults([])
     setEnrichmentProgress({ completed: 0, total: contactScanTargets.length })
+    setContactScanMode(true)
+    setEnrichmentResults(contactScanTargets.map((prospect) => ({
+      prospect_id: prospect.id,
+      business_name: prospect.business_name,
+      website: prospect.website,
+      contact_email: prospect.email,
+      contact_phone: prospect.phone,
+      analysis_score: null,
+      draft_created: false,
+      error: 'Queued for contact lookup',
+    })))
     setIsEnriching(true)
     try {
-      const results = await mapWithConcurrency(contactScanTargets, 3, async (prospect) => {
+      const results = await mapWithConcurrency(contactScanTargets, 3, async (prospect, index) => {
+        let result: EnrichmentResult
         try {
           const contacts = await enrichProspectContacts(prospect)
-          return {
+          result = {
             prospect_id: prospect.id,
             business_name: prospect.business_name,
             website: prospect.website,
@@ -245,7 +261,7 @@ export function ProspectsPage() {
               : {}),
           }
         } catch (error) {
-          return {
+          result = {
             prospect_id: prospect.id,
             business_name: prospect.business_name,
             website: prospect.website,
@@ -258,8 +274,9 @@ export function ProspectsPage() {
         } finally {
           setEnrichmentProgress((progress) => ({ ...progress, completed: progress.completed + 1 }))
         }
+        setEnrichmentResults((current) => current.map((item, itemIndex) => itemIndex === index ? result : item))
+        return result
       })
-      setEnrichmentResults(results)
       await queryClient.invalidateQueries({ queryKey: ['/prospects'] })
       const foundEmails = results.filter((result) => result.contact_email).length
       toast.success(`Checked ${results.length} websites; found email addresses for ${foundEmails}.`)
@@ -307,13 +324,25 @@ export function ProspectsPage() {
     }
     if (withWebsite.length > 0) {
       setIsEnriching(true)
+      setContactScanMode(false)
       setEnrichmentProgress({ completed: 0, total: withWebsite.length })
+      setEnrichmentResults(withWebsite.map((prospect) => ({
+        prospect_id: prospect.id,
+        business_name: prospect.business_name,
+        website: prospect.website,
+        contact_email: prospect.email,
+        contact_phone: prospect.phone,
+        analysis_score: null,
+        draft_created: false,
+        error: 'Queued for website analysis',
+      })))
       try {
-        const enrichment = await mapWithConcurrency(withWebsite, 3, async (prospect) => {
+        await mapWithConcurrency(withWebsite, 3, async (prospect, index) => {
+          let enrichmentResult: EnrichmentResult
           try {
-            return await enrichAndAnalyzeProspect(prospect)
+            enrichmentResult = await enrichAndAnalyzeProspect(prospect)
           } catch (error) {
-            return {
+            enrichmentResult = {
               prospect_id: prospect.id,
               business_name: prospect.business_name,
               website: prospect.website,
@@ -326,8 +355,11 @@ export function ProspectsPage() {
           } finally {
             setEnrichmentProgress((progress) => ({ ...progress, completed: progress.completed + 1 }))
           }
+          setEnrichmentResults((current) =>
+            current.map((item, itemIndex) => itemIndex === index ? enrichmentResult : item),
+          )
+          return enrichmentResult
         })
-        setEnrichmentResults(enrichment)
       } finally {
         setIsEnriching(false)
       }
@@ -601,7 +633,7 @@ export function ProspectsPage() {
                     <td className="px-3 py-2">{r.contact_phone ?? '—'}</td>
                     <td className="px-3 py-2">{r.analysis_score ?? '—'}</td>
                     <td className="px-3 py-2">{r.draft_created ? 'Created' : '—'}</td>
-                    <td className="px-3 py-2">{r.error ?? 'OK'}</td>
+                    <td className="px-3 py-2">{r.error ?? (r.analysis_score === null ? 'Scan complete' : 'Analysis complete')}</td>
                   </tr>
                 ))}
               </tbody>
@@ -627,6 +659,23 @@ export function ProspectsPage() {
               className="w-full rounded-lg border border-slate-300 py-2 pl-9 pr-3 text-sm focus:border-arlotech focus:outline-none focus:ring-2 focus:ring-arlotech/20"
             />
           </label>
+        </div>
+        <div className="mb-3 flex flex-wrap gap-2" role="group" aria-label="Filter prospects by website">
+          {([
+            ['all', `All (${prospectRecords.length})`],
+            ['with-website', `With website (${prospectRecords.filter((prospect) => Boolean(prospect.website)).length})`],
+            ['without-website', `No website (${prospectRecords.filter((prospect) => !prospect.website).length})`],
+          ] as const).map(([filter, label]) => (
+            <Button
+              key={filter}
+              variant={websiteFilter === filter ? 'primary' : 'secondary'}
+              size="sm"
+              onClick={() => setWebsiteFilter(filter)}
+              ariaLabel={`Show prospects ${label}`}
+            >
+              {label}
+            </Button>
+          ))}
         </div>
         {filteredProspects.length > 0 && (
           <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
@@ -669,6 +718,7 @@ export function ProspectsPage() {
         ) : filteredProspects.length > 0 ? (
           <ProspectTable
             prospects={filteredProspects}
+            showManualContactActions={websiteFilter === 'without-website'}
             selectedProspectIds={selectedProspectIds}
             onToggleSelection={(prospectId) => {
               setSelectedProspectIds((selected) => {
@@ -689,7 +739,17 @@ export function ProspectsPage() {
           />
         ) : (
           <p className="py-8 text-center text-sm text-slate-500">
-            {search ? 'No prospects match your search.' : 'No prospects yet. Add one or import a CSV to get started.'}
+            {websiteFilter === 'without-website'
+              ? prospectRecords.length === 0
+                ? 'No prospects yet. Add one or import a CSV to get started.'
+                : prospectRecords.some((prospect) => !prospect.website)
+                  ? 'No prospects without a website match your search.'
+                  : 'All prospects currently have a website.'
+              : websiteFilter === 'with-website'
+                ? 'No prospects with websites match this view.'
+                : search
+                  ? 'No prospects match your search.'
+                  : 'No prospects yet. Add one or import a CSV to get started.'}
           </p>
         )}
       </Card>

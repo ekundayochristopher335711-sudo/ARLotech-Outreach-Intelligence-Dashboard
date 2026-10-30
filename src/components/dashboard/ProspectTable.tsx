@@ -11,6 +11,7 @@ interface ProspectTableProps {
   onDelete?: (prospect: Prospect) => void
   selectedProspectIds?: Set<string>
   onToggleSelection?: (prospectId: string) => void
+  showManualContactActions?: boolean
   isUpdatingContact?: boolean
   isDeleting?: boolean
 }
@@ -22,6 +23,7 @@ export function ProspectTable({
   onDelete,
   selectedProspectIds,
   onToggleSelection,
+  showManualContactActions = false,
   isUpdatingContact = false,
   isDeleting = false,
 }: ProspectTableProps) {
@@ -57,6 +59,9 @@ export function ProspectTable({
           <div className={`${selectedProspectIds && onToggleSelection ? 'col-start-3' : ''} min-w-0 sm:flex-1`}>
             <p className="break-words text-sm font-medium leading-5 text-slate-800">{prospect.business_name}</p>
             <p className="break-all text-xs text-slate-400">{prospect.email || 'No email'}</p>
+            {showManualContactActions && (
+              <p className="break-all text-xs text-slate-500">{prospect.phone || 'No phone number'}</p>
+            )}
             {prospect.city && (
               <p className="text-xs text-slate-400 flex items-center gap-1 mt-0.5">
                 <MapPin className="h-3 w-3" />
@@ -107,6 +112,29 @@ export function ProspectTable({
                 >
                   <Trash2 className="h-4 w-4" />
                 </button>
+              )}
+              {showManualContactActions && prospect.phone && (
+                <div
+                  className={`${selectedProspectIds && onToggleSelection ? 'col-start-3' : 'col-start-2'} flex flex-wrap items-center gap-2 sm:col-auto`}
+                  onClick={(event) => event.stopPropagation()}
+                >
+                  <a
+                    href={`tel:${prospect.phone}`}
+                    className="rounded border border-slate-200 px-2 py-1 text-xs text-slate-700 hover:bg-slate-100"
+                    aria-label={`Call ${prospect.business_name}`}
+                  >
+                    Call
+                  </a>
+                  <a
+                    href={`https://wa.me/${prospect.phone.replace(/\D/g, '')}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="rounded border border-green-200 bg-green-50 px-2 py-1 text-xs text-green-800 hover:bg-green-100"
+                    aria-label={`Message ${prospect.business_name} on WhatsApp`}
+                  >
+                    WhatsApp
+                  </a>
+                </div>
               )}
             </div>
           )}

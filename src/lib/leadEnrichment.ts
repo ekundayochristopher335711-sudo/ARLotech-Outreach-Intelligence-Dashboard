@@ -68,25 +68,31 @@ export async function enrichAndAnalyzeProspect(prospect: Prospect): Promise<Enri
     return result
   }
 
-  let content: ExtractedContent
+  let content: ExtractedContent | undefined
   try {
     content = await extractContent(prospect.website)
   } catch (err) {
     result.error = `Contact lookup failed: ${err instanceof Error ? err.message : 'Unknown error'}`
-    return result
   }
 
-  try {
-    const contacts = await enrichProspectContacts(prospect, content)
-    result.contact_email = contacts.email
-    result.contact_phone = contacts.phone
-  } catch (err) {
-    result.error = `Contact lookup failed: ${err instanceof Error ? err.message : 'Unknown error'}`
+  if (content) {
+    try {
+      const contacts = await enrichProspectContacts(prospect, content)
+      result.contact_email = contacts.email
+      result.contact_phone = contacts.phone
+    } catch (err) {
+      result.error = `Contact lookup failed: ${err instanceof Error ? err.message : 'Unknown error'}`
+    }
   }
 
   try {
     const analysis = await analyzeWebsite(prospect.website, prospect.id, true, content)
     result.analysis_score = analysis.overallScore
+    if (analysis.contentExtractionError) {
+      result.error = result.error
+        ? `${result.error}; Website content extraction failed: ${analysis.contentExtractionError}`
+        : `Website content extraction failed: ${analysis.contentExtractionError}`
+    }
 
     const draft = await generateOutreachDraft({
       business_name: prospect.business_name,

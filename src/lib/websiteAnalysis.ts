@@ -164,7 +164,36 @@ export async function analyzeWebsite(
 ) {
   const userId = await getCurrentUserId()
 
-  const content = extractedContent ?? await extractContent(url)
+  let content = extractedContent
+  let contentExtractionError: string | undefined
+  if (!content) {
+    try {
+      content = await extractContent(url)
+    } catch (error) {
+      contentExtractionError = error instanceof Error ? error.message : 'Website content extraction failed.'
+      content = {
+        url,
+        finalUrl: url,
+        status: 0,
+        title: null,
+        metaDescription: null,
+        robots: null,
+        canonical: null,
+        lang: null,
+        viewport: null,
+        favicon: null,
+        og: {},
+        twitter: {},
+        headings: {},
+        wordCount: 0,
+        textExcerpt: '',
+        links: { total: 0, internal: 0, external: 0, externalDomains: [] },
+        images: { total: 0, missingAlt: 0 },
+        schema: [],
+        h1Count: 0,
+      }
+    }
+  }
 
   let pagespeed: PageSpeedResult
   try {
@@ -316,7 +345,7 @@ export async function analyzeWebsite(
     })
   })
 
-  if (content.h1Count === 0) {
+  if (!contentExtractionError && content.h1Count === 0) {
     findings.push({
       id: 'content-h1',
       source: 'content',
@@ -330,7 +359,7 @@ export async function analyzeWebsite(
       status: 'open',
     })
   }
-  if (content.images.missingAlt > 0) {
+  if (!contentExtractionError && content.images.missingAlt > 0) {
     findings.push({
       id: 'content-alt',
       source: 'content',
@@ -344,7 +373,7 @@ export async function analyzeWebsite(
       status: 'open',
     })
   }
-  if (!content.metaDescription) {
+  if (!contentExtractionError && !content.metaDescription) {
     findings.push({
       id: 'content-meta',
       source: 'content',
@@ -486,6 +515,7 @@ export async function analyzeWebsite(
       overallScore: overall,
       seoScore,
       perfScore,
+      contentExtractionError,
     }
   }
 
@@ -497,5 +527,6 @@ export async function analyzeWebsite(
     overallScore: overall,
     seoScore,
     perfScore,
+    contentExtractionError,
   }
 }
