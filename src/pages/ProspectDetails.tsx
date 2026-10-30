@@ -7,6 +7,8 @@ import { Button } from '@/components/ui/Button'
 import { getCurrentUserId, supabase } from '@/lib/supabase'
 import { toast } from 'sonner'
 import { type Prospect } from '@/types'
+import { analyzeWebsite } from '@/lib/websiteAnalysis'
+import { ensureWebsiteProspect } from '@/lib/websiteProspects'
 import { format } from 'date-fns'
 import {
   Users,
@@ -18,6 +20,8 @@ import {
   Edit,
   Trash2,
   ArrowLeft,
+  RotateCw,
+  Loader2,
 } from 'lucide-react'
 
 export function ProspectDetails() {
@@ -80,6 +84,21 @@ export function ProspectDetails() {
     onError: (err: any) => toast.error(err?.message || 'Update failed'),
   })
 
+  const reanalyzeMutation = useMutation({
+    mutationFn: async () => {
+      if (!prospect.website) throw new Error('Add a website to this prospect before analyzing it.')
+      await ensureWebsiteProspect(prospect.website, prospect.id)
+      return analyzeWebsite(prospect.website, prospect.id, true)
+    },
+    onSuccess: () => {
+      toast.success('Website analysis refreshed')
+      void queryClient.invalidateQueries({ queryKey: ['/website-analyses'] })
+      void queryClient.invalidateQueries({ queryKey: ['/prospect', id] })
+      void queryClient.invalidateQueries({ queryKey: ['/prospects'] })
+    },
+    onError: (error: Error) => toast.error(error.message || 'Website analysis failed'),
+  })
+
   if (isLoading) {
     return <div className="text-center py-12">Loading...</div>
   }
@@ -115,6 +134,19 @@ export function ProspectDetails() {
           </div>
         </div>
         <div className="flex w-full flex-wrap gap-2 sm:w-auto sm:shrink-0">
+          {prospect.website && (
+            <Button
+              variant="secondary"
+              onClick={() => reanalyzeMutation.mutate()}
+              disabled={reanalyzeMutation.isPending}
+              className="min-h-11"
+            >
+              {reanalyzeMutation.isPending
+                ? <Loader2 className="h-4 w-4 animate-spin" />
+                : <RotateCw className="h-4 w-4" />}
+              {reanalyzeMutation.isPending ? 'Analyzing...' : 'Re-analyze website'}
+            </Button>
+          )}
           <Button variant="secondary" onClick={startEdit} className="min-h-11">
             <Edit className="h-4 w-4" /> Edit
           </Button>

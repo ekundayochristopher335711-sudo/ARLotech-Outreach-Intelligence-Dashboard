@@ -8,9 +8,10 @@ import { analyzeWebsite } from '@/lib/websiteAnalysis'
 import { exportWebsiteAnalysisPdf } from '@/lib/exportPdf'
 import { toast } from 'sonner'
 import { format } from 'date-fns'
-import { Globe, AlertCircle, Clock, Loader2, Search, X, Download, Copy } from 'lucide-react'
+import { Globe, AlertCircle, Clock, Loader2, Search, X, Download, Copy, RotateCw } from 'lucide-react'
 import { useAccessibleDialog } from '@/hooks/useAccessibleDialog'
 import { VisualReviewPanel } from '@/components/website-intelligence/VisualReviewPanel'
+import { ensureWebsiteProspect } from '@/lib/websiteProspects'
 
 export function WebsiteIntelligencePage() {
   const queryClient = useQueryClient()
@@ -35,13 +36,30 @@ export function WebsiteIntelligencePage() {
   })
 
   const mutation = useMutation({
-    mutationFn: async (input: { url: string }) =>
-      analyzeWebsite(input.url, null, true),
-    onSuccess: (result: any) => {
+    mutationFn: async (input: { url: string; prospectId?: string | null; reanalyze?: boolean }) => {
+      const prospect = await ensureWebsiteProspect(input.url, input.prospectId)
+      try {
+        const result = await analyzeWebsite(input.url, prospect.id, true)
+        return { ...result, prospectCreated: prospect.created }
+      } catch (error) {
+        if (prospect.created) {
+          const detail = error instanceof Error ? error.message : 'Unknown analysis error.'
+          throw new Error(`The prospect was added, but website analysis failed: ${detail}`)
+        }
+        throw error
+      }
+    },
+    onSuccess: (result: any, input: { url: string; prospectId?: string | null; reanalyze?: boolean }) => {
+      if (input.reanalyze) setSelected(result.record)
+      else setUrl('')
       setLastResult(result)
-      setUrl('')
-      queryClient.invalidateQueries({ queryKey: ['/website-analyses'] })
-      toast.success('Analysis complete')
+      void queryClient.invalidateQueries({ queryKey: ['/website-analyses'] })
+      void queryClient.invalidateQueries({ queryKey: ['/prospects'] })
+      toast.success(input.reanalyze
+        ? 'Website analysis refreshed'
+        : result.prospectCreated
+          ? 'Analysis complete and prospect added'
+          : 'Analysis complete and linked to existing prospect')
     },
     onError: (err: any) => {
       toast.error(err?.message || 'Analysis failed')
@@ -107,6 +125,9 @@ export function WebsiteIntelligencePage() {
         <p className="mt-3 text-xs text-slate-500">
           Visual review is included automatically for the homepage and up to three same-site pages.
         </p>
+        <p className="mt-1 text-xs text-slate-500">
+          Website analyses are linked to an existing prospect when the domain matches, or added as a new prospect with an unverified domain-based name.
+        </p>
         {mutation.isError && (
           <p className="mt-3 text-sm text-red-600">
             {mutation.error instanceof Error ? mutation.error.message : 'Analysis failed'}
@@ -136,63 +157,97 @@ export function WebsiteIntelligencePage() {
           {lastResult.overallScore !== undefined && (
             <div>
               <div className="flex justify-between text-sm text-slate-600 mb-1">
-                <span>ArloTech composite score</span>
-                <span className="font-semibold">{lastResult.overallScore}/100</span>
+                <span>Weighted technical health</span>
+                <span className="font-semibold">
+                  {typeof lastResult.overallScore === 'number' ? `${lastResult.overallScore}/100` : 'Unavailable'}
+                </span>
               </div>
-              <div className="h-2 rounded-full bg-slate-100">
-                <div
-                  className={`h-2 rounded-full ${lastResult.overallScore >= 90 ? 'bg-green-500' : lastResult.overallScore >= 70 ? 'bg-lime-500' : lastResult.overallScore >= 50 ? 'bg-amber-500' : 'bg-red-500'}`}
-                  style={{ width: `${lastResult.overallScore}%` }}
-                />
-              </div>
+              {typeof lastResult.overallScore === 'number' && (
+                <div className="h-2 rounded-full bg-slate-100">
+                  <div
+                    className={`h-2 rounded-full ${lastResult.overallScore >= 90 ? 'bg-green-500' : lastResult.overallScore >= 70 ? 'bg-lime-500' : lastResult.overallScore >= 50 ? 'bg-amber-500' : 'bg-red-500'}`}
+                    style={{ width: `${lastResult.overallScore}%` }}
+                  />
+                </div>
+              )}
             </div>
           )}
 
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            {Object.entries(lastResult.pagespeed?.lighthouseResult?.categories || {}).map(([k, v]: any) => (
-              <div key={k} className="rounded-lg border border-slate-200 p-3">
-                <p className="text-xs text-slate-500 capitalize">{k.replace(/-/g, ' ')}</p>
-                <p className="text-lg font-bold text-slate-800">{Math.round((v?.score ?? 0) * 100)}</p>
-              </div>
-            ))}
+            {(['performance', 'seo', 'accessibility', 'best-practices'] as const).map((k) => {
+              const score = lastResult.pagespeed?.lighthouseResult?.categories?.[k]?.score
+              const percent = typeof score === 'number' && Number.isFinite(score) && score >= 0 && score <= 1
+                ? Math.round(score * 100)
+                : null
+              return (
+                <div key={k} className="rounded-lg border border-slate-200 p-3">
+                  <p className="text-xs text-slate-500 capitalize">{k.replace(/-/g, ' ')}</p>
+                  <p className="text-lg font-bold text-slate-800">{percent === null ? 'Unavailable' : percent}</p>
+                </div>
+              )
+            })}
           </div>
 
           {lastResult.gemini?.parsed?.summary && (
             <div>
-              <h3 className="text-sm font-semibold text-slate-700 mb-1">Summary</h3>
+              <h3 className="text-sm font-semibold text-slate-700 mb-1">AI-assisted summary</h3>
               <p className="text-sm text-slate-600">{lastResult.gemini.parsed.summary}</p>
             </div>
           )}
-          {lastResult.gemini?.parsed?.score_explanation && (
+          {lastResult.record?.ai_analysis?.score_explanation && (
             <div>
-              <h3 className="text-sm font-semibold text-slate-700 mb-1">Score Explanation</h3>
-              <p className="text-sm text-slate-600">{lastResult.gemini.parsed.score_explanation}</p>
+              <h3 className="text-sm font-semibold text-slate-700 mb-1">Score methodology</h3>
+              <p className="text-sm text-slate-600">{lastResult.record.ai_analysis.score_explanation}</p>
+            </div>
+          )}
+          {lastResult.record?.ai_analysis?.audit_completeness && (
+            <div className="rounded-lg border border-slate-200 p-3">
+              <h3 className="text-sm font-semibold text-slate-700">Audit completeness</h3>
+              <p className="mt-1 text-xs text-slate-600">
+                {lastResult.record.ai_analysis.audit_completeness.completeness_percent}% coverage ·
+                {' '}{lastResult.record.ai_analysis.audit_completeness.inspected_viewport_count}/
+                {lastResult.record.ai_analysis.audit_completeness.requested_viewport_count} PageSpeed viewports inspected.
+              </p>
+              {lastResult.record.ai_analysis.audit_completeness.limitations?.length > 0 && (
+                <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-slate-500">
+                  {lastResult.record.ai_analysis.audit_completeness.limitations.slice(0, 4).map((item: string, index: number) => (
+                    <li key={index}>{item}</li>
+                  ))}
+                </ul>
+              )}
+              {lastResult.record?.ai_analysis?.error && (
+                <p role="status" className="text-sm text-amber-700">
+                  AI summary unavailable: {lastResult.record.ai_analysis.error}
+                </p>
+              )}
             </div>
           )}
           <VisualReviewPanel audit={lastResult.record?.ai_analysis?.visual_audit} />
-          {lastResult.gemini?.parsed?.seo_notes?.length ? (
+          {lastResult.record?.findings?.length > 0 && (
             <div>
-              <h3 className="text-sm font-semibold text-slate-700 mb-1">SEO Notes</h3>
-              <ul className="list-disc pl-5 text-sm text-slate-600 space-y-1">
-                {lastResult.gemini.parsed.seo_notes.map((n: string, i: number) => (
-                  <li key={i}>{n}</li>
+              <h3 className="text-sm font-semibold text-slate-700 mb-2">Verified findings</h3>
+              <ul className="space-y-2">
+                {lastResult.record.findings.map((item: any) => (
+                  <li key={item.id} className="rounded-lg border border-slate-200 p-3">
+                    <p className="text-sm font-medium text-slate-800">{item.title}</p>
+                    <p className="mt-1 text-xs text-slate-500">{item.source === 'lighthouse' ? 'Weighted Lighthouse audit' : 'Static HTML observation'}</p>
+                    {item.evidence && <p className="mt-1 text-xs text-slate-600">{item.evidence}</p>}
+                  </li>
                 ))}
               </ul>
             </div>
-          ) : null}
-          {lastResult.gemini?.parsed?.content_notes?.length ? (
+          )}
+          {lastResult.record?.ai_analysis?.optimization_opportunities?.length > 0 && (
             <div>
-              <h3 className="text-sm font-semibold text-slate-700 mb-1">Content Notes</h3>
-              <ul className="list-disc pl-5 text-sm text-slate-600 space-y-1">
-                {lastResult.gemini.parsed.content_notes.map((n: string, i: number) => (
-                  <li key={i}>{n}</li>
-                ))}
+              <h3 className="text-sm font-semibold text-slate-700 mb-2">Optimization opportunities (not scored failures)</h3>
+              <ul className="list-disc space-y-1 pl-5 text-sm text-slate-600">
+                {lastResult.record.ai_analysis.optimization_opportunities.map((item: any) => <li key={item.id}>{item.title}: {item.evidence}</li>)}
               </ul>
             </div>
-          ) : null}
+          )}
           {lastResult.gemini?.parsed?.recommendations?.length ? (
             <div>
-              <h3 className="text-sm font-semibold text-slate-700 mb-1">Recommendations</h3>
+              <h3 className="text-sm font-semibold text-slate-700 mb-1">AI-assisted recommendations (not measured findings)</h3>
               <ul className="list-disc pl-5 text-sm text-slate-600 space-y-1">
                 {lastResult.gemini.parsed.recommendations.map((r: string, i: number) => (
                   <li key={i}>{r}</li>
@@ -200,19 +255,19 @@ export function WebsiteIntelligencePage() {
               </ul>
             </div>
           ) : null}
-          {lastResult.gemini?.parsed?.positive_observations?.length ? (
+          {lastResult.record?.positive_observations?.length ? (
             <div>
-              <h3 className="text-sm font-semibold text-slate-700 mb-1">Positive Observations</h3>
+              <h3 className="text-sm font-semibold text-slate-700 mb-1">Evidence-based positive observations</h3>
               <ul className="list-disc pl-5 text-sm text-slate-600 space-y-1">
-                {lastResult.gemini.parsed.positive_observations.map((p: string, i: number) => (
-                  <li key={i}>{p}</li>
+                {lastResult.record.positive_observations.map((p: any, i: number) => (
+                  <li key={p.id || i}>{p.title} — {p.evidence}</li>
                 ))}
               </ul>
             </div>
           ) : null}
           {lastResult.content && (
             <div className="text-xs text-slate-500">
-              Extracted: {lastResult.content.wordCount} words, {lastResult.content.h1Count} H1, {lastResult.content.images.total} images ({lastResult.content.images.missingAlt} missing alt).
+              Extracted: {lastResult.content.wordCount} words, {lastResult.content.h1Count} H1, {lastResult.content.images.total} images ({lastResult.content.images.missingAlt} without alt attributes in inspected HTML).
               {lastResult.content.metaDescription ? ' Meta description present.' : ' No meta description.'}
             </div>
           )}
@@ -239,7 +294,7 @@ export function WebsiteIntelligencePage() {
             {analysis.overall_score !== null && (
               <div className="mb-3">
                 <div className="flex justify-between text-sm text-slate-600 mb-1">
-                  <span>ArloTech composite score</span>
+                  <span>{analysis.ai_analysis?.technical_score?.methodology ? 'Weighted technical health' : 'Stored legacy score (calculation unverified)'}</span>
                   <span>{analysis.overall_score}/100</span>
                 </div>
                 <div className="h-2 rounded-full bg-slate-100">
@@ -250,13 +305,16 @@ export function WebsiteIntelligencePage() {
                 </div>
               </div>
             )}
+            {analysis.overall_score === null && (
+              <p className="mb-3 text-xs text-amber-700">Technical score unavailable; one or more category scores were not returned.</p>
+            )}
 
             {analysis.category_scores && (
               <div className="mb-3 grid grid-cols-2 gap-1 text-xs text-slate-500">
                 {Object.entries(analysis.category_scores).map(([k, v]) => (
                   <div key={k} className="flex justify-between">
                     <span>{k.replace(/-/g, ' ')}</span>
-                    <span className="font-medium text-slate-700">{String(v ?? '—')}</span>
+                    <span className="font-medium text-slate-700">{String(v ?? 'Unavailable')}</span>
                   </div>
                 ))}
               </div>
@@ -293,6 +351,19 @@ export function WebsiteIntelligencePage() {
             <div className="flex items-center justify-between mb-4">
               <h2 id="analysis-dialog-title" className="text-lg font-semibold text-slate-800">{selected.website_url}</h2>
               <div className="flex gap-2">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => mutation.mutate({
+                    url: selected.website_url,
+                    prospectId: selected.prospect_id,
+                    reanalyze: true,
+                  })}
+                  disabled={mutation.isPending}
+                >
+                  {mutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCw className="h-4 w-4" />}
+                  {mutation.isPending ? 'Analyzing...' : 'Re-analyze'}
+                </Button>
                 <Button variant="secondary" size="sm" onClick={() => handleCopyReport(selected)}><Copy className="h-4 w-4" /></Button>
                 <Button variant="secondary" size="sm" onClick={() => handleDownloadReport(selected)}><Download className="h-4 w-4" /></Button>
                 <button type="button" onClick={() => setSelected(null)} className="p-1 text-slate-500 hover:text-slate-700"><X className="h-5 w-5" /></button>
@@ -302,7 +373,7 @@ export function WebsiteIntelligencePage() {
             {selected.overall_score !== null && (
               <div className="mb-4">
                 <div className="flex justify-between text-sm text-slate-600 mb-1">
-                  <span>ArloTech composite score</span>
+                  <span>{selected.ai_analysis?.technical_score?.methodology ? 'Weighted technical health' : 'Stored legacy score (calculation unverified)'}</span>
                   <span>{selected.overall_score}/100</span>
                 </div>
                 <div className="h-2 rounded-full bg-slate-100">
@@ -310,15 +381,18 @@ export function WebsiteIntelligencePage() {
                 </div>
               </div>
             )}
+            {selected.overall_score === null && (
+              <p className="mb-4 text-sm text-amber-700">Weighted technical health is unavailable because required category scores are missing.</p>
+            )}
 
             {selected.category_scores && (
               <div className="mb-4">
                 <h3 className="text-sm font-semibold text-slate-700 mb-2">Category Scores</h3>
                 <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                  {Object.entries(selected.category_scores).map(([k, v]) => (
+                  {(['performance', 'seo', 'accessibility', 'best-practices'] as const).map((k) => (
                     <div key={k} className="rounded-lg border border-slate-200 p-2 text-center">
                       <p className="text-xs text-slate-500">{k.replace(/-/g, ' ')}</p>
-                      <p className="text-base font-bold text-slate-800">{String(v ?? '—')}</p>
+                      <p className="text-base font-bold text-slate-800">{String(selected.category_scores?.[k] ?? 'Unavailable')}</p>
                     </div>
                   ))}
                 </div>
@@ -326,6 +400,24 @@ export function WebsiteIntelligencePage() {
             )}
 
             <VisualReviewPanel audit={selected.ai_analysis?.visual_audit} />
+            {selected.ai_analysis?.score_explanation && (
+              <p className="mb-4 text-sm text-slate-600">{selected.ai_analysis.score_explanation}</p>
+            )}
+            {selected.ai_analysis?.audit_completeness && (
+              <div className="mb-4 rounded-lg border border-slate-200 p-3">
+                <h3 className="text-sm font-semibold text-slate-700">Audit completeness</h3>
+                <p className="mt-1 text-xs text-slate-600">
+                  {selected.ai_analysis.audit_completeness.completeness_percent}% coverage ·
+                  {' '}{selected.ai_analysis.audit_completeness.inspected_viewport_count}/
+                  {selected.ai_analysis.audit_completeness.requested_viewport_count} PageSpeed viewports inspected.
+                </p>
+                {selected.ai_analysis.audit_completeness.limitations?.length > 0 && (
+                  <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-slate-500">
+                    {selected.ai_analysis.audit_completeness.limitations.map((item: string, index: number) => <li key={index}>{item}</li>)}
+                  </ul>
+                )}
+              </div>
+            )}
 
             <div className="mb-4">
               <h3 className="text-sm font-semibold text-slate-700 mb-2">Findings ({selected.findings?.length ?? 0})</h3>
@@ -334,7 +426,7 @@ export function WebsiteIntelligencePage() {
                   <div key={f.id || i} className="rounded-lg border border-slate-200 p-3">
                     <div className="flex items-center justify-between">
                       <p className="text-sm font-medium text-slate-800">{f.title}</p>
-                      <Badge variant="default">{f.priority}</Badge>
+                      <Badge variant="default">{f.source === 'lighthouse' ? 'Scored Lighthouse finding' : 'HTML inspection'}</Badge>
                     </div>
                     {f.evidence && <p className="mt-1 text-xs text-slate-500">{f.evidence}</p>}
                     {f.explanation && <p className="mt-1 text-xs text-slate-600">{f.explanation}</p>}
@@ -346,12 +438,44 @@ export function WebsiteIntelligencePage() {
               </div>
             </div>
 
+            {selected.ai_analysis?.optimization_opportunities?.length ? (
+              <div className="mb-4">
+                <h3 className="text-sm font-semibold text-slate-700 mb-2">Optimization opportunities (estimated, not scored failures)</h3>
+                <ul className="space-y-2">
+                  {selected.ai_analysis.optimization_opportunities.map((item: any) => (
+                    <li key={item.id} className="rounded-lg border border-slate-200 p-3">
+                      <p className="text-sm font-medium text-slate-800">{item.title}</p>
+                      <p className="mt-1 text-xs text-slate-500">{item.evidence}</p>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+            {selected.ai_analysis?.diagnostics?.length ? (
+              <div className="mb-4">
+                <h3 className="text-sm font-semibold text-slate-700 mb-2">Lighthouse diagnostics (not scored failures)</h3>
+                <ul className="space-y-1 text-sm text-slate-600">
+                  {selected.ai_analysis.diagnostics.map((item: any) => (
+                    <li key={item.id}>{item.title}: {item.evidence}</li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+            {selected.ai_analysis?.recommendations?.length ? (
+              <div className="mb-4">
+                <h3 className="text-sm font-semibold text-slate-700 mb-2">AI-assisted recommendations (not measured findings)</h3>
+                <ul className="list-disc space-y-1 pl-5 text-sm text-slate-600">
+                  {selected.ai_analysis.recommendations.map((item: string, index: number) => <li key={index}>{item}</li>)}
+                </ul>
+              </div>
+            ) : null}
+
             {selected.positive_observations?.length ? (
               <div>
-                <h3 className="text-sm font-semibold text-slate-700 mb-2">Positive Observations</h3>
+                <h3 className="text-sm font-semibold text-slate-700 mb-2">Evidence-based positive observations</h3>
                 <ul className="list-disc pl-5 text-sm text-slate-600 space-y-1">
                   {selected.positive_observations.map((p: any, i: number) => (
-                    <li key={p.id || i}>{p.title || p}</li>
+                    <li key={p.id || i}>{p.title || p}{p.evidence ? ` — ${p.evidence}` : ''}</li>
                   ))}
                 </ul>
               </div>

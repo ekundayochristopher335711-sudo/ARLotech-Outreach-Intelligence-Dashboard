@@ -9,6 +9,17 @@ import {
   type VisualAudit,
   type VisualScreenshot,
 } from '@/lib/visualReview'
+import {
+  buildEvidenceBasedPositiveObservations,
+  calculateTechnicalHealthScore,
+  classifyLighthouseAudits,
+  extractCategoryScores,
+  sanitizePlainText,
+  sanitizeRecommendationList,
+  sanitizeVisualObservations,
+  summarizePageInspectionCoverage,
+} from '@/lib/websiteAudit'
+import { mapWithConcurrency } from '@/lib/mapWithConcurrency'
 
 export interface ExtractedContent {
   url: string
@@ -28,8 +39,13 @@ export interface ExtractedContent {
   textExcerpt: string
   links: { total: number; internal: number; external: number; externalDomains: string[] }
   navigationPages?: Array<{ label: string; url: string }>
-  images: { total: number; missingAlt: number }
+  images: { total: number; missingAlt: number; emptyAlt?: number }
   schema: string[]
+  schemaInspection?: {
+    present: number
+    validJson: number
+    invalidJson: number
+  }
   h1Count: number
   contacts?: { emails: string[]; phones: string[] }
 }
@@ -68,6 +84,7 @@ export interface GeminiResult {
     }>
   } | null
   model: string
+  error?: string
 }
 
 export async function extractContent(url: string): Promise<ExtractedContent> {
@@ -134,28 +151,6 @@ export async function generateGeminiAnalysis(payload: {
   return data as GeminiResult
 }
 
-function scoreToNumber(score: number | null | undefined): number | null {
-  if (score === null || score === undefined) return null
-  return Math.round(score * 100)
-}
-
-function canonicalAuditKey(audit: any) {
-  const id = typeof audit?.id === 'string' ? audit.id : ''
-  if (/unused-javascript/i.test(id)) return 'unused-javascript'
-  if (/legacy-javascript/i.test(id)) return 'legacy-javascript'
-  if (/forced-reflow/i.test(id)) return 'forced-reflow'
-  return id || String(audit?.title ?? '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
-}
-
-function affectedResources(details: any): string[] {
-  const items = Array.isArray(details?.items) ? details.items : []
-  const urls: string[] = items.flatMap((item: any): string[] => {
-    const url = item?.url ?? item?.source?.url ?? item?.node?.snippet ?? item?.node?.selector
-    return typeof url === 'string' && url.trim() ? [url.trim()] : []
-  })
-  return [...new Set(urls)].slice(0, 3)
-}
-
 export async function analyzeWebsite(
   url: string,
   prospectId: string | null = null,
@@ -188,7 +183,7 @@ export async function analyzeWebsite(
         wordCount: 0,
         textExcerpt: '',
         links: { total: 0, internal: 0, external: 0, externalDomains: [] },
-        images: { total: 0, missingAlt: 0 },
+        images: { total: 0, missingAlt: 0, emptyAlt: 0 },
         schema: [],
         h1Count: 0,
       }
@@ -196,22 +191,22 @@ export async function analyzeWebsite(
   }
 
   let pagespeed: PageSpeedResult
-  let pageSpeedError: string | undefined
+  let desktopError: string | undefined
+  let mobileError: string | undefined
   try {
     pagespeed = await runPageSpeed(url, 'desktop')
   } catch (e) {
-    console.warn('PageSpeed desktop failed, retrying mobile:', e)
+    desktopError = e instanceof Error ? e.message : 'PageSpeed desktop analysis failed.'
     try {
       pagespeed = await runPageSpeed(url, 'mobile')
     } catch (e2) {
-      console.warn('PageSpeed mobile failed, continuing without PageSpeed:', e2)
-      pageSpeedError = e2 instanceof Error ? e2.message : 'PageSpeed analysis failed.'
+      mobileError = e2 instanceof Error ? e2.message : 'PageSpeed mobile analysis failed.'
       pagespeed = { id: url, title: url, strategy: 'none', lighthouseResult: { categories: {}, audits: {} } } as PageSpeedResult
     }
   }
-  if (contentExtractionError && pageSpeedError) {
+  if (contentExtractionError && desktopError && mobileError) {
     throw new Error(
-      `Website analysis could not access the site. Content extraction failed: ${contentExtractionError}; PageSpeed failed: ${pageSpeedError}`,
+      `Website analysis could not access the site. Content extraction failed: ${contentExtractionError}; PageSpeed desktop failed: ${desktopError}; PageSpeed mobile failed: ${mobileError}`,
     )
   }
 
@@ -220,10 +215,18 @@ export async function analyzeWebsite(
     page_label: string
     viewport: 'desktop' | 'mobile'
     screenshot: VisualScreenshot | null
+    inspection_status: 'completed' | 'failed'
     error?: string
   }> = []
-  let discoveredPageCount = 0
-  let gemini: GeminiResult
+  const lighthousePageResults: Array<{
+    page_url: string
+    page_label: string
+    viewport: 'desktop' | 'mobile'
+    status: 'completed' | 'failed'
+    error?: string
+  }> = []
+  let discoveredPageCount = 1
+  let discoveredPageUrls = [content.finalUrl || url]
   if (includeVisualReview) {
     const pages = selectVisualReviewPages(
       content.finalUrl || url,
@@ -231,137 +234,125 @@ export async function analyzeWebsite(
       MAX_VISUAL_REVIEW_PAGES,
     )
     discoveredPageCount = pages.length
-    const addScreenshot = (
-      page: { url: string; label: string },
-      viewport: 'desktop' | 'mobile',
-      result: PageSpeedResult | null,
-      error?: string,
-    ) => {
-      const image = extractPageSpeedScreenshot(result?.lighthouseResult.fullPageScreenshot)
-      visualPages.push({
-        page_url: page.url,
-        page_label: page.label,
-        viewport,
-        screenshot: image ? { ...image, page_url: page.url, page_label: page.label, viewport } : null,
-        ...(!image ? { error: error || 'PageSpeed did not return a usable screenshot.' } : {}),
-      })
-    }
-
-    const home = pages[0]
-    addScreenshot(
-      home,
-      pagespeed.strategy === 'mobile' ? 'mobile' : 'desktop',
-      pagespeed,
-      'The primary PageSpeed result did not include a usable screenshot.',
+    discoveredPageUrls = pages.map((page) => page.url)
+    const primaryViewport = pagespeed.strategy === 'mobile' ? 'mobile' : 'desktop'
+    const requests = pages.flatMap((page, pageIndex) =>
+      (['desktop', 'mobile'] as const).map((viewport) => ({ page, pageIndex, viewport })),
     )
-
-    const mobilePages = pagespeed.strategy === 'mobile' ? pages.slice(1) : pages
-    const mobileResults = await Promise.all(mobilePages.map(async (page) => {
+    const results = await mapWithConcurrency(requests, 2, async ({ page, pageIndex, viewport }) => {
+      if (pageIndex === 0 && viewport === primaryViewport && pagespeed.strategy !== 'none') {
+        return { page, viewport, result: pagespeed, error: undefined }
+      }
+      if (pageIndex === 0 && pagespeed.strategy === 'none') {
+        const error = viewport === 'desktop' ? desktopError : mobileError
+        return { page, viewport, result: null, error: error || 'PageSpeed inspection failed.' }
+      }
+      if (pageIndex === 0 && viewport === 'desktop' && desktopError) {
+        return { page, viewport, result: null, error: desktopError }
+      }
+      if (pageIndex === 0 && viewport === 'mobile' && mobileError) {
+        return { page, viewport, result: null, error: mobileError }
+      }
       try {
-        return { page, result: await runPageSpeed(page.url, 'mobile') }
+        return { page, viewport, result: await runPageSpeed(page.url, viewport), error: undefined }
       } catch (error) {
         return {
           page,
+          viewport,
           result: null,
           error: formatVisualCaptureError(error),
         }
       }
-    }))
-    for (const { page, result, error } of mobileResults) {
-      addScreenshot(page, 'mobile', result, error)
-    }
-
-    const screenshotPages: VisualScreenshot[] = visualPages.flatMap((page) =>
-      page.screenshot ? [page.screenshot] : [],
-    )
-    gemini = await generateGeminiAnalysis({
-      url,
-      content,
-      pagespeed: { ...pagespeed, lighthouseResult: { ...pagespeed.lighthouseResult, fullPageScreenshot: undefined } },
-      visualScreenshots: screenshotPages,
     })
-  } else {
-    gemini = await generateGeminiAnalysis({ url, content, pagespeed })
-  }
 
-  const cats = pagespeed?.lighthouseResult?.categories || {}
-  const categoryScores: Record<string, number | null> = {}
-  for (const [k, v] of Object.entries(cats)) {
-    categoryScores[k] = scoreToNumber((v as any)?.score)
-  }
-
-  const perfScore = categoryScores.performance ?? null
-  const seoScore = categoryScores.seo ?? null
-  const scores = Object.values(categoryScores).filter((n): n is number => n !== null)
-  const hasPageSpeed = scores.length > 0
-  const overall = hasPageSpeed
-    ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length)
-    : null
-
-  const audits = pagespeed?.lighthouseResult?.audits || {}
-  const auditCategories = new Map<string, string>()
-  for (const [category, details] of Object.entries(cats)) {
-    for (const auditRef of (details as any)?.auditRefs ?? []) {
-      if (typeof auditRef?.id === 'string') auditCategories.set(auditRef.id, category)
+    for (const { page, viewport, result, error } of results) {
+      const screenshot = extractPageSpeedScreenshot(result?.lighthouseResult.fullPageScreenshot)
+      const failure = error ? formatVisualCaptureError(error) : undefined
+      visualPages.push({
+        page_url: page.url,
+        page_label: page.label,
+        viewport,
+        screenshot: screenshot ? { ...screenshot, page_url: page.url, page_label: page.label, viewport } : null,
+        inspection_status: result ? 'completed' : 'failed',
+        ...(!result
+          ? { error: failure || 'PageSpeed inspection failed.' }
+          : !screenshot
+            ? { error: 'PageSpeed completed, but did not return a usable screenshot.' }
+            : {}),
+      })
+      lighthousePageResults.push({
+        page_url: page.url,
+        page_label: page.label,
+        viewport,
+        status: result ? 'completed' : 'failed',
+        ...(!result ? { error: failure || 'PageSpeed inspection failed.' } : {}),
+      })
     }
-  }
-  const failedAudits = new Map<string, any>()
-  for (const [auditId, audit] of Object.entries(audits) as Array<[string, any]>) {
-    if (
-      typeof audit?.score !== 'number' ||
-      audit.score >= 1 ||
-      ['informative', 'manual', 'notApplicable', 'error'].includes(audit.scoreDisplayMode)
-    ) continue
-    const key = canonicalAuditKey({ ...audit, id: auditId })
-    if (key && !failedAudits.has(key)) failedAudits.set(key, { ...audit, id: auditId })
+  } else {
+    lighthousePageResults.push({
+      page_url: content.finalUrl || url,
+      page_label: 'Homepage',
+      viewport: pagespeed.strategy === 'mobile' ? 'mobile' : 'desktop',
+      status: pagespeed.strategy === 'none' ? 'failed' : 'completed',
+      ...(pagespeed.strategy === 'none' ? {
+        error: desktopError || mobileError || 'PageSpeed inspection failed.',
+      } : {}),
+    })
   }
 
-  const findings: any[] = [
-    ...[...failedAudits.values()].map((audit: any) => ({
-      id: `ps-${audit.id}`,
-      audit_id: audit.id,
-      source: 'lighthouse',
-      category: auditCategories.get(audit.id) ?? null,
-      title: audit.title,
-      evidence: audit.displayValue || '',
-      display_value: audit.displayValue || '',
-      explanation: audit.description || '',
-      recommended_fix: lighthouseRecommendation(audit.id, audit.title || 'this issue'),
-      affected_resources: affectedResources(audit.details),
-      lighthouse_score_pct: scoreToNumber(audit.score),
-      opportunity_ms: audit.details?.overallSavingsMs ?? null,
-      opportunity_bytes: audit.details?.overallSavingsBytes ?? null,
-      priority: audit.score < 0.5 ? 'high' : audit.score < 0.9 ? 'medium' : 'low',
+  const categoryScores = extractCategoryScores(pagespeed)
+  const overall = calculateTechnicalHealthScore(categoryScores)
+  const perfScore = categoryScores.performance
+  const seoScore = categoryScores.seo
+  const lighthouseFindings = classifyLighthouseAudits(pagespeed).map((finding) => ({
+    ...finding,
+    recommended_fix: lighthouseRecommendation(finding.audit_id, finding.title),
+  }))
+  const findings: Array<Record<string, unknown>> = lighthouseFindings
+    .filter((finding) => finding.classification === 'verified_issue')
+  const optimizationOpportunities = lighthouseFindings
+    .filter((finding) => finding.classification === 'optimization_opportunity')
+  const diagnostics = lighthouseFindings
+    .filter((finding) => finding.classification === 'diagnostic')
+
+  if (!contentExtractionError && content.title?.trim() === '') {
+    findings.push({
+      id: 'html-title',
+      source: 'html_inspection',
+      classification: 'observed_issue',
+      title: 'HTML title element is empty',
+      evidence: 'The extracted HTML has no non-empty page title.',
+      explanation: 'The static HTML inspection did not find a usable title element.',
+      recommended_fix: 'Review the rendered page title and add a descriptive title if it is also missing there.',
+      priority: 'medium',
       confidence: 'high',
       status: 'open',
-    })),
-  ]
-
-  ;(gemini.parsed?.recommendations || []).slice(0, 8).forEach((r: string, idx: number) => {
+    })
+  } else if (!contentExtractionError && !content.title?.trim()) {
     findings.push({
-      id: `ai-${idx}`,
-      source: 'ai',
-      title: r,
-      evidence: null,
-      explanation: 'AI-assisted suggestion; not a measured Lighthouse or direct HTML observation.',
-      recommended_fix: r,
-      potential_benefit: '',
+      id: 'html-title',
+      source: 'html_inspection',
+      classification: 'observed_issue',
+      title: 'HTML title element is missing',
+      evidence: 'The extracted HTML has no title.',
+      explanation: 'The static HTML inspection did not find a title element.',
+      recommended_fix: 'Confirm the title is absent in the rendered page, then add a descriptive title.',
       priority: 'medium',
-      confidence: 'medium',
+      confidence: 'high',
       status: 'open',
     })
-  })
+  }
 
   if (!contentExtractionError && content.h1Count === 0) {
     findings.push({
       id: 'content-h1',
-      source: 'content',
-      title: 'Missing H1 heading',
-      evidence: 'No H1 tag found',
-      explanation: 'Page has no H1 heading, which is important for SEO.',
-      recommended_fix: 'Add a single descriptive H1 heading.',
-      potential_benefit: 'Improved SEO and accessibility.',
-      priority: 'high',
+      source: 'html_inspection',
+      classification: 'observed_issue',
+      title: 'No H1 heading was found in the extracted HTML',
+      evidence: 'The static HTML inspection found zero H1 elements.',
+      explanation: 'This is a source-HTML observation; client-rendered content may not be represented.',
+      recommended_fix: 'Check the rendered page before changing its heading structure.',
+      priority: 'medium',
       confidence: 'high',
       status: 'open',
     })
@@ -369,39 +360,138 @@ export async function analyzeWebsite(
   if (!contentExtractionError && content.images.missingAlt > 0) {
     findings.push({
       id: 'content-alt',
-      source: 'content',
-      title: `${content.images.missingAlt} images missing alt text`,
-      evidence: `${content.images.missingAlt} of ${content.images.total} images`,
-      explanation: 'Images without alt text hurt accessibility and SEO.',
-      recommended_fix: 'Add descriptive alt attributes to all images.',
-      potential_benefit: 'Better accessibility and image SEO.',
+      source: 'html_inspection',
+      classification: 'observed_issue',
+      title: `${content.images.missingAlt} images have no alt attribute`,
+      evidence: `${content.images.missingAlt} of ${content.images.total} inspected HTML images have no alt attribute.`,
+      explanation: 'This describes image markup in the extracted HTML; an empty alt value may be appropriate for decorative images.',
+      recommended_fix: 'Review each image in context and add meaningful alternative text where the image conveys information.',
       priority: 'medium',
       confidence: 'high',
       status: 'open',
     })
   }
-  if (!contentExtractionError && !content.metaDescription) {
+  if (!contentExtractionError && !content.metaDescription?.trim()) {
     findings.push({
       id: 'content-meta',
-      source: 'content',
-      title: 'Missing meta description',
-      evidence: 'No meta description found',
-      explanation: 'Meta description helps search engines and click-through rates.',
-      recommended_fix: 'Add a concise meta description (120-160 chars).',
-      potential_benefit: 'Improved SERP click-through rate.',
-      priority: 'medium',
+      source: 'html_inspection',
+      classification: 'observed_issue',
+      title: 'No meta description was found in the extracted HTML',
+      evidence: 'The static HTML inspection found no non-empty meta description.',
+      explanation: 'This is a source-HTML observation; it does not establish how search engines will display the page.',
+      recommended_fix: 'Confirm the rendered metadata and search appearance before adding a description.',
+      priority: 'low',
       confidence: 'high',
       status: 'open',
     })
   }
 
-  const positiveObservations = (gemini.parsed?.positive_observations || []).map((p: string, idx: number) => ({
-    id: `pos-${idx}`,
-    title: p,
-    evidence: 'AI-generated',
-    potential_benefit: '',
-    priority: 'low',
-  }))
+  const positiveObservations = buildEvidenceBasedPositiveObservations(content, categoryScores)
+  const inspectionCoverage = summarizePageInspectionCoverage(
+    discoveredPageUrls,
+    lighthousePageResults,
+    includeVisualReview ? 2 : 1,
+  )
+  const inspectedViewports = inspectionCoverage.inspected_viewport_count
+  const requestedViewports = inspectionCoverage.requested_viewport_count
+  const missingCategories = Object.entries(categoryScores)
+    .filter(([, score]) => score === null)
+    .map(([category]) => category)
+  const limitations = [
+    ...(missingCategories.length ? [`Lighthouse did not return valid scores for: ${missingCategories.join(', ')}.`] : []),
+    ...(contentExtractionError ? [`HTML extraction failed: ${contentExtractionError}`] : []),
+    ...(desktopError && pagespeed.strategy === 'mobile'
+      ? ['Desktop PageSpeed failed; the primary technical scores are from the mobile run.']
+      : []),
+    ...(!includeVisualReview ? ['Only the primary page was assessed; multi-page visual review was not requested.'] : []),
+    ...(includeVisualReview && discoveredPageCount > 0
+      ? [`Visual review was limited to ${discoveredPageCount} same-origin page(s) and initial-load screenshots.`]
+      : []),
+    'Sitemap and robots.txt availability, broken links, JavaScript-rendered states, and interactive controls were not independently tested.',
+  ]
+  const auditCompleteness = {
+    status: missingCategories.length === 0 && !contentExtractionError && inspectedViewports === requestedViewports
+      ? 'complete'
+      : inspectedViewports > 0 || !contentExtractionError
+        ? 'partial'
+        : 'failed',
+    ...inspectionCoverage,
+    missing_categories: missingCategories,
+    limitations,
+  }
+
+  let gemini: GeminiResult = {
+    text: '',
+    parsed: null,
+    model: 'unavailable',
+  }
+  try {
+    const visualScreenshots = visualPages.flatMap((page) => page.screenshot ? [page.screenshot] : [])
+    gemini = await generateGeminiAnalysis({
+      url,
+      content,
+      pagespeed: { ...pagespeed, lighthouseResult: { ...pagespeed.lighthouseResult, fullPageScreenshot: undefined } },
+      ...(visualScreenshots.length ? { visualScreenshots } : {}),
+    })
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : 'Gemini analysis failed.'
+    console.warn('AI analysis unavailable; saving measured audit data without AI analysis:', detail)
+    gemini = { text: '', parsed: null, model: 'unavailable', error: detail }
+  }
+
+  const scoreExplanation = overall === null
+    ? `A technical health score is unavailable because Lighthouse did not return valid scores for every required category${missingCategories.length ? ` (${missingCategories.join(', ')})` : ''}.`
+    : `Technical health score: ${overall}/100, calculated from Lighthouse category scores using Performance 30%, SEO 25%, Accessibility 25%, and Best Practices 20%.`
+  const parsedGemini = gemini.parsed && typeof gemini.parsed === 'object'
+    ? {
+        summary: sanitizePlainText(gemini.parsed.summary, 1200),
+        recommendations: sanitizeRecommendationList(gemini.parsed.recommendations),
+        visual_observations: sanitizeVisualObservations(
+          gemini.parsed.visual_observations,
+          visualPages.flatMap((page) => page.screenshot
+            ? [{ page_url: page.page_url, viewport: page.viewport }]
+            : []),
+        ),
+      }
+    : null
+  gemini = { ...gemini, parsed: parsedGemini }
+  const aiSummary = {
+    ...(parsedGemini?.summary ? { summary: parsedGemini.summary } : {}),
+    score_explanation: scoreExplanation,
+    recommendations: parsedGemini?.recommendations ?? [],
+    text: gemini.text.slice(0, 6000),
+    model: gemini.model,
+    ...(gemini.error ? { error: gemini.error } : {}),
+    technical_score: {
+      methodology: 'Weighted Lighthouse category score',
+      weights: { performance: 30, seo: 25, accessibility: 25, 'best-practices': 20 },
+      value: overall,
+      missing_categories: missingCategories,
+    },
+    audit_completeness: auditCompleteness,
+    html_inspection: {
+      requested_url: content.url,
+      final_url: content.finalUrl,
+      http_status: content.status,
+      title_present: !!content.title?.trim(),
+      meta_description_present: !!content.metaDescription?.trim(),
+      h1_count: content.h1Count,
+      image_count: content.images.total,
+      images_without_alt_attribute: content.images.missingAlt,
+      images_with_empty_alt: content.images.emptyAlt ?? null,
+      canonical_present: !!content.canonical,
+      viewport_meta_present: !!content.viewport,
+      structured_data: content.schemaInspection ?? {
+        present: content.schema.length,
+        validJson: null,
+        invalidJson: null,
+      },
+      discovered_same_origin_navigation_count: content.navigationPages?.length ?? 0,
+    },
+    optimization_opportunities: optimizationOpportunities,
+    diagnostics,
+    lighthouse_page_results: lighthousePageResults,
+  }
 
   const { data, error } = await supabase
     .from('website_analyses')
@@ -417,10 +507,10 @@ export async function analyzeWebsite(
       category_scores: categoryScores,
       findings,
       positive_observations: positiveObservations,
-      ai_analysis: gemini.parsed ?? { text: gemini.text },
+      ai_analysis: aiSummary,
       analysis_status: 'completed',
       error_message: null,
-      analysis_provider: 'pagespeed+gemini',
+      analysis_provider: gemini.model === 'unavailable' ? 'pagespeed' : 'pagespeed+gemini',
       analyzed_at: new Date().toISOString(),
     })
     .select()
@@ -441,6 +531,7 @@ export async function analyzeWebsite(
           page_label: page.page_label,
           viewport: page.viewport,
           image_path: null,
+          inspection_status: page.inspection_status,
           error: page.error,
         }
       }
@@ -460,16 +551,18 @@ export async function analyzeWebsite(
         page_url: page.page_url,
         page_label: page.page_label,
         viewport: page.viewport,
+        inspection_status: page.inspection_status,
         image_path: uploadError ? null : imagePath,
         ...(uploadError ? { error: `Screenshot storage failed: ${uploadError.message}` } : {}),
+        ...(!uploadError && page.error ? { error: page.error } : {}),
       }
     }))
-    const availablePageViewports = new Set(
-      visualPages.filter((page) => page.screenshot).map((page) => `${page.page_url}|${page.viewport}`),
+    const savedPageViewports = new Set(
+      savedPages.filter((page) => page.image_path).map((page) => `${page.page_url}|${page.viewport}`),
     )
-    const observations = (gemini.parsed?.visual_observations ?? [])
+    const observations = (parsedGemini?.visual_observations ?? [])
       .filter((observation) =>
-        availablePageViewports.has(`${observation.page_url}|${observation.viewport}`) &&
+        savedPageViewports.has(`${observation.page_url}|${observation.viewport}`) &&
         typeof observation.title === 'string' &&
         observation.title.trim().length > 0 &&
         typeof observation.evidence === 'string' &&
@@ -498,13 +591,22 @@ export async function analyzeWebsite(
       pages: savedPages,
       observations,
       discovered_page_count: discoveredPageCount,
+      requested_viewport_count: requestedViewports,
+      inspected_viewport_count: inspectedViewports,
+      completeness_percent: inspectionCoverage.completeness_percent,
     }
     const { data: updatedRecord, error: updateError } = await supabase
       .from('website_analyses')
       .update({
         ai_analysis: {
-          ...(gemini.parsed ?? {}),
-          text: gemini.text,
+          ...aiSummary,
+          audit_completeness: {
+            ...auditCompleteness,
+            saved_screenshot_count: successfulScreenshots,
+            status: visualAudit.status === 'completed' && auditCompleteness.status === 'complete'
+              ? 'complete'
+              : 'partial',
+          },
           visual_audit: visualAudit,
         },
       })

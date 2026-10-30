@@ -47,7 +47,8 @@ describe('website audit PDF', () => {
       prospect: { business_name: 'Unverified CRM Name', business_name_verified: false },
     }))
 
-    expect(report).toContain('Average Lighthouse category score')
+    expect(report).toContain('Weighted technical health')
+    expect(report).toContain('A weighted technical health score is unavailable')
     expect(report).toContain('VERIFIED OBSERVATIONS (9)')
     expect(report).toContain('Prepared for: example.com')
     expect(report).not.toContain('Unverified CRM Name')
@@ -65,5 +66,61 @@ describe('website audit PDF', () => {
     }, { businessName: 'Example Legal', verified: true }))
 
     expect(report).toContain('Prepared for: Example Legal')
+  })
+
+  it('includes the exact optimization opportunity and incomplete capture limitation for the attached report', () => {
+    const report = pdfText(createWebsiteAnalysisPdfBase64({
+      website_url: 'https://www.amigodev.com.ng',
+      analyzed_at: '2026-10-30T12:00:00.000Z',
+      overall_score: 100,
+      category_scores: {
+        performance: 100,
+        seo: 100,
+        accessibility: 100,
+        'best-practices': 100,
+      },
+      findings: [],
+      positive_observations: [],
+      ai_analysis: {
+        audit_completeness: {
+          status: 'partial',
+          completeness_percent: 75,
+          inspected_viewport_count: 3,
+          requested_viewport_count: 4,
+          limitations: ['One screenshot failed because the audit Edge Function returned BOOT_ERROR.'],
+        },
+        optimization_opportunities: [{
+          id: 'unused-javascript',
+          source: 'lighthouse',
+          classification: 'optimization_opportunity',
+          title: 'Reduce unused JavaScript',
+          evidence: '23 KiB estimated savings',
+          display_value: '23 KiB savings',
+          opportunity_bytes: 23 * 1024,
+          opportunity_ms: 50,
+          affected_resources: ['https://www.amigodev.com.ng/app.js'],
+        }],
+        visual_audit: {
+          status: 'partial',
+          discovered_page_count: 2,
+          pages: [{
+            page_url: 'https://www.amigodev.com.ng/services',
+            page_label: 'Services',
+            viewport: 'mobile',
+            image_path: null,
+            inspection_status: 'failed',
+            error: 'The audit Edge Function returned BOOT_ERROR.',
+          }],
+          observations: [],
+        },
+      },
+    }))
+
+    expect(report).toContain('Reduce unused JavaScript')
+    expect(report).toContain('23 KiB savings')
+    expect(report).toContain('50 ms')
+    expect(report).toContain('not confirmed defects')
+    expect(report).toContain('BOOT_ERROR')
+    expect(report).toContain('100 / 100')
   })
 })

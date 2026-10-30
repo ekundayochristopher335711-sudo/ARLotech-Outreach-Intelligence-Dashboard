@@ -8,6 +8,7 @@ interface VisualPageView {
   page_label: string
   viewport: 'desktop' | 'mobile'
   image_url: string | null
+  inspection_status?: 'completed' | 'failed'
   error?: string
 }
 
@@ -67,6 +68,8 @@ export function VisualReviewPanel({ audit }: { audit?: VisualAudit | null }) {
     : audit.status === 'partial'
       ? 'Partial screenshots'
       : 'Screenshots unavailable'
+  const inspectionCount = audit.inspected_viewport_count
+  const requestedCount = audit.requested_viewport_count
 
   return (
     <section className="space-y-3 rounded-lg border border-slate-200 p-4" aria-labelledby={headingId}>
@@ -81,6 +84,12 @@ export function VisualReviewPanel({ audit }: { audit?: VisualAudit | null }) {
         <p className="mt-1 text-xs text-slate-500">
           Initial-load screenshots only. Menus, forms, and other interactive states were not tested.
         </p>
+        {typeof inspectionCount === 'number' && typeof requestedCount === 'number' && (
+          <p className="mt-1 text-xs text-slate-500">
+            Lighthouse viewports completed: {inspectionCount}/{requestedCount}
+            {typeof audit.completeness_percent === 'number' ? ` (${audit.completeness_percent}% coverage)` : ''}.
+          </p>
+        )}
         {audit.discovered_page_count === 1 && (
           <p className="mt-1 text-xs text-amber-700">
             No additional same-site page links were found in the initial HTML. JavaScript-rendered navigation may require a browser-based crawl.
@@ -109,6 +118,9 @@ export function VisualReviewPanel({ audit }: { audit?: VisualAudit | null }) {
                 </div>
                 <Badge variant="default">{page.viewport}</Badge>
               </div>
+              <p className="px-3 pb-2 text-xs text-slate-500">
+                Lighthouse: {page.inspection_status ?? 'not recorded'}
+              </p>
               {page.image_url ? (
                 <a href={page.image_url} target="_blank" rel="noreferrer" aria-label={`Open full ${page.viewport} screenshot of ${page.page_url}`}>
                   <img

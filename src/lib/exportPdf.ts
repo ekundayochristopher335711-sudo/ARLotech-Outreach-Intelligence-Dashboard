@@ -1,5 +1,6 @@
 import jsPDF from 'jspdf'
 import { lighthouseRecommendation } from '@/lib/lighthouseRecommendations'
+import { calculateTechnicalHealthScore, LIGHTHOUSE_CATEGORY_WEIGHTS } from '@/lib/websiteAudit'
 
 const PAGE_WIDTH = 210
 const PAGE_HEIGHT = 297
@@ -39,6 +40,7 @@ interface PdfMessage {
 interface PdfFinding {
   id?: string | null
   title?: string | null
+  classification?: string | null
   priority?: string | null
   evidence?: string | null
   explanation?: string | null
@@ -315,7 +317,12 @@ function normalizedFindingKey(finding: PdfFinding) {
 
 function findingSource(finding: PdfFinding): NormalizedPdfFinding['sourceLabel'] {
   if (finding.source === 'lighthouse' || finding.id?.startsWith('ps-')) return 'Measured'
-  if (finding.source === 'content' || finding.id?.startsWith('content-')) return 'Page inspection'
+  if (
+    finding.source === 'content' ||
+    finding.source === 'html_inspection' ||
+    finding.id?.startsWith('content-') ||
+    finding.id?.startsWith('html-')
+  ) return 'Page inspection'
   if (finding.source === 'ai' || finding.id?.startsWith('ai-') || finding.evidence === 'AI-generated') {
     return 'AI-assisted suggestion'
   }
@@ -346,7 +353,7 @@ function formatOpportunity(finding: PdfFinding) {
       : `${Math.round(finding.opportunity_ms)} ms`)
   }
   if (typeof finding.opportunity_bytes === 'number' && finding.opportunity_bytes > 0) {
-    values.push(`${(finding.opportunity_bytes / 1024).toFixed(0)} KB`)
+    values.push(`${(finding.opportunity_bytes / 1024).toFixed(0)} KiB`)
   }
   return values.length ? `Estimated opportunity: ${values.join(' · ')}` : null
 }
@@ -397,17 +404,30 @@ function buildWebsiteAnalysisPdf(
     : hostname === 'Website not recorded'
       ? 'Not recorded'
       : `https://${url}`
-  const categoryScores = rec.category_scores && typeof rec.category_scores === 'object'
+  const storedCategoryScores = rec.category_scores && typeof rec.category_scores === 'object'
     ? Object.entries(rec.category_scores).filter((entry): entry is [string, number] =>
         typeof entry[1] === 'number' && Number.isFinite(entry[1]),
       )
     : []
-  const scoreIsCalculated = categoryScores.length > 0
-  const score = scoreIsCalculated
-    ? Math.round(categoryScores.reduce((total, [, value]) => total + value, 0) / categoryScores.length)
-    : typeof rec.overall_score === 'number' && Number.isFinite(rec.overall_score)
-      ? rec.overall_score
+  const scoreInputs = Object.fromEntries(
+    Object.keys(LIGHTHOUSE_CATEGORY_WEIGHTS).map((category) => [
+      category,
+      typeof rec.category_scores?.[category] === 'number' ? rec.category_scores[category] : null,
+    ]),
+  ) as Record<keyof typeof LIGHTHOUSE_CATEGORY_WEIGHTS, number | null>
+  const weightedScore = calculateTechnicalHealthScore(scoreInputs)
+  const scoreIsCalculated = weightedScore !== null
+  const hasLegacyStoredScore = storedCategoryScores.length === 0 &&
+    typeof rec.overall_score === 'number' &&
+    Number.isFinite(rec.overall_score)
+  const score = weightedScore ?? (hasLegacyStoredScore ? rec.overall_score : null)
+  const categoryScores = Object.keys(LIGHTHOUSE_CATEGORY_WEIGHTS).map((category) => {
+    const value = typeof rec.category_scores?.[category] === 'number' &&
+      Number.isFinite(rec.category_scores[category])
+      ? rec.category_scores[category]
       : null
+    return [category, value] as const
+  })
   const allFindings: PdfFinding[] = Array.isArray(rec.findings) ? rec.findings : []
   const uniqueFindings = normalizePdfFindings(allFindings)
   const measuredFindings = uniqueFindings.filter(
@@ -438,6 +458,21 @@ function buildWebsiteAnalysisPdf(
     ? rec.positive_observations
     : []
   const aiAnalysis = rec.ai_analysis && typeof rec.ai_analysis === 'object' ? rec.ai_analysis : {}
+  const auditCompleteness = aiAnalysis.audit_completeness && typeof aiAnalysis.audit_completeness === 'object'
+    ? aiAnalysis.audit_completeness
+    : null
+  const aiRecommendations: string[] = Array.isArray(aiAnalysis.recommendations)
+    ? aiAnalysis.recommendations.filter((item: unknown): item is string => typeof item === 'string' && !!item.trim())
+    : []
+  const optimizationOpportunities: PdfFinding[] = Array.isArray(aiAnalysis.optimization_opportunities)
+    ? aiAnalysis.optimization_opportunities.filter((item: unknown): item is PdfFinding => {
+        if (!item || typeof item !== 'object') return false
+        const finding = item as Record<string, unknown>
+        return finding.classification === 'optimization_opportunity' &&
+          typeof finding.title === 'string' &&
+          typeof finding.evidence === 'string'
+      })
+    : []
   const visualAudit = aiAnalysis.visual_audit && typeof aiAnalysis.visual_audit === 'object'
     ? aiAnalysis.visual_audit
     : null
@@ -446,15 +481,15 @@ function buildWebsiteAnalysisPdf(
 
   report.addSection('Assessment at a glance')
   report.addMetricCards([
-    ['Average Lighthouse category score', score === null ? 'Not available' : `${score} / 100`],
+    [hasLegacyStoredScore ? 'Stored legacy score' : 'Weighted technical health', score === null ? 'Unavailable' : `${score} / 100`],
     ['Verified observations shown', primaryFindings.length],
   ])
   report.addParagraph(
     score === null
-      ? 'A Lighthouse category average was unavailable for this assessment. The findings below are reported separately and do not imply a numeric overall score.'
+      ? 'A weighted technical health score is unavailable because at least one required Lighthouse category score is missing or invalid. The findings below are reported separately and do not imply a numeric overall score.'
       : scoreIsCalculated
-        ? `The ArloTech composite score is the rounded arithmetic mean of the available Lighthouse category scores (${categoryScores.map(([key, value]) => `${key.replace(/-/g, ' ')} ${value}`).join(', ')}). It summarizes those measurements; it is not a count of issues, a Lighthouse metric, or an independent quality certification.`
-        : `A score of ${score} / 100 was stored for this earlier assessment, but its category scores are unavailable, so its calculation cannot be reconstructed from the saved data.`,
+        ? `The weighted technical health score uses Performance 30%, SEO 25%, Accessibility 25%, and Best Practices 20% (${categoryScores.map(([key, value]) => `${key.replace(/-/g, ' ')} ${value === null ? 'unavailable' : value}`).join(', ')}). It summarizes these Lighthouse measurements; it is not a count of issues or an independent quality certification.`
+        : `This older record contains a stored score of ${score} / 100, but its category-level scores are unavailable, so its calculation cannot be verified.`,
     { size: 8.5 },
   )
 
@@ -464,14 +499,32 @@ function buildWebsiteAnalysisPdf(
     { size: 8.5 },
   )
 
-  if (categoryScores.length > 0) {
+  if (storedCategoryScores.length > 0) {
     report.addSection('PageSpeed category scores')
     report.addMetricCards(
       categoryScores.map(([key, value]) => [
         key.replace(/-/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase()),
-        `${value} / 100`,
+        value === null ? 'Unavailable' : `${value} / 100`,
       ]),
     )
+  }
+
+  if (auditCompleteness) {
+    report.addSection('Audit completeness and limitations')
+    if (typeof auditCompleteness.completeness_percent === 'number') {
+      report.addParagraph(`Inspection coverage: ${auditCompleteness.completeness_percent}%`, { size: 8.5, bold: true })
+    }
+    if (typeof auditCompleteness.inspected_viewport_count === 'number' &&
+      typeof auditCompleteness.requested_viewport_count === 'number') {
+      report.addParagraph(
+        `PageSpeed viewports inspected: ${auditCompleteness.inspected_viewport_count} of ${auditCompleteness.requested_viewport_count}.`,
+        { size: 8 },
+      )
+    }
+    const limitations: string[] = Array.isArray(auditCompleteness.limitations)
+      ? auditCompleteness.limitations.filter((item: unknown): item is string => typeof item === 'string')
+      : []
+    limitations.forEach((limitation) => report.addParagraph(`- ${limitation}`, { size: 7.5, color: MUTED }))
   }
 
   report.addSection(`Verified observations (${findings.length})`)
@@ -522,12 +575,42 @@ function buildWebsiteAnalysisPdf(
     })
   }
 
-  if (additionalRecommendations.length > 0) {
-    report.addSection(`Additional recommendations to validate (${additionalRecommendations.length})`)
+  report.addSection(`Optimization opportunities (${optimizationOpportunities.length})`)
+  if (optimizationOpportunities.length === 0) {
+    report.addParagraph('No separately classified Lighthouse optimization opportunities were recorded.')
+  } else {
+    report.addParagraph(
+      'These are potential improvements, not confirmed defects. Savings are Lighthouse estimates under test conditions.',
+      { size: 8, color: MUTED },
+    )
+    optimizationOpportunities.forEach((finding, index) => {
+      report.ensureSpace(18)
+      report.addParagraph(`${index + 1}. ${finding.title}`, { bold: true, color: NAVY, size: 9 })
+      report.addParagraph(`Optimization opportunity  |  ${finding.category?.replace(/-/g, ' ') || 'Lighthouse'}`, {
+        size: 7.5,
+        color: TEAL,
+      })
+      report.addParagraph(`Observed: ${finding.display_value || finding.evidence}`, { size: 8 })
+      const opportunity = formatOpportunity(finding)
+      if (opportunity) report.addParagraph(opportunity, { size: 7.5, color: MUTED })
+      if (finding.recommended_fix) {
+        report.addParagraph(`Suggested review: ${finding.recommended_fix}`, { size: 8 })
+      }
+      for (const resource of finding.affected_resources?.filter(Boolean).slice(0, 3) ?? []) {
+        report.addParagraph(`Affected resource: ${resource}`, { size: 7, color: MUTED, indent: 3 })
+      }
+    })
+  }
+
+  if (additionalRecommendations.length > 0 || aiRecommendations.length > 0) {
+    report.addSection(`AI-assisted recommendations to validate (${additionalRecommendations.length + aiRecommendations.length})`)
     report.addParagraph(
       'These are hypotheses for discussion, not measured findings or required changes. We recommend validating each against the rendered site, its configuration, and your business goals.',
       { size: 8, color: MUTED },
     )
+    aiRecommendations.forEach((suggestion) => {
+      report.addParagraph(useTeamVoice(suggestion), { size: 8, bold: true })
+    })
     additionalRecommendations.forEach((finding) => {
       const suggestion = useTeamVoice(finding.title || finding.recommended_fix || 'Review this suggestion manually.')
       report.addParagraph(suggestion, { size: 8, bold: true })
@@ -597,6 +680,9 @@ function buildWebsiteAnalysisPdf(
       report.addSection('Observed strengths')
       measuredPositives.slice(0, 4).forEach((item) => {
         report.addParagraph(`- ${typeof item === 'string' ? item : item.title || 'Positive observation'}`, { size: 8 })
+        if (typeof item === 'object' && item.evidence) {
+          report.addParagraph(item.evidence, { size: 7.5, color: MUTED, indent: 3 })
+        }
       })
     }
   }

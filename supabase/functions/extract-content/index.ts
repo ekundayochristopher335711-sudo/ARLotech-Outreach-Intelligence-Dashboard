@@ -261,7 +261,7 @@ serve(async (req) => {
 
     const headings: Record<string, string[]> = {}
     for (const tag of ['h1', 'h2', 'h3', 'h4', 'h5', 'h6']) {
-      headings[tag] = allMatches(html, new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`, 'i'))
+      headings[tag] = allMatches(html, new RegExp(`<${tag}\\b[^>]*>([\\s\\S]*?)<\\/${tag}\\s*>`, 'i'))
         .map((t) => t.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim())
         .filter(Boolean)
     }
@@ -294,11 +294,25 @@ serve(async (req) => {
       }
     }
 
-    const imgTags = [...html.matchAll(/<img[^>]*>/gi)].map((m) => m[0])
+    const imgTags = [...html.matchAll(/<img\b[^>]*>/gi)].map((m) => m[0])
     const imagesTotal = imgTags.length
-    const imagesMissingAlt = imgTags.filter((t) => !/alt\s*=\s*["'][^"']*["']/i.test(t)).length
+    const imagesMissingAlt = imgTags.filter((t) => !/(?:^|\s)alt\s*=/i.test(t)).length
+    const imagesEmptyAlt = imgTags.filter((t) => /(?:^|\s)alt\s*=\s*["']\s*["']/i.test(t)).length
 
     const schemaScripts = allMatches(html, /<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/i)
+    const schemaInspection = {
+      present: schemaScripts.length,
+      validJson: 0,
+      invalidJson: 0,
+    }
+    for (const script of schemaScripts) {
+      try {
+        JSON.parse(script.trim())
+        schemaInspection.validJson += 1
+      } catch {
+        schemaInspection.invalidJson += 1
+      }
+    }
 
     const langMatch = html.match(/<html[^>]*lang=["']([^"']+)["']/i)
     const lang = langMatch ? langMatch[1] : null
@@ -354,8 +368,10 @@ serve(async (req) => {
       images: {
         total: imagesTotal,
         missingAlt: imagesMissingAlt,
+        emptyAlt: imagesEmptyAlt,
       },
       schema: schemaScripts,
+      schemaInspection,
       h1Count: headings.h1.length,
       contacts: { emails: [...emails], phones: [...phones] },
     }

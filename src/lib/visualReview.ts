@@ -19,6 +19,7 @@ export interface StoredVisualPage {
   page_label: string
   viewport: 'desktop' | 'mobile'
   image_path: string | null
+  inspection_status?: 'completed' | 'failed'
   error?: string
 }
 
@@ -37,6 +38,9 @@ export interface VisualAudit {
   pages: StoredVisualPage[]
   observations: VisualObservation[]
   discovered_page_count?: number
+  requested_viewport_count?: number
+  inspected_viewport_count?: number
+  completeness_percent?: number
 }
 
 export function formatVisualCaptureError(error: unknown): string {

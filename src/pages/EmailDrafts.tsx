@@ -7,7 +7,13 @@ import { Card } from '@/components/ui/Card'
 import { Textarea } from '@/components/ui/Textarea'
 import { getCurrentUserId, supabase } from '@/lib/supabase'
 import { createWebsiteAnalysisPdfBase64 } from '@/lib/exportPdf'
-import { createOutreachPreview, hasMatchingWebsiteAnalysis, type OutreachPreview } from '@/lib/outreachEmail'
+import {
+  createOutreachPreview,
+  getOutreachSuitability,
+  hasMatchingWebsiteAnalysis,
+  validateOutreachPreview,
+  type OutreachPreview,
+} from '@/lib/outreachEmail'
 import type { Campaign, EmailDraft, Prospect, WebsiteAnalysis } from '@/types'
 
 const MAX_OUTREACH_BATCH_SIZE = 10
@@ -247,6 +253,15 @@ export function EmailDraftsPage() {
       prospect.website &&
       !hasMatchingWebsiteAnalysis(prospect, analysisByProspect.get(prospect.id))
     ) return 'Analyze website first'
+    if (prospect.website) {
+      try {
+        const suitability = getOutreachSuitability(analysisByProspect.get(prospect.id)!)
+        if (suitability === 'Incomplete Audit') return 'Audit incomplete — outreach unavailable'
+        if (suitability === 'No Opportunity') return 'No meaningful opportunity — outreach withheld'
+      } catch {
+        return 'Audit incomplete — outreach unavailable'
+      }
+    }
     return null
   }
 
@@ -271,11 +286,15 @@ export function EmailDraftsPage() {
       toast.error('Remove ineligible prospects before preparing the batch.')
       return
     }
-    setOutreachPreviews(
-      selectedProspects.map((prospect: OutreachProspect) =>
+    try {
+      const previews = selectedProspects.map((prospect: OutreachProspect) =>
         createOutreachPreview(prospect, analysisByProspect.get(prospect.id)),
-      ),
-    )
+      )
+      setOutreachPreviews(previews)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not prepare outreach previews.')
+      return
+    }
     setOutreachResults([])
     setOutreachBatchId(crypto.randomUUID())
     setComplianceConfirmed(false)
@@ -287,6 +306,7 @@ export function EmailDraftsPage() {
         const prospect = outreachProspectRows.find((item: OutreachProspect) => item.id === preview.prospect_id)
         if (!prospect) throw new Error('A selected prospect is no longer available.')
         const analysis = analysisByProspect.get(prospect.id)
+        validateOutreachPreview(preview, prospect, analysis)
         const safeFilename = prospect.business_name
           .replace(/[^a-z0-9-]/gi, '-')
           .replace(/^-+|-+$/g, '')
@@ -724,8 +744,18 @@ export function EmailDraftsPage() {
                       {preview.has_website_report && (
                         <p className="mt-1 text-xs text-green-700">A personalized website report will be attached.</p>
                       )}
+                      {preview.has_website_report && (
+                        <p className="mt-1 text-xs font-medium text-slate-600">
+                          Suitability: {preview.suitability} · Finding: {preview.selected_finding?.title}
+                        </p>
+                      )}
                     </div>
                   </div>
+                  {preview.internal_note && (
+                    <p className="rounded bg-slate-50 p-2 text-xs text-slate-600">
+                      Internal note (not sent): {preview.internal_note}
+                    </p>
+                  )}
                   <label className="block space-y-1">
                     <span className="text-xs font-medium text-slate-600">Subject</span>
                     <input
