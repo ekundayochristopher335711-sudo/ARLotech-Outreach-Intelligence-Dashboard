@@ -63,6 +63,7 @@ describe('enrichAndAnalyzeProspect', () => {
       undefined,
     )
     expect(result.analysis_score).toBe(82)
+    expect(result.analysis_completed).toBe(true)
     expect(result.error).toContain('Contact lookup failed: site request failed')
   })
 })

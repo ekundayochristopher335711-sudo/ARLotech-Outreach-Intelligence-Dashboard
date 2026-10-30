@@ -86,7 +86,9 @@ export function ProspectsPage() {
   const queryClient = useQueryClient()
   const fileInput = useRef<HTMLInputElement>(null)
   const [search, setSearch] = useState('')
-  const [websiteFilter, setWebsiteFilter] = useState<'all' | 'with-website' | 'without-website'>('all')
+  const [websiteFilter, setWebsiteFilter] = useState<
+    'all' | 'with-website' | 'without-website' | 'unanalyzed' | 'missing-email'
+  >('all')
   const [selectedProspectIds, setSelectedProspectIds] = useState<Set<string>>(() => new Set())
   const [showTextImport, setShowTextImport] = useState(false)
   const [prospectText, setProspectText] = useState('')
@@ -186,13 +188,50 @@ export function ProspectsPage() {
     },
   })
 
-  const prospectRecords = (prospects ?? []) as Prospect[]
+  const {
+    data: completedAnalyses,
+    isLoading: isLoadingAnalyses,
+    error: analysesError,
+  } = useQuery<Array<{ prospect_id: string | null; website_url: string }>>({
+    queryKey: ['/website-analyses', 'prospect-status'],
+    queryFn: async () => {
+      const userId = session?.user.id
+      if (!userId) throw new Error('You must be signed in to check prospect analysis status.')
+      const { data, error } = await supabase
+        .from('website_analyses')
+        .select('prospect_id, website_url')
+        .eq('user_id', userId)
+        .eq('analysis_status', 'completed')
+        .not('prospect_id', 'is', null)
+      if (error) throw error
+      return data
+    },
+    enabled: Boolean(session?.user.id),
+  })
+
+  const prospectRecords = [...((prospects ?? []) as Prospect[])].sort((a, b) =>
+    a.business_name.localeCompare(b.business_name, undefined, { sensitivity: 'base', numeric: true }),
+  )
+  const analyzedWebsiteKeys = new Set(
+    (completedAnalyses ?? []).map((analysis: { prospect_id: string | null; website_url: string }) =>
+      `${analysis.prospect_id}::${analysis.website_url.trim().replace(/\/+$/, '').toLowerCase()}`,
+    ),
+  )
+  const hasCompletedAnalysis = (prospect: Prospect) =>
+    analyzedWebsiteKeys.has(`${prospect.id}::${(prospect.website ?? '').trim().replace(/\/+$/, '').toLowerCase()}`)
+  const unanalyzedProspects = prospectRecords.filter(
+    (prospect) => Boolean(prospect.website && !hasCompletedAnalysis(prospect)),
+  )
+  const missingEmailProspects = prospectRecords.filter((prospect) => !prospect.email?.trim())
   const filteredProspects = prospectRecords.filter((prospect) => {
     const searchValue = search.trim().toLowerCase()
     const matchesWebsiteFilter =
       websiteFilter === 'all' ||
       (websiteFilter === 'with-website' && Boolean(prospect.website)) ||
-      (websiteFilter === 'without-website' && !prospect.website)
+      (websiteFilter === 'without-website' && !prospect.website) ||
+      (websiteFilter === 'unanalyzed' &&
+        Boolean(!isLoadingAnalyses && !analysesError && prospect.website && !hasCompletedAnalysis(prospect))) ||
+      (websiteFilter === 'missing-email' && !prospect.email?.trim())
     const matchesSearch =
       !searchValue ||
       prospect.business_name.toLowerCase().includes(searchValue) ||
@@ -214,6 +253,62 @@ export function ProspectsPage() {
       else filteredProspects.forEach(({ id }) => next.add(id))
       return next
     })
+  }
+
+  const analyzeProspectWebsites = async (targets: Prospect[]) => {
+    if (targets.length === 0) {
+      toast.info('All prospects with websites have already been analyzed.')
+      return
+    }
+
+    setContactScanMode(false)
+    setEnrichmentProgress({ completed: 0, total: targets.length })
+    setEnrichmentResults(targets.map((prospect) => ({
+      prospect_id: prospect.id,
+      business_name: prospect.business_name,
+      website: prospect.website,
+      contact_email: prospect.email,
+      contact_phone: prospect.phone,
+      analysis_score: null,
+      draft_created: false,
+      error: 'Queued for website analysis',
+    })))
+    setIsEnriching(true)
+    try {
+      const results = await mapWithConcurrency(targets, 3, async (prospect, index) => {
+        let enrichmentResult: EnrichmentResult
+        try {
+          enrichmentResult = await enrichAndAnalyzeProspect(prospect)
+        } catch (error) {
+          enrichmentResult = {
+            prospect_id: prospect.id,
+            business_name: prospect.business_name,
+            website: prospect.website,
+            contact_email: prospect.email,
+            contact_phone: prospect.phone,
+            analysis_score: null,
+            draft_created: false,
+            error: error instanceof Error ? error.message : 'Website enrichment failed.',
+          }
+        } finally {
+          setEnrichmentProgress((progress) => ({ ...progress, completed: progress.completed + 1 }))
+        }
+        setEnrichmentResults((current) =>
+          current.map((item, itemIndex) => itemIndex === index ? enrichmentResult : item),
+        )
+        return enrichmentResult
+      })
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['/prospects'] }),
+        queryClient.invalidateQueries({ queryKey: ['/website-analyses', 'prospect-status'] }),
+      ])
+      const completed = results.filter((result) => result.analysis_completed).length
+      toast.success(`Analyzed ${completed} of ${results.length} websites.`)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not analyze prospect websites.')
+    } finally {
+      setIsEnriching(false)
+    }
   }
 
   const handleDeleteSelected = () => {
@@ -323,47 +418,7 @@ export function ProspectsPage() {
       )
     }
     if (withWebsite.length > 0) {
-      setIsEnriching(true)
-      setContactScanMode(false)
-      setEnrichmentProgress({ completed: 0, total: withWebsite.length })
-      setEnrichmentResults(withWebsite.map((prospect) => ({
-        prospect_id: prospect.id,
-        business_name: prospect.business_name,
-        website: prospect.website,
-        contact_email: prospect.email,
-        contact_phone: prospect.phone,
-        analysis_score: null,
-        draft_created: false,
-        error: 'Queued for website analysis',
-      })))
-      try {
-        await mapWithConcurrency(withWebsite, 3, async (prospect, index) => {
-          let enrichmentResult: EnrichmentResult
-          try {
-            enrichmentResult = await enrichAndAnalyzeProspect(prospect)
-          } catch (error) {
-            enrichmentResult = {
-              prospect_id: prospect.id,
-              business_name: prospect.business_name,
-              website: prospect.website,
-              contact_email: prospect.email,
-              contact_phone: prospect.phone,
-              analysis_score: null,
-              draft_created: false,
-              error: error instanceof Error ? error.message : 'Website enrichment failed.',
-            }
-          } finally {
-            setEnrichmentProgress((progress) => ({ ...progress, completed: progress.completed + 1 }))
-          }
-          setEnrichmentResults((current) =>
-            current.map((item, itemIndex) => itemIndex === index ? enrichmentResult : item),
-          )
-          return enrichmentResult
-        })
-      } finally {
-        setIsEnriching(false)
-      }
-      await queryClient.invalidateQueries({ queryKey: ['/prospects'] })
+      await analyzeProspectWebsites(withWebsite)
     }
   }
 
@@ -485,6 +540,25 @@ export function ProspectsPage() {
           <Button
             variant="secondary"
             size="sm"
+            className="min-h-11"
+            onClick={() => void analyzeProspectWebsites(unanalyzedProspects)}
+            disabled={
+              isEnriching ||
+              isExtractingText ||
+              isLoadingAnalyses ||
+              Boolean(analysesError) ||
+              unanalyzedProspects.length === 0
+            }
+            ariaLabel="Analyze prospects that do not have a completed website analysis"
+          >
+            {isEnriching && !contactScanMode
+              ? `Analyzing… ${enrichmentProgress.completed}/${enrichmentProgress.total}`
+              : `Analyze unanalysed (${isLoadingAnalyses ? '…' : unanalyzedProspects.length})`}
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            className="min-h-11"
             onClick={handleScanMissingContacts}
             disabled={isEnriching || isExtractingText || contactScanTargets.length === 0}
             ariaLabel="Look up missing prospect contact details"
@@ -660,16 +734,19 @@ export function ProspectsPage() {
             />
           </label>
         </div>
-        <div className="mb-3 flex flex-wrap gap-2" role="group" aria-label="Filter prospects by website">
+        <div className="mb-3 flex flex-wrap gap-2" role="group" aria-label="Filter prospects">
           {([
             ['all', `All (${prospectRecords.length})`],
             ['with-website', `With website (${prospectRecords.filter((prospect) => Boolean(prospect.website)).length})`],
             ['without-website', `No website (${prospectRecords.filter((prospect) => !prospect.website).length})`],
+            ['unanalyzed', `Not analyzed (${isLoadingAnalyses ? '…' : unanalyzedProspects.length})`],
+            ['missing-email', `Missing email (${missingEmailProspects.length})`],
           ] as const).map(([filter, label]) => (
             <Button
               key={filter}
               variant={websiteFilter === filter ? 'primary' : 'secondary'}
               size="sm"
+              className="min-h-11"
               onClick={() => setWebsiteFilter(filter)}
               ariaLabel={`Show prospects ${label}`}
             >
@@ -677,6 +754,11 @@ export function ProspectsPage() {
             </Button>
           ))}
         </div>
+        {analysesError && (
+          <p className="mb-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700" role="alert">
+            Could not load website analysis status: {analysesError.message}. Analysis filters and batch analysis are unavailable until this is resolved.
+          </p>
+        )}
         {filteredProspects.length > 0 && (
           <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
             <label className="flex items-center gap-2 text-sm text-slate-700">
@@ -747,7 +829,17 @@ export function ProspectsPage() {
                   : 'All prospects currently have a website.'
               : websiteFilter === 'with-website'
                 ? 'No prospects with websites match this view.'
-                : search
+                : websiteFilter === 'unanalyzed'
+                  ? isLoadingAnalyses
+                    ? 'Checking website analysis status…'
+                    : analysesError
+                      ? 'Website analysis status is unavailable.'
+                      : unanalyzedProspects.length === 0
+                      ? 'All prospects with websites have a completed analysis.'
+                      : 'No unanalyzed prospects match your search.'
+                  : websiteFilter === 'missing-email'
+                    ? 'No prospects without an email address match your search.'
+                    : search
                   ? 'No prospects match your search.'
                   : 'No prospects yet. Add one or import a CSV to get started.'}
           </p>

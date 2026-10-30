@@ -9,6 +9,7 @@ export interface EnrichmentResult {
   contact_email: string | null
   contact_phone: string | null
   analysis_score: number | null
+  analysis_completed?: boolean
   draft_created: boolean
   error?: string
 }
@@ -87,6 +88,7 @@ export async function enrichAndAnalyzeProspect(prospect: Prospect): Promise<Enri
 
   try {
     const analysis = await analyzeWebsite(prospect.website, prospect.id, true, content)
+    result.analysis_completed = true
     result.analysis_score = analysis.overallScore
     if (analysis.contentExtractionError) {
       result.error = result.error

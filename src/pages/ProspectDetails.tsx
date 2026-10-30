@@ -100,25 +100,25 @@ export function ProspectDetails() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
+    <div className="min-w-0 space-y-6">
+      <div className="flex min-w-0 flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex min-w-0 items-center gap-3 sm:gap-4">
           <button type="button" onClick={() => navigate('/prospects')} className="p-2 text-slate-500 hover:text-slate-700">
             <ArrowLeft className="h-5 w-5" />
           </button>
-          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-arlotech text-white text-lg font-bold">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-arlotech text-white text-lg font-bold">
             {prospect.business_name.charAt(0)}
           </div>
-          <div>
-            <h1 className="text-2xl font-bold text-slate-800">{prospect.business_name}</h1>
-            <p className="text-sm text-slate-500">{prospect.contact_name}</p>
+          <div className="min-w-0">
+            <h1 className="break-words text-2xl font-bold text-slate-800">{prospect.business_name}</h1>
+            <p className="break-words text-sm text-slate-500">{prospect.contact_name}</p>
           </div>
         </div>
-        <div className="flex gap-2">
-          <Button variant="secondary" onClick={startEdit}>
+        <div className="flex w-full flex-wrap gap-2 sm:w-auto sm:shrink-0">
+          <Button variant="secondary" onClick={startEdit} className="min-h-11">
             <Edit className="h-4 w-4" /> Edit
           </Button>
-          <Button variant="secondary" onClick={() => deleteMutation.mutate()} disabled={deleteMutation.isPending}>
+          <Button variant="secondary" onClick={() => deleteMutation.mutate()} disabled={deleteMutation.isPending} className="min-h-11">
             <Trash2 className="h-4 w-4" /> {deleteMutation.isPending ? 'Deleting...' : 'Delete'}
           </Button>
         </div>
@@ -181,17 +181,23 @@ export function ProspectDetails() {
           </div>
         </Card>
       )}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3">
         <Card className="p-4">
           <h3 className="text-sm font-semibold text-slate-700 mb-2">Contact</h3>
           <div className="space-y-2 text-sm">
-            <p className="flex items-center gap-2 text-slate-600">
-              <Mail className="h-4 w-4 text-slate-400" />
-              {prospect.email || 'Not provided'}
+            <p className="flex min-w-0 items-start gap-2 text-slate-600">
+              <Mail className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
+              <span className="min-w-0 break-all">{prospect.email || 'Not provided'}</span>
             </p>
-            <p className="flex items-center gap-2 text-slate-600">
-              <Phone className="h-4 w-4 text-slate-400" />
-              {prospect.phone ? (<span className="flex items-center gap-2"><a href={`tel:${prospect.phone}`} className="text-arlotech hover:underline">{prospect.phone}</a><a href={`https://wa.me/${prospect.phone.replace(/[^0-9]/g,'')}`} target="_blank" rel="noopener noreferrer" className="rounded border border-slate-200 px-2 py-0.5 text-xs text-slate-600 hover:bg-slate-100">WhatsApp</a><button type="button" onClick={() => navigator.clipboard?.writeText(prospect.phone ?? '')} className="rounded border border-slate-200 px-2 py-0.5 text-xs text-slate-600 hover:bg-slate-100">Copy</button></span>) : 'Not provided'}
+            <p className="flex min-w-0 items-start gap-2 text-slate-600">
+              <Phone className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
+              {prospect.phone ? (
+                <span className="flex min-w-0 flex-wrap items-center gap-2">
+                  <a href={`tel:${prospect.phone}`} className="break-all text-arlotech hover:underline">{prospect.phone}</a>
+                  <a href={`https://wa.me/${prospect.phone.replace(/[^0-9]/g, '')}`} target="_blank" rel="noopener noreferrer" className="rounded border border-slate-200 px-2 py-1 text-xs text-slate-600 hover:bg-slate-100">WhatsApp</a>
+                  <button type="button" onClick={() => navigator.clipboard?.writeText(prospect.phone ?? '')} className="rounded border border-slate-200 px-2 py-1 text-xs text-slate-600 hover:bg-slate-100">Copy</button>
+                </span>
+              ) : <span>Not provided</span>}
             </p>
           </div>
         </Card>
@@ -199,13 +205,13 @@ export function ProspectDetails() {
         <Card className="p-4">
           <h3 className="text-sm font-semibold text-slate-700 mb-2">Business Info</h3>
           <div className="space-y-2 text-sm">
-            <p className="flex items-center gap-2 text-slate-600">
-              <Globe className="h-4 w-4 text-slate-400" />
-              {prospect.website || 'Not provided'}
+            <p className="flex min-w-0 items-start gap-2 text-slate-600">
+              <Globe className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
+              <span className="min-w-0 break-all">{prospect.website || 'Not provided'}</span>
             </p>
-            <p className="flex items-center gap-2 text-slate-600">
-              <MapPin className="h-4 w-4 text-slate-400" />
-              {prospect.city || 'Not provided'}
+            <p className="flex min-w-0 items-start gap-2 text-slate-600">
+              <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
+              <span className="min-w-0 break-words">{prospect.city || 'Not provided'}</span>
             </p>
             <p className="flex items-center gap-2 text-slate-600">
               <Users className="h-4 w-4 text-slate-400" />
