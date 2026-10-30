@@ -13,7 +13,8 @@ import { deleteOwnedProspect, deleteOwnedProspects } from '@/lib/prospectReposit
 import { type ImportResultRow, importLeadsInternal } from '@/lib/csvImport'
 import { extractLeadsFromText } from '@/lib/leadExtraction'
 import { extractGoogleMapsWebsitesFromHtml } from '@/lib/googleMapsWebsites'
-import { enrichAndAnalyzeProspect, type EnrichmentResult } from '@/lib/leadEnrichment'
+import { enrichAndAnalyzeProspect, enrichProspectContacts, type EnrichmentResult } from '@/lib/leadEnrichment'
+import { mapWithConcurrency } from '@/lib/mapWithConcurrency'
 import { ClipboardPaste, FileSpreadsheet, Plus, Search, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -99,6 +100,8 @@ export function ProspectsPage() {
   const [importResults, setImportResults] = useState<ImportResultRow[]>([])
   const [enrichmentResults, setEnrichmentResults] = useState<EnrichmentResult[]>([])
   const [isEnriching, setIsEnriching] = useState(false)
+  const [enrichmentProgress, setEnrichmentProgress] = useState({ completed: 0, total: 0 })
+  const [contactScanMode, setContactScanMode] = useState(false)
   const { importCsv, isImporting, importError } = useCsvImport()
   const deleteProspect = useMutation<void, Error, string>({
     mutationFn: async (prospectId: string) => {
@@ -182,7 +185,8 @@ export function ProspectsPage() {
     },
   })
 
-  const filteredProspects: Prospect[] = (prospects ?? []).filter((prospect: Prospect) => {
+  const prospectRecords = (prospects ?? []) as Prospect[]
+  const filteredProspects = prospectRecords.filter((prospect) => {
     const searchValue = search.trim().toLowerCase()
     return (
       !searchValue ||
@@ -191,6 +195,9 @@ export function ProspectsPage() {
       (prospect.email ?? '').toLowerCase().includes(searchValue)
     )
   })
+  const contactScanTargets = prospectRecords.filter(
+    (prospect) => Boolean(prospect.website && (!prospect.email || !prospect.phone)),
+  )
   const allFilteredSelected =
     filteredProspects.length > 0 && filteredProspects.every(({ id }) => selectedProspectIds.has(id))
 
@@ -211,6 +218,58 @@ export function ProspectsPage() {
     }
   }
 
+  const handleScanMissingContacts = async () => {
+    if (contactScanTargets.length === 0) {
+      toast.info('No prospects with a website and missing contact details were found.')
+      return
+    }
+
+    setContactScanMode(true)
+    setEnrichmentResults([])
+    setEnrichmentProgress({ completed: 0, total: contactScanTargets.length })
+    setIsEnriching(true)
+    try {
+      const results = await mapWithConcurrency(contactScanTargets, 3, async (prospect) => {
+        try {
+          const contacts = await enrichProspectContacts(prospect)
+          return {
+            prospect_id: prospect.id,
+            business_name: prospect.business_name,
+            website: prospect.website,
+            contact_email: contacts.email,
+            contact_phone: contacts.phone,
+            analysis_score: null,
+            draft_created: false,
+            ...(!contacts.email && !contacts.phone
+              ? { error: 'No contact details were found on the inspected pages.' }
+              : {}),
+          }
+        } catch (error) {
+          return {
+            prospect_id: prospect.id,
+            business_name: prospect.business_name,
+            website: prospect.website,
+            contact_email: prospect.email,
+            contact_phone: prospect.phone,
+            analysis_score: null,
+            draft_created: false,
+            error: `Contact lookup failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          }
+        } finally {
+          setEnrichmentProgress((progress) => ({ ...progress, completed: progress.completed + 1 }))
+        }
+      })
+      setEnrichmentResults(results)
+      await queryClient.invalidateQueries({ queryKey: ['/prospects'] })
+      const foundEmails = results.filter((result) => result.contact_email).length
+      toast.success(`Checked ${results.length} websites; found email addresses for ${foundEmails}.`)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not complete the contact lookup.')
+    } finally {
+      setIsEnriching(false)
+    }
+  }
+
   const completeImport = async (result: Awaited<ReturnType<typeof importLeadsInternal>>) => {
     setImportMessage('')
     setImportFailure('')
@@ -219,6 +278,7 @@ export function ProspectsPage() {
     setImportResults([])
     setEnrichmentResults([])
     setIsEnriching(false)
+    setContactScanMode(false)
 
     if (result.success) {
       setImportMessage(
@@ -238,17 +298,40 @@ export function ProspectsPage() {
 
     // Enrich/analyze inserted prospects with websites in the background
     const inserted = result.insertedProspects ?? []
-    if (inserted.length > 0) {
+    const withWebsite = inserted.filter((prospect) => Boolean(prospect.website))
+    const withoutWebsiteCount = inserted.length - withWebsite.length
+    if (withoutWebsiteCount > 0) {
+      setImportWarning(
+        `${withoutWebsiteCount} imported prospect${withoutWebsiteCount === 1 ? '' : 's'} had no website URL, so contact lookup and website analysis could not run for those records.`,
+      )
+    }
+    if (withWebsite.length > 0) {
       setIsEnriching(true)
-      const enrichment: EnrichmentResult[] = []
-      for (const prospect of inserted) {
-        if (!prospect.website) continue
-        const res = await enrichAndAnalyzeProspect(prospect)
-        enrichment.push(res)
-        setEnrichmentResults([...enrichment])
+      setEnrichmentProgress({ completed: 0, total: withWebsite.length })
+      try {
+        const enrichment = await mapWithConcurrency(withWebsite, 3, async (prospect) => {
+          try {
+            return await enrichAndAnalyzeProspect(prospect)
+          } catch (error) {
+            return {
+              prospect_id: prospect.id,
+              business_name: prospect.business_name,
+              website: prospect.website,
+              contact_email: prospect.email,
+              contact_phone: prospect.phone,
+              analysis_score: null,
+              draft_created: false,
+              error: error instanceof Error ? error.message : 'Website enrichment failed.',
+            }
+          } finally {
+            setEnrichmentProgress((progress) => ({ ...progress, completed: progress.completed + 1 }))
+          }
+        })
+        setEnrichmentResults(enrichment)
+      } finally {
+        setIsEnriching(false)
       }
       await queryClient.invalidateQueries({ queryKey: ['/prospects'] })
-      setIsEnriching(false)
     }
   }
 
@@ -308,9 +391,9 @@ export function ProspectsPage() {
       const websiteCount = leads.filter((lead) => lead.website).length
       const hasWebsiteLabels = /^\s*Website\s*$/im.test(text)
       await completeImport(await importLeadsInternal(leads as any, queryClient, session?.user.id))
-      if (hasWebsiteLabels && websiteCount === 0) {
+      if (hasWebsiteLabels && websiteCount < leads.length) {
         setImportWarning(
-          'Google Maps included “Website” buttons, but no destination URLs were present in the pasted clipboard data. These prospects could not be visually reviewed or looked up for email. Copy the listings again with rich links, or add website URLs before re-importing.',
+          `Google Maps included “Website” buttons, but the clipboard provided website destinations for only ${websiteCount} of ${leads.length} prospects. Only prospects with a destination URL can be scanned. Paste the listings directly with rich links, or add the missing URLs before re-importing.`,
         )
       }
       setProspectText('')
@@ -366,6 +449,15 @@ export function ProspectsPage() {
           >
             <Plus className="h-4 w-4" />
             Add Prospect
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={handleScanMissingContacts}
+            disabled={isEnriching || isExtractingText || contactScanTargets.length === 0}
+            ariaLabel="Look up missing prospect contact details"
+          >
+            {isEnriching && contactScanMode ? 'Looking up…' : `Find missing contacts (${contactScanTargets.length})`}
           </Button>
         </div>
       </div>
@@ -476,8 +568,18 @@ export function ProspectsPage() {
       {(isEnriching || enrichmentResults.length > 0) && (
         <Card className="p-4 space-y-3">
           <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-slate-800">{localStorage.getItem('arlotech-login-mode') === 'blacksite' ? 'POST-INTAKE ENRICHMENT' : 'Post-import enrichment'}</h3>
-            {isEnriching && <span className="text-xs text-slate-500">Analyzing websites…</span>}
+            <h3 className="text-sm font-semibold text-slate-800">
+              {contactScanMode
+                ? 'Contact lookup'
+                : localStorage.getItem('arlotech-login-mode') === 'blacksite'
+                  ? 'POST-INTAKE ENRICHMENT'
+                  : 'Post-import enrichment'}
+            </h3>
+            {isEnriching && (
+              <span className="text-xs text-slate-500">
+                {contactScanMode ? 'Looking up contacts' : 'Analyzing websites'}… {enrichmentProgress.completed}/{enrichmentProgress.total}
+              </span>
+            )}
           </div>
           <div className="max-h-64 overflow-auto rounded-lg border border-slate-200">
             <table className="w-full text-xs">

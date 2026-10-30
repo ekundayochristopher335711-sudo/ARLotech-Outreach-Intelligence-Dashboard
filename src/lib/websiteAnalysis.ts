@@ -160,10 +160,11 @@ export async function analyzeWebsite(
   url: string,
   prospectId: string | null = null,
   includeVisualReview = false,
+  extractedContent?: ExtractedContent,
 ) {
   const userId = await getCurrentUserId()
 
-  const content = await extractContent(url)
+  const content = extractedContent ?? await extractContent(url)
 
   let pagespeed: PageSpeedResult
   try {

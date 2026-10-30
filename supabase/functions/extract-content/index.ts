@@ -5,6 +5,8 @@ import { extractNavigationPages } from './navigation.ts'
 const MAX_HTML_BYTES = 2_000_000
 const MAX_REDIRECTS = 5
 const FETCH_TIMEOUT_MS = 10_000
+const MAX_CONTACT_PAGES = 3
+const httpClient = Deno.createHttpClient({ allowHttp1: true, allowHttp2: false })
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -85,6 +87,7 @@ async function fetchPublicPage(startUrl: string) {
   for (let redirectCount = 0; redirectCount <= MAX_REDIRECTS; redirectCount += 1) {
     await assertPublicDestination(currentUrl)
     const response = await fetch(currentUrl, {
+      client: httpClient,
       headers: {
         'User-Agent': 'Mozilla/5.0 (compatible; ArloTechWebsiteAudit/1.0)',
         Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
@@ -139,6 +142,7 @@ async function fetchSameOriginScripts(html: string, pageUrl: string): Promise<st
       const url = new URL(scriptUrl)
       await assertPublicDestination(url)
       const response = await fetch(url, {
+        client: httpClient,
         headers: { Accept: 'application/javascript, text/javascript, */*;q=0.1' },
         redirect: 'error',
         signal: AbortSignal.timeout(5000),
@@ -175,6 +179,33 @@ async function fetchSameOriginScripts(html: string, pageUrl: string): Promise<st
   }))
 }
 
+function findContactPageUrls(html: string, pageUrl: string): string[] {
+  const origin = new URL(pageUrl).origin
+  const urls = new Set<string>()
+  for (const [, attributes, body] of html.matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a>/gi)) {
+    const rawHref = attributes.match(/(?:^|\s)href\s*=\s*(["'])(.*?)\1/i)?.[2]
+    if (!rawHref) continue
+    const label = `${body.replace(/<[^>]*>/g, ' ')} ${rawHref}`.replace(/\s+/g, ' ')
+    if (!/\b(contact|about|team|staff|people|meet|imprint|legal)\b/i.test(label)) continue
+
+    try {
+      const target = new URL(rawHref.replace(/&amp;/gi, '&'), pageUrl)
+      if (
+        target.origin !== origin ||
+        !['http:', 'https:'].includes(target.protocol) ||
+        target.username ||
+        target.password
+      ) continue
+      target.hash = ''
+      urls.add(target.href)
+    } catch {
+      continue
+    }
+    if (urls.size >= MAX_CONTACT_PAGES) break
+  }
+  return [...urls]
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
@@ -194,7 +225,19 @@ serve(async (req) => {
     }
 
     const { html, finalUrl, status } = await fetchPublicPage(parsed.href)
-    const contactSources = [html, ...(await fetchSameOriginScripts(html, finalUrl))]
+    const contactPages = await Promise.all(findContactPageUrls(html, finalUrl).map(async (contactUrl) => {
+      try {
+        return await fetchPublicPage(contactUrl)
+      } catch (error) {
+        console.warn('Unable to inspect contact page:', contactUrl, error)
+        return null
+      }
+    }))
+    const contactSources = [
+      html,
+      ...contactPages.flatMap((page) => page ? [page.html] : []),
+      ...(await fetchSameOriginScripts(html, finalUrl)),
+    ]
 
     const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)
     const title = titleMatch ? titleMatch[1].replace(/\s+/g, ' ').trim() : null

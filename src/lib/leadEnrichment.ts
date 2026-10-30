@@ -1,5 +1,5 @@
 import { supabase, getCurrentUserId } from '@/lib/supabase'
-import { extractContent, analyzeWebsite } from '@/lib/websiteAnalysis'
+import { extractContent, analyzeWebsite, type ExtractedContent } from '@/lib/websiteAnalysis'
 import { type Prospect } from '@/types'
 
 export interface EnrichmentResult {
@@ -13,11 +13,14 @@ export interface EnrichmentResult {
   error?: string
 }
 
-export async function enrichProspectContacts(prospect: Prospect): Promise<{ email: string | null; phone: string | null }> {
+export async function enrichProspectContacts(
+  prospect: Prospect,
+  extractedContent?: ExtractedContent,
+): Promise<{ email: string | null; phone: string | null }> {
   let email = prospect.email
   let phone = prospect.phone
   if (!prospect.website) return { email, phone }
-  const content = await extractContent(prospect.website)
+  const content = extractedContent ?? await extractContent(prospect.website)
   const contacts = content.contacts
   const emails = contacts?.emails ?? []
   const phones = contacts?.phones ?? []
@@ -65,16 +68,24 @@ export async function enrichAndAnalyzeProspect(prospect: Prospect): Promise<Enri
     return result
   }
 
+  let content: ExtractedContent
   try {
-    try {
-      const contacts = await enrichProspectContacts(prospect)
-      result.contact_email = contacts.email
-      result.contact_phone = contacts.phone
-    } catch (err) {
-      result.error = `Contact lookup failed: ${err instanceof Error ? err.message : 'Unknown error'}`
-    }
+    content = await extractContent(prospect.website)
+  } catch (err) {
+    result.error = `Contact lookup failed: ${err instanceof Error ? err.message : 'Unknown error'}`
+    return result
+  }
 
-    const analysis = await analyzeWebsite(prospect.website, prospect.id, true)
+  try {
+    const contacts = await enrichProspectContacts(prospect, content)
+    result.contact_email = contacts.email
+    result.contact_phone = contacts.phone
+  } catch (err) {
+    result.error = `Contact lookup failed: ${err instanceof Error ? err.message : 'Unknown error'}`
+  }
+
+  try {
+    const analysis = await analyzeWebsite(prospect.website, prospect.id, true, content)
     result.analysis_score = analysis.overallScore
 
     const draft = await generateOutreachDraft({
