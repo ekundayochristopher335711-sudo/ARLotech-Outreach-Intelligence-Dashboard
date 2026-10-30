@@ -196,6 +196,7 @@ export async function analyzeWebsite(
   }
 
   let pagespeed: PageSpeedResult
+  let pageSpeedError: string | undefined
   try {
     pagespeed = await runPageSpeed(url, 'desktop')
   } catch (e) {
@@ -204,8 +205,14 @@ export async function analyzeWebsite(
       pagespeed = await runPageSpeed(url, 'mobile')
     } catch (e2) {
       console.warn('PageSpeed mobile failed, continuing without PageSpeed:', e2)
+      pageSpeedError = e2 instanceof Error ? e2.message : 'PageSpeed analysis failed.'
       pagespeed = { id: url, title: url, strategy: 'none', lighthouseResult: { categories: {}, audits: {} } } as PageSpeedResult
     }
+  }
+  if (contentExtractionError && pageSpeedError) {
+    throw new Error(
+      `Website analysis could not access the site. Content extraction failed: ${contentExtractionError}; PageSpeed failed: ${pageSpeedError}`,
+    )
   }
 
   const visualPages: Array<{

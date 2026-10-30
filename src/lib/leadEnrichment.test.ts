@@ -1,14 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { analyzeWebsiteMock, extractContentMock, invokeMock } = vi.hoisted(() => ({
+const { analyzeWebsiteMock, invokeMock } = vi.hoisted(() => ({
   analyzeWebsiteMock: vi.fn(),
-  extractContentMock: vi.fn(),
   invokeMock: vi.fn(),
 }))
 
 vi.mock('@/lib/websiteAnalysis', () => ({
   analyzeWebsite: analyzeWebsiteMock,
-  extractContent: extractContentMock,
+  extractContent: vi.fn(),
 }))
 
 vi.mock('@/lib/supabase', () => ({
@@ -22,15 +21,16 @@ import { type Prospect } from '@/types'
 describe('enrichAndAnalyzeProspect', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    extractContentMock.mockRejectedValue(new Error('site request failed'))
     analyzeWebsiteMock.mockResolvedValue({
       overallScore: 82,
       record: { findings: [], positive_observations: [] },
+      content: { contacts: { emails: [], phones: [] } },
+      contentExtractionError: 'site request failed',
     })
     invokeMock.mockResolvedValue({ data: {} })
   })
 
-  it('continues website analysis when the initial contact extraction fails', async () => {
+  it('completes analysis when content extraction fails without repeating the failed fetch', async () => {
     const prospect: Prospect = {
       id: 'prospect-1',
       user_id: 'user-1',
@@ -56,12 +56,8 @@ describe('enrichAndAnalyzeProspect', () => {
 
     const result = await enrichAndAnalyzeProspect(prospect)
 
-    expect(analyzeWebsiteMock).toHaveBeenCalledWith(
-      prospect.website,
-      prospect.id,
-      true,
-      undefined,
-    )
+    expect(analyzeWebsiteMock).toHaveBeenCalledTimes(1)
+    expect(analyzeWebsiteMock).toHaveBeenCalledWith(prospect.website, prospect.id, true)
     expect(result.analysis_score).toBe(82)
     expect(result.analysis_completed).toBe(true)
     expect(result.error).toContain('Contact lookup failed: site request failed')

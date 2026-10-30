@@ -12,6 +12,7 @@ interface ProspectTableProps {
   selectedProspectIds?: Set<string>
   onToggleSelection?: (prospectId: string) => void
   showManualContactActions?: boolean
+  analysisErrors?: Map<string, string>
   isUpdatingContact?: boolean
   isDeleting?: boolean
 }
@@ -24,21 +25,28 @@ export function ProspectTable({
   selectedProspectIds,
   onToggleSelection,
   showManualContactActions = false,
+  analysisErrors,
   isUpdatingContact = false,
   isDeleting = false,
 }: ProspectTableProps) {
   const navigate = useNavigate()
   return (
-    <div className={`space-y-3 ${compact ? 'divide-y' : ''}`}>
+    <div className={`space-y-3 ${compact ? 'space-y-0 divide-y divide-slate-200' : ''}`}>
       {prospects.map((prospect) => (
         <div
           key={prospect.id}
           onClick={() => navigate(`/prospects/${prospect.id}`)}
-          className={`flex w-full min-w-0 flex-col gap-3 rounded-lg p-3 transition-colors cursor-pointer sm:flex-row sm:items-center ${
-            compact ? 'divide-y' : 'hover:bg-slate-50'
+          className={`flex w-full min-w-0 rounded-lg p-3 transition-colors cursor-pointer ${
+            compact
+              ? 'flex-row items-center gap-2 rounded-none px-1 py-3'
+              : 'flex-col gap-3 hover:bg-slate-50 sm:flex-row sm:items-center'
           }`}
         >
-          <div className="flex min-w-0 items-start gap-3 sm:flex-1 sm:items-center">
+          <div
+            className={`flex min-w-0 gap-3 ${
+              compact ? 'flex-1 items-center' : 'items-start sm:flex-1 sm:items-center'
+            }`}
+          >
             {selectedProspectIds && onToggleSelection && (
               <input
                 type="checkbox"
@@ -64,14 +72,29 @@ export function ProspectTable({
                   {prospect.city}
                 </p>
               )}
+              {analysisErrors?.get(prospect.id) && (
+                <p
+                  className="mt-1 line-clamp-2 break-words text-xs text-red-600"
+                  title={analysisErrors.get(prospect.id)}
+                >
+                  Failed: {analysisErrors.get(prospect.id)}
+                </p>
+              )}
             </div>
           </div>
 
           <div
-            className="flex min-w-0 flex-wrap items-center gap-2 border-t border-slate-100 pt-2 sm:ml-auto sm:border-0 sm:pt-0"
+            className={`flex min-w-0 flex-wrap items-center gap-2 ${
+              compact ? 'ml-auto shrink-0 border-0 pt-0' : 'border-t border-slate-100 pt-2 sm:ml-auto sm:border-0 sm:pt-0'
+            }`}
             onClick={(event) => event.stopPropagation()}
           >
             <Badge variant="default">{prospect.status}</Badge>
+            {compact && (
+              <span className="hidden text-xs text-slate-400 sm:inline">
+                {format(new Date(prospect.created_at), 'MMM d')}
+              </span>
+            )}
             {onMarkContacted &&
               (prospect.last_contacted_at ? (
                 <span

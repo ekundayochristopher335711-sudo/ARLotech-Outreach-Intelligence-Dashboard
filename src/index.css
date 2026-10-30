@@ -510,7 +510,7 @@ html {
 .blacksite-panel-body .space-y-4 p.text-xs{color:#71896d!important;font-size:8px!important}
 .blacksite-panel-body .space-y-4>div>span{border:1px solid #29452a;border-radius:1px;background:#0b150c;color:#9ac58b;font:7px 'DM Mono',monospace;letter-spacing:.05em}
 .blacksite-panel-body .divide-y>div{border-color:#1b3020!important;border-radius:0!important;padding:10px 5px!important}
-.blacksite-panel-body .divide-y>div>div:first-child{width:29px;height:29px;border:1px solid #29432a;border-radius:2px;background:#0b150c;color:#a8ff48}
+.blacksite-panel-body .divide-y>div>div:first-child>div:first-child{width:29px;height:29px;border:1px solid #29432a;border-radius:2px;background:#0b150c;color:#a8ff48}
 .blacksite-panel-body .divide-y>div p:first-child{color:#d7e8d1!important;font:700 10px 'DM Mono',monospace}
 .blacksite-panel-body .divide-y>div p:nth-child(2),.blacksite-panel-body .divide-y>div p:nth-child(3){color:#799275!important;font:8px 'DM Mono',monospace}
 .blacksite-panel-body .divide-y>div span{font:8px 'DM Mono',monospace}

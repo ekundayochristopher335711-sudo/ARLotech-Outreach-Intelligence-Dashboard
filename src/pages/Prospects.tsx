@@ -13,7 +13,12 @@ import { deleteOwnedProspect, deleteOwnedProspects } from '@/lib/prospectReposit
 import { type ImportResultRow, importLeadsInternal } from '@/lib/csvImport'
 import { extractLeadsFromText } from '@/lib/leadExtraction'
 import { extractGoogleMapsWebsitesFromHtml } from '@/lib/googleMapsWebsites'
-import { enrichAndAnalyzeProspect, enrichProspectContacts, type EnrichmentResult } from '@/lib/leadEnrichment'
+import {
+  enrichAndAnalyzeProspect,
+  enrichProspectContacts,
+  recordFailedWebsiteAnalysis,
+  type EnrichmentResult,
+} from '@/lib/leadEnrichment'
 import { mapWithConcurrency } from '@/lib/mapWithConcurrency'
 import { ClipboardPaste, FileSpreadsheet, Plus, Search, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
@@ -87,7 +92,7 @@ export function ProspectsPage() {
   const fileInput = useRef<HTMLInputElement>(null)
   const [search, setSearch] = useState('')
   const [websiteFilter, setWebsiteFilter] = useState<
-    'all' | 'with-website' | 'without-website' | 'unanalyzed' | 'missing-email'
+    'all' | 'with-website' | 'without-website' | 'unanalyzed' | 'failed-analysis' | 'missing-email'
   >('all')
   const [selectedProspectIds, setSelectedProspectIds] = useState<Set<string>>(() => new Set())
   const [showTextImport, setShowTextImport] = useState(false)
@@ -189,20 +194,26 @@ export function ProspectsPage() {
   })
 
   const {
-    data: completedAnalyses,
+    data: websiteAnalysisRows,
     isLoading: isLoadingAnalyses,
     error: analysesError,
-  } = useQuery<Array<{ prospect_id: string | null; website_url: string }>>({
+  } = useQuery<Array<{
+    prospect_id: string | null
+    website_url: string
+    analysis_status: string
+    error_message: string | null
+    created_at: string | null
+  }>>({
     queryKey: ['/website-analyses', 'prospect-status'],
     queryFn: async () => {
       const userId = session?.user.id
       if (!userId) throw new Error('You must be signed in to check prospect analysis status.')
       const { data, error } = await supabase
         .from('website_analyses')
-        .select('prospect_id, website_url')
+        .select('prospect_id, website_url, analysis_status, error_message, created_at')
         .eq('user_id', userId)
-        .eq('analysis_status', 'completed')
         .not('prospect_id', 'is', null)
+        .order('created_at', { ascending: false })
       if (error) throw error
       return data
     },
@@ -212,15 +223,37 @@ export function ProspectsPage() {
   const prospectRecords = [...((prospects ?? []) as Prospect[])].sort((a, b) =>
     a.business_name.localeCompare(b.business_name, undefined, { sensitivity: 'base', numeric: true }),
   )
-  const analyzedWebsiteKeys = new Set(
-    (completedAnalyses ?? []).map((analysis: { prospect_id: string | null; website_url: string }) =>
-      `${analysis.prospect_id}::${analysis.website_url.trim().replace(/\/+$/, '').toLowerCase()}`,
+  const completedWebsiteKeys = new Set<string>()
+  const latestFailedWebsiteKeys = new Set<string>()
+  const knownWebsiteKeys = new Set<string>()
+  const failedAnalysisErrors = new Map<string, string>()
+  for (const analysis of websiteAnalysisRows ?? []) {
+    if (!analysis.prospect_id) continue
+    const key = `${analysis.prospect_id}::${analysis.website_url.trim().replace(/\/+$/, '').toLowerCase()}`
+    if (knownWebsiteKeys.has(key)) continue
+    knownWebsiteKeys.add(key)
+    if (analysis.analysis_status === 'completed') completedWebsiteKeys.add(key)
+    if (analysis.analysis_status === 'failed') {
+      latestFailedWebsiteKeys.add(key)
+      if (analysis.error_message) failedAnalysisErrors.set(analysis.prospect_id, analysis.error_message)
+    }
+  }
+  const websiteKeyFor = (prospect: Prospect) =>
+    `${prospect.id}::${(prospect.website ?? '').trim().replace(/\/+$/, '').toLowerCase()}`
+  const hasCompletedAnalysis = (prospect: Prospect) => completedWebsiteKeys.has(websiteKeyFor(prospect))
+  const unanalyzedProspects = prospectRecords.filter(
+    (prospect) => Boolean(
+      prospect.website &&
+      !hasCompletedAnalysis(prospect) &&
+      !latestFailedWebsiteKeys.has(websiteKeyFor(prospect)),
     ),
   )
-  const hasCompletedAnalysis = (prospect: Prospect) =>
-    analyzedWebsiteKeys.has(`${prospect.id}::${(prospect.website ?? '').trim().replace(/\/+$/, '').toLowerCase()}`)
-  const unanalyzedProspects = prospectRecords.filter(
-    (prospect) => Boolean(prospect.website && !hasCompletedAnalysis(prospect)),
+  const failedAnalysisProspects = prospectRecords.filter(
+    (prospect) => Boolean(
+      prospect.website &&
+      !hasCompletedAnalysis(prospect) &&
+      latestFailedWebsiteKeys.has(websiteKeyFor(prospect)),
+    ),
   )
   const missingEmailProspects = prospectRecords.filter((prospect) => !prospect.email?.trim())
   const filteredProspects = prospectRecords.filter((prospect) => {
@@ -230,7 +263,9 @@ export function ProspectsPage() {
       (websiteFilter === 'with-website' && Boolean(prospect.website)) ||
       (websiteFilter === 'without-website' && !prospect.website) ||
       (websiteFilter === 'unanalyzed' &&
-        Boolean(!isLoadingAnalyses && !analysesError && prospect.website && !hasCompletedAnalysis(prospect))) ||
+        Boolean(!isLoadingAnalyses && !analysesError && unanalyzedProspects.some(({ id }) => id === prospect.id))) ||
+      (websiteFilter === 'failed-analysis' &&
+        Boolean(!isLoadingAnalyses && !analysesError && failedAnalysisProspects.some(({ id }) => id === prospect.id))) ||
       (websiteFilter === 'missing-email' && !prospect.email?.trim())
     const matchesSearch =
       !searchValue ||
@@ -278,17 +313,26 @@ export function ProspectsPage() {
       const results = await mapWithConcurrency(targets, 3, async (prospect, index) => {
         let enrichmentResult: EnrichmentResult
         try {
-          enrichmentResult = await enrichAndAnalyzeProspect(prospect)
-        } catch (error) {
-          enrichmentResult = {
-            prospect_id: prospect.id,
-            business_name: prospect.business_name,
-            website: prospect.website,
-            contact_email: prospect.email,
-            contact_phone: prospect.phone,
-            analysis_score: null,
-            draft_created: false,
-            error: error instanceof Error ? error.message : 'Website enrichment failed.',
+          try {
+            enrichmentResult = await enrichAndAnalyzeProspect(prospect)
+          } catch (error) {
+            enrichmentResult = {
+              prospect_id: prospect.id,
+              business_name: prospect.business_name,
+              website: prospect.website,
+              contact_email: prospect.email,
+              contact_phone: prospect.phone,
+              analysis_score: null,
+              draft_created: false,
+              error: error instanceof Error ? error.message : 'Website enrichment failed.',
+            }
+          }
+          if (!enrichmentResult.analysis_completed && enrichmentResult.error) {
+            try {
+              await recordFailedWebsiteAnalysis(prospect, enrichmentResult.error)
+            } catch (recordError) {
+              enrichmentResult.error += `; Could not save failure status: ${recordError instanceof Error ? recordError.message : 'Unknown error'}`
+            }
           }
         } finally {
           setEnrichmentProgress((progress) => ({ ...progress, completed: progress.completed + 1 }))
@@ -303,7 +347,12 @@ export function ProspectsPage() {
         queryClient.invalidateQueries({ queryKey: ['/website-analyses', 'prospect-status'] }),
       ])
       const completed = results.filter((result) => result.analysis_completed).length
-      toast.success(`Analyzed ${completed} of ${results.length} websites.`)
+      const failed = results.length - completed
+      if (failed > 0) {
+        toast.warning(`Completed ${completed} of ${results.length} website analyses. ${failed} failed; review the Failed analysis filter to retry or correct their URLs.`)
+      } else {
+        toast.success(`Analyzed ${completed} of ${results.length} websites.`)
+      }
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Could not analyze prospect websites.')
     } finally {
@@ -556,6 +605,22 @@ export function ProspectsPage() {
               : `Analyze unanalysed (${isLoadingAnalyses ? '…' : unanalyzedProspects.length})`}
           </Button>
           <Button
+          variant="secondary"
+          size="sm"
+          className="min-h-11"
+          onClick={() => void analyzeProspectWebsites(failedAnalysisProspects)}
+          disabled={
+            isEnriching ||
+            isExtractingText ||
+            isLoadingAnalyses ||
+            Boolean(analysesError) ||
+            failedAnalysisProspects.length === 0
+          }
+          ariaLabel="Retry website analyses that previously failed"
+          >
+          Retry failed ({isLoadingAnalyses ? '…' : failedAnalysisProspects.length})
+          </Button>
+          <Button
             variant="secondary"
             size="sm"
             className="min-h-11"
@@ -707,7 +772,11 @@ export function ProspectsPage() {
                     <td className="px-3 py-2">{r.contact_phone ?? '—'}</td>
                     <td className="px-3 py-2">{r.analysis_score ?? '—'}</td>
                     <td className="px-3 py-2">{r.draft_created ? 'Created' : '—'}</td>
-                    <td className="px-3 py-2">{r.error ?? (r.analysis_score === null ? 'Scan complete' : 'Analysis complete')}</td>
+                    <td className="max-w-[28rem] whitespace-normal px-3 py-2">
+                      {r.analysis_completed
+                        ? `Analysis complete${r.error ? `; ${r.error}` : ''}`
+                        : r.error ?? 'Analysis did not complete'}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -740,6 +809,7 @@ export function ProspectsPage() {
             ['with-website', `With website (${prospectRecords.filter((prospect) => Boolean(prospect.website)).length})`],
             ['without-website', `No website (${prospectRecords.filter((prospect) => !prospect.website).length})`],
             ['unanalyzed', `Not analyzed (${isLoadingAnalyses ? '…' : unanalyzedProspects.length})`],
+            ['failed-analysis', `Failed analysis (${isLoadingAnalyses ? '…' : failedAnalysisProspects.length})`],
             ['missing-email', `Missing email (${missingEmailProspects.length})`],
           ] as const).map(([filter, label]) => (
             <Button
@@ -801,6 +871,7 @@ export function ProspectsPage() {
           <ProspectTable
             prospects={filteredProspects}
             showManualContactActions={websiteFilter === 'without-website'}
+            analysisErrors={websiteFilter === 'failed-analysis' ? failedAnalysisErrors : undefined}
             selectedProspectIds={selectedProspectIds}
             onToggleSelection={(prospectId) => {
               setSelectedProspectIds((selected) => {
@@ -839,6 +910,8 @@ export function ProspectsPage() {
                       : 'No unanalyzed prospects match your search.'
                   : websiteFilter === 'missing-email'
                     ? 'No prospects without an email address match your search.'
+                    : websiteFilter === 'failed-analysis'
+                      ? 'No failed website analyses match your search.'
                     : search
                   ? 'No prospects match your search.'
                   : 'No prospects yet. Add one or import a CSV to get started.'}
