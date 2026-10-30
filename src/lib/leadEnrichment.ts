@@ -57,7 +57,10 @@ export async function enrichProspectContacts(
   return { email, phone }
 }
 
-export async function enrichAndAnalyzeProspect(prospect: Prospect): Promise<EnrichmentResult> {
+export async function enrichAndAnalyzeProspect(
+  prospect: Prospect,
+  { createDraft = true }: { createDraft?: boolean } = {},
+): Promise<EnrichmentResult> {
   const result: EnrichmentResult = {
     prospect_id: prospect.id,
     business_name: prospect.business_name,
@@ -89,7 +92,9 @@ export async function enrichAndAnalyzeProspect(prospect: Prospect): Promise<Enri
       }
     }
 
-    if (analysis.contentExtractionError) {
+    if (!createDraft) {
+      result.draft_reason = 'Draft not created for this re-analysis.'
+    } else if (analysis.contentExtractionError) {
       result.draft_reason = 'Draft withheld because website extraction failed and the audit is incomplete.'
     } else {
       const suitability = getOutreachSuitability(analysis.record)

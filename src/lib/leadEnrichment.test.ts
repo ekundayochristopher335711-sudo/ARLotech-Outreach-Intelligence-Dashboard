@@ -62,4 +62,41 @@ describe('enrichAndAnalyzeProspect', () => {
     expect(result.analysis_completed).toBe(true)
     expect(result.error).toContain('Contact lookup failed: site request failed')
   })
+
+  it('does not create an outreach draft when re-analyzing a prospect', async () => {
+    const prospect: Prospect = {
+      id: 'prospect-1',
+      user_id: 'user-1',
+      business_name: 'Example Business',
+      business_name_verified: false,
+      contact_name: '',
+      email: 'contact@example.com',
+      website: 'https://example.com',
+      normalized_domain: 'example.com',
+      business_category: null,
+      city: null,
+      country: null,
+      phone: null,
+      linkedin_url: null,
+      notes: null,
+      source: 'manual',
+      status: 'New',
+      do_not_contact: false,
+      last_contacted_at: null,
+      created_at: '',
+      updated_at: '',
+    }
+    analyzeWebsiteMock.mockResolvedValue({
+      overallScore: 82,
+      record: { findings: [], positive_observations: [] },
+      content: { contacts: { emails: [], phones: [] } },
+      contentExtractionError: null,
+    })
+
+    const result = await enrichAndAnalyzeProspect(prospect, { createDraft: false })
+
+    expect(result.analysis_completed).toBe(true)
+    expect(result.draft_created).toBe(false)
+    expect(result.draft_reason).toBe('Draft not created for this re-analysis.')
+  })
 })

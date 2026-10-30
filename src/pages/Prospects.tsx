@@ -108,6 +108,7 @@ export function ProspectsPage() {
   const [importResults, setImportResults] = useState<ImportResultRow[]>([])
   const [enrichmentResults, setEnrichmentResults] = useState<EnrichmentResult[]>([])
   const [isEnriching, setIsEnriching] = useState(false)
+  const [isReanalyzingAll, setIsReanalyzingAll] = useState(false)
   const [enrichmentProgress, setEnrichmentProgress] = useState({ completed: 0, total: 0 })
   const [contactScanMode, setContactScanMode] = useState(false)
   const { importCsv, isImporting, importError } = useCsvImport()
@@ -278,6 +279,7 @@ export function ProspectsPage() {
   const contactScanTargets = prospectRecords.filter(
     (prospect) => Boolean(prospect.website && (!prospect.email || !prospect.phone)),
   )
+  const prospectsWithWebsites = prospectRecords.filter((prospect) => Boolean(prospect.website?.trim()))
   const allFilteredSelected =
     filteredProspects.length > 0 && filteredProspects.every(({ id }) => selectedProspectIds.has(id))
 
@@ -290,7 +292,10 @@ export function ProspectsPage() {
     })
   }
 
-  const analyzeProspectWebsites = async (targets: Prospect[]) => {
+  const analyzeProspectWebsites = async (
+    targets: Prospect[],
+    { createDrafts = true }: { createDrafts?: boolean } = {},
+  ) => {
     if (targets.length === 0) {
       toast.info('All prospects with websites have already been analyzed.')
       return
@@ -314,7 +319,7 @@ export function ProspectsPage() {
         let enrichmentResult: EnrichmentResult
         try {
           try {
-            enrichmentResult = await enrichAndAnalyzeProspect(prospect)
+            enrichmentResult = await enrichAndAnalyzeProspect(prospect, { createDraft: createDrafts })
           } catch (error) {
             enrichmentResult = {
               prospect_id: prospect.id,
@@ -357,6 +362,25 @@ export function ProspectsPage() {
       toast.error(error instanceof Error ? error.message : 'Could not analyze prospect websites.')
     } finally {
       setIsEnriching(false)
+    }
+  }
+
+  const handleReanalyzeAllWebsites = async () => {
+    if (prospectsWithWebsites.length === 0) {
+      toast.info('There are no prospects with website URLs to re-analyze.')
+      return
+    }
+
+    const confirmed = window.confirm(
+      `Re-analyze all ${prospectsWithWebsites.length} prospects with websites? Existing analyses will be kept, and no new email drafts will be created.`,
+    )
+    if (!confirmed) return
+
+    setIsReanalyzingAll(true)
+    try {
+      await analyzeProspectWebsites(prospectsWithWebsites, { createDrafts: false })
+    } finally {
+      setIsReanalyzingAll(false)
     }
   }
 
@@ -558,6 +582,22 @@ export function ProspectsPage() {
             onChange={handleImport}
             aria-label="Choose prospects CSV or text file"
           />
+          <Button
+            variant="secondary"
+            size="sm"
+            className="min-h-11"
+            onClick={() => void handleReanalyzeAllWebsites()}
+            disabled={
+              isEnriching ||
+              isExtractingText ||
+              prospectsWithWebsites.length === 0
+            }
+            ariaLabel="Re-analyze every prospect with a website"
+          >
+            {isReanalyzingAll
+              ? `Re-analyzing… ${enrichmentProgress.completed}/${enrichmentProgress.total}`
+              : `Re-analyze all websites (${isLoadingAnalyses ? '…' : prospectsWithWebsites.length})`}
+          </Button>
           <Button
             variant="secondary"
             size="sm"

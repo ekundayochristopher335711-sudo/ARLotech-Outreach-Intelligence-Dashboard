@@ -276,60 +276,80 @@ export function WebsiteIntelligencePage() {
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {analyses?.map((analysis: any) => (
-          <button
+          <article
             key={analysis.id}
-            type="button"
-            onClick={() => setSelected(analysis)}
-            aria-label={`View website analysis for ${analysis.website_url}`}
-            className="w-full cursor-pointer rounded-xl border border-slate-200 bg-white p-5 text-left shadow-sm transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-arlotech"
+            className="rounded-xl border border-slate-200 bg-white p-5 text-left shadow-sm transition-shadow hover:shadow-md"
           >
-            <div className="flex items-start justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <Globe className="h-5 w-5 text-arlotech" />
-                <span className="text-sm font-medium text-slate-700 truncate max-w-[180px]">{analysis.website_url}</span>
-              </div>
-              <Badge variant="default">{analysis.analysis_status}</Badge>
-            </div>
-
-            {analysis.overall_score !== null && (
-              <div className="mb-3">
-                <div className="flex justify-between text-sm text-slate-600 mb-1">
-                  <span>{analysis.ai_analysis?.technical_score?.methodology ? 'Weighted technical health' : 'Stored legacy score (calculation unverified)'}</span>
-                  <span>{analysis.overall_score}/100</span>
+            <button
+              type="button"
+              onClick={() => setSelected(analysis)}
+              aria-label={`View website analysis for ${analysis.website_url}`}
+              className="w-full cursor-pointer rounded text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-arlotech"
+            >
+              <div className="flex items-start justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <Globe className="h-5 w-5 text-arlotech" />
+                  <span className="text-sm font-medium text-slate-700 truncate max-w-[180px]">{analysis.website_url}</span>
                 </div>
-                <div className="h-2 rounded-full bg-slate-100">
-                  <div
-                    className={`h-2 rounded-full ${(analysis.overall_score ?? 0) >= 70 ? 'bg-green-500' : (analysis.overall_score ?? 0) >= 40 ? 'bg-amber-500' : 'bg-red-500'}`}
-                    style={{ width: `${(analysis.overall_score ?? 0) * 1.0}%` }}
-                  />
-                </div>
+                <Badge variant="default">{analysis.analysis_status}</Badge>
               </div>
-            )}
-            {analysis.overall_score === null && (
-              <p className="mb-3 text-xs text-amber-700">Technical score unavailable; one or more category scores were not returned.</p>
-            )}
 
-            {analysis.category_scores && (
-              <div className="mb-3 grid grid-cols-2 gap-1 text-xs text-slate-500">
-                {Object.entries(analysis.category_scores).map(([k, v]) => (
-                  <div key={k} className="flex justify-between">
-                    <span>{k.replace(/-/g, ' ')}</span>
-                    <span className="font-medium text-slate-700">{String(v ?? 'Unavailable')}</span>
+              {analysis.overall_score !== null && (
+                <div className="mb-3">
+                  <div className="flex justify-between text-sm text-slate-600 mb-1">
+                    <span>{analysis.ai_analysis?.technical_score?.methodology ? 'Weighted technical health' : 'Stored legacy score (calculation unverified)'}</span>
+                    <span>{analysis.overall_score}/100</span>
                   </div>
-                ))}
+                  <div className="h-2 rounded-full bg-slate-100">
+                    <div
+                      className={`h-2 rounded-full ${(analysis.overall_score ?? 0) >= 70 ? 'bg-green-500' : (analysis.overall_score ?? 0) >= 40 ? 'bg-amber-500' : 'bg-red-500'}`}
+                      style={{ width: `${(analysis.overall_score ?? 0) * 1.0}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+              {analysis.overall_score === null && (
+                <p className="mb-3 text-xs text-amber-700">Technical score unavailable; one or more category scores were not returned.</p>
+              )}
+
+              {analysis.category_scores && (
+                <div className="mb-3 grid grid-cols-2 gap-1 text-xs text-slate-500">
+                  {Object.entries(analysis.category_scores).map(([k, v]) => (
+                    <div key={k} className="flex justify-between">
+                      <span>{k.replace(/-/g, ' ')}</span>
+                      <span className="font-medium text-slate-700">{String(v ?? 'Unavailable')}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div className="flex items-center gap-2 text-xs text-slate-500 mb-3">
+                <Clock className="h-3 w-3" />
+                {analysis.analysis_provider || 'Custom'} • {format(new Date(analysis.analyzed_at), 'MMM d')}
               </div>
-            )}
 
-            <div className="flex items-center gap-2 text-xs text-slate-500 mb-3">
-              <Clock className="h-3 w-3" />
-              {analysis.analysis_provider || 'Custom'} • {format(new Date(analysis.analyzed_at), 'MMM d')}
-            </div>
-
-            <div className="flex items-center gap-2 text-xs text-slate-500">
-              <AlertCircle className="h-3 w-3" />
-              {analysis.findings?.length ?? 0} findings • {analysis.positive_observations?.length ?? 0} positives
-            </div>
-          </button>
+              <div className="flex items-center gap-2 text-xs text-slate-500">
+                <AlertCircle className="h-3 w-3" />
+                {analysis.findings?.length ?? 0} findings • {analysis.positive_observations?.length ?? 0} positives
+              </div>
+            </button>
+            <Button
+              variant="secondary"
+              size="sm"
+              className="mt-4 w-full"
+              onClick={() => mutation.mutate({
+                url: analysis.website_url,
+                prospectId: analysis.prospect_id,
+                reanalyze: true,
+              })}
+              disabled={mutation.isPending}
+            >
+              {mutation.isPending
+                ? <Loader2 className="h-4 w-4 animate-spin" />
+                : <RotateCw className="h-4 w-4" />}
+              {mutation.isPending ? 'Analyzing website...' : 'Re-analyze website'}
+            </Button>
+          </article>
         )) || (
           <div className="col-span-3 text-center py-12">
             <p className="text-sm text-slate-500">No analyses yet. Enter a website URL to get started.</p>
