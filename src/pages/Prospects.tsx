@@ -9,12 +9,12 @@ import { ProspectTable } from '@/components/dashboard/ProspectTable'
 import { useAuth } from '@/hooks/useAuthState'
 import { supabase } from '@/lib/supabase'
 import { type Prospect, type ImportSummary } from '@/types'
-import { deleteOwnedProspect } from '@/lib/prospectRepository'
+import { deleteOwnedProspect, deleteOwnedProspects } from '@/lib/prospectRepository'
 import { type ImportResultRow, importLeadsInternal } from '@/lib/csvImport'
 import { extractLeadsFromText } from '@/lib/leadExtraction'
 import { extractGoogleMapsWebsitesFromHtml } from '@/lib/googleMapsWebsites'
 import { enrichAndAnalyzeProspect, type EnrichmentResult } from '@/lib/leadEnrichment'
-import { ClipboardPaste, FileSpreadsheet, Plus, Search } from 'lucide-react'
+import { ClipboardPaste, FileSpreadsheet, Plus, Search, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 
 interface ProspectFormValues {
@@ -85,6 +85,7 @@ export function ProspectsPage() {
   const queryClient = useQueryClient()
   const fileInput = useRef<HTMLInputElement>(null)
   const [search, setSearch] = useState('')
+  const [selectedProspectIds, setSelectedProspectIds] = useState<Set<string>>(() => new Set())
   const [showTextImport, setShowTextImport] = useState(false)
   const [prospectText, setProspectText] = useState('')
   const [clipboardWebsiteLinks, setClipboardWebsiteLinks] = useState<
@@ -99,17 +100,45 @@ export function ProspectsPage() {
   const [enrichmentResults, setEnrichmentResults] = useState<EnrichmentResult[]>([])
   const [isEnriching, setIsEnriching] = useState(false)
   const { importCsv, isImporting, importError } = useCsvImport()
-  const deleteProspect = useMutation({
+  const deleteProspect = useMutation<void, Error, string>({
     mutationFn: async (prospectId: string) => {
       const userId = session?.user.id
       if (!userId) throw new Error('You must be signed in to delete prospects.')
       await deleteOwnedProspect(supabase, prospectId, userId)
     },
-    onSuccess: async () => {
+    onSuccess: async (_: void, prospectId: string) => {
+      setSelectedProspectIds((selected) => {
+        const remaining = new Set(selected)
+        remaining.delete(prospectId)
+        return remaining
+      })
       await queryClient.invalidateQueries({ queryKey: ['/prospects'] })
       toast.success('Prospect deleted')
     },
     onError: (error: unknown) => toast.error(error instanceof Error ? error.message : 'Could not delete prospect.'),
+  })
+  const deleteSelectedProspects = useMutation<void, Error, string[]>({
+    mutationFn: async (prospectIds: string[]) => {
+      const userId = session?.user.id
+      if (!userId) throw new Error('You must be signed in to delete prospects.')
+      await deleteOwnedProspects(supabase, prospectIds, userId)
+    },
+    onSuccess: async (_: void, prospectIds: string[]) => {
+      setSelectedProspectIds((selected) => {
+        const remaining = new Set(selected)
+        prospectIds.forEach((id: string) => remaining.delete(id))
+        return remaining
+      })
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['/prospects'] }),
+        queryClient.invalidateQueries({ queryKey: ['/dashboard/metrics'] }),
+      ])
+      toast.success(`${prospectIds.length} prospects deleted`)
+    },
+    onError: (error: unknown) => {
+      void queryClient.invalidateQueries({ queryKey: ['/prospects'] })
+      toast.error(error instanceof Error ? error.message : 'Could not delete selected prospects.')
+    },
   })
   const markContacted = useMutation({
     mutationFn: async (prospect: Prospect) => {
@@ -153,7 +182,7 @@ export function ProspectsPage() {
     },
   })
 
-  const filteredProspects = (prospects ?? []).filter((prospect: Prospect) => {
+  const filteredProspects: Prospect[] = (prospects ?? []).filter((prospect: Prospect) => {
     const searchValue = search.trim().toLowerCase()
     return (
       !searchValue ||
@@ -162,6 +191,25 @@ export function ProspectsPage() {
       (prospect.email ?? '').toLowerCase().includes(searchValue)
     )
   })
+  const allFilteredSelected =
+    filteredProspects.length > 0 && filteredProspects.every(({ id }) => selectedProspectIds.has(id))
+
+  const toggleFilteredProspects = () => {
+    setSelectedProspectIds((selected) => {
+      const next = new Set(selected)
+      if (allFilteredSelected) filteredProspects.forEach(({ id }) => next.delete(id))
+      else filteredProspects.forEach(({ id }) => next.add(id))
+      return next
+    })
+  }
+
+  const handleDeleteSelected = () => {
+    const selectedIds = [...selectedProspectIds]
+    if (selectedIds.length === 0) return
+    if (window.confirm(`Delete ${selectedIds.length} selected prospects? This cannot be undone.`)) {
+      deleteSelectedProspects.mutate(selectedIds)
+    }
+  }
 
   const completeImport = async (result: Awaited<ReturnType<typeof importLeadsInternal>>) => {
     setImportMessage('')
@@ -478,6 +526,33 @@ export function ProspectsPage() {
             />
           </label>
         </div>
+        {filteredProspects.length > 0 && (
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
+            <label className="flex items-center gap-2 text-sm text-slate-700">
+              <input
+                type="checkbox"
+                checked={allFilteredSelected}
+                onChange={toggleFilteredProspects}
+                aria-label={`Select all ${filteredProspects.length} visible prospects`}
+                className="h-4 w-4 rounded border-slate-300 text-arlotech focus:ring-arlotech"
+              />
+              Select all {filteredProspects.length} shown
+              {selectedProspectIds.size > 0 && (
+                <span className="text-slate-500">({selectedProspectIds.size} selected)</span>
+              )}
+            </label>
+            <Button
+              variant="danger"
+              size="sm"
+              onClick={handleDeleteSelected}
+              disabled={selectedProspectIds.size === 0 || deleteSelectedProspects.isPending}
+              ariaLabel="Delete selected prospects"
+            >
+              <Trash2 className="h-4 w-4" />
+              {deleteSelectedProspects.isPending ? 'Deleting…' : `Delete selected (${selectedProspectIds.size})`}
+            </Button>
+          </div>
+        )}
 
         {isLoading ? (
           <div className="space-y-3">
@@ -492,6 +567,15 @@ export function ProspectsPage() {
         ) : filteredProspects.length > 0 ? (
           <ProspectTable
             prospects={filteredProspects}
+            selectedProspectIds={selectedProspectIds}
+            onToggleSelection={(prospectId) => {
+              setSelectedProspectIds((selected) => {
+                const next = new Set(selected)
+                if (next.has(prospectId)) next.delete(prospectId)
+                else next.add(prospectId)
+                return next
+              })
+            }}
             onMarkContacted={(prospect) => markContacted.mutate(prospect)}
             onDelete={(prospect) => {
               if (window.confirm(`Delete ${prospect.business_name}? This cannot be undone.`)) {

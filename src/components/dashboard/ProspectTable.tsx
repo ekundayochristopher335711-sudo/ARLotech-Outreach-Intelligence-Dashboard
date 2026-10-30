@@ -9,6 +9,8 @@ interface ProspectTableProps {
   compact?: boolean
   onMarkContacted?: (prospect: Prospect) => void
   onDelete?: (prospect: Prospect) => void
+  selectedProspectIds?: Set<string>
+  onToggleSelection?: (prospectId: string) => void
   isUpdatingContact?: boolean
   isDeleting?: boolean
 }
@@ -18,6 +20,8 @@ export function ProspectTable({
   compact = false,
   onMarkContacted,
   onDelete,
+  selectedProspectIds,
+  onToggleSelection,
   isUpdatingContact = false,
   isDeleting = false,
 }: ProspectTableProps) {
@@ -28,15 +32,29 @@ export function ProspectTable({
         <div
           key={prospect.id}
           onClick={() => navigate(`/prospects/${prospect.id}`)}
-          className={`grid w-full grid-cols-[2.5rem_minmax(0,1fr)] items-start gap-3 rounded-lg p-3 transition-colors cursor-pointer sm:flex sm:items-center ${
+          className={`grid w-full ${
+            selectedProspectIds && onToggleSelection
+              ? 'grid-cols-[1.5rem_2.5rem_minmax(0,1fr)]'
+              : 'grid-cols-[2.5rem_minmax(0,1fr)]'
+          } items-start gap-3 rounded-lg p-3 transition-colors cursor-pointer sm:flex sm:items-center ${
             compact ? 'divide-y' : 'hover:bg-slate-50'
           }`}
         >
+          {selectedProspectIds && onToggleSelection && (
+            <input
+              type="checkbox"
+              checked={selectedProspectIds.has(prospect.id)}
+              onChange={() => onToggleSelection(prospect.id)}
+              onClick={(event) => event.stopPropagation()}
+              aria-label={`Select ${prospect.business_name}`}
+              className="h-4 w-4 shrink-0 self-center rounded border-slate-300 text-arlotech focus:ring-arlotech"
+            />
+          )}
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-200 text-xs font-semibold text-slate-600">
             {prospect.business_name.charAt(0)}
           </div>
 
-          <div className="min-w-0 sm:flex-1">
+          <div className={`${selectedProspectIds && onToggleSelection ? 'col-start-3' : ''} min-w-0 sm:flex-1`}>
             <p className="break-words text-sm font-medium leading-5 text-slate-800">{prospect.business_name}</p>
             <p className="break-all text-xs text-slate-400">{prospect.email || 'No email'}</p>
             {prospect.city && (
@@ -47,12 +65,15 @@ export function ProspectTable({
             )}
           </div>
 
-          <div className="col-start-2 flex min-w-0 flex-wrap items-center gap-2 sm:col-auto">
+          <div className={`${selectedProspectIds && onToggleSelection ? 'col-start-3' : 'col-start-2'} flex min-w-0 flex-wrap items-center gap-2 sm:col-auto`}>
             <Badge variant="default">{prospect.status}</Badge>
           </div>
 
           {(onMarkContacted || onDelete) && (
-            <div className="col-start-2 flex min-w-0 flex-wrap items-center gap-2 sm:col-auto sm:shrink-0" onClick={(event) => event.stopPropagation()}>
+            <div
+              className={`${selectedProspectIds && onToggleSelection ? 'col-start-3' : 'col-start-2'} flex min-w-0 flex-wrap items-center gap-2 sm:col-auto sm:shrink-0`}
+              onClick={(event) => event.stopPropagation()}
+            >
               {onMarkContacted &&
                 (prospect.last_contacted_at ? (
                   <span
