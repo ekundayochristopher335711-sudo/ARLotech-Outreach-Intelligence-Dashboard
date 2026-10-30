@@ -60,3 +60,7 @@
 .login-blacksite .matrix-rain>div{inset:-110% 0 0;animation:matrix-drift 16s linear infinite}
 .login-blacksite .matrix-rain span{font-size:clamp(14px,1.25vw,19px);line-height:1.9;color:#6cff5c;text-shadow:0 0 7px #37ff39,0 0 20px #00d51b,0 0 35px #00a516}
 .login-blacksite .login-topbar,.login-blacksite .login-layout,.login-blacksite .login-bottomline{z-index:2}
+.login-brand{display:inline-flex!important;align-items:center!important;gap:0!important;min-width:0}
+.login-brand-wordmark{display:block!important;width:auto!important;height:38px!important;max-width:min(245px,52vw)!important;object-fit:contain!important;object-position:left center!important}
+.login-brand::before,.login-brand::after{content:none!important;display:none!important}
+@media(max-width:640px){.login-brand-wordmark{height:30px!important;max-width:min(190px,58vw)!important}}

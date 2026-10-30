@@ -12,6 +12,7 @@ import { type Prospect, type ImportSummary } from '@/types'
 import { deleteOwnedProspect } from '@/lib/prospectRepository'
 import { type ImportResultRow, importLeadsInternal } from '@/lib/csvImport'
 import { extractLeadsFromText } from '@/lib/leadExtraction'
+import { extractGoogleMapsWebsitesFromHtml } from '@/lib/googleMapsWebsites'
 import { enrichAndAnalyzeProspect, type EnrichmentResult } from '@/lib/leadEnrichment'
 import { ClipboardPaste, FileSpreadsheet, Plus, Search } from 'lucide-react'
 import { toast } from 'sonner'
@@ -86,6 +87,9 @@ export function ProspectsPage() {
   const [search, setSearch] = useState('')
   const [showTextImport, setShowTextImport] = useState(false)
   const [prospectText, setProspectText] = useState('')
+  const [clipboardWebsiteLinks, setClipboardWebsiteLinks] = useState<
+    ReturnType<typeof extractGoogleMapsWebsitesFromHtml>
+  >([])
   const [isExtractingText, setIsExtractingText] = useState(false)
   const [importMessage, setImportMessage] = useState('')
   const [importFailure, setImportFailure] = useState('')
@@ -237,7 +241,7 @@ export function ProspectsPage() {
     setIsExtractingText(true)
 
     try {
-      const leads = await extractLeadsFromText(text)
+      const leads = await extractLeadsFromText(text, clipboardWebsiteLinks)
       if (leads.length === 0) {
         setImportFailure('No business prospects were found in that text.')
         return
@@ -245,6 +249,7 @@ export function ProspectsPage() {
 
       await completeImport(await importLeadsInternal(leads as any, queryClient, session?.user.id))
       setProspectText('')
+      setClipboardWebsiteLinks([])
       setShowTextImport(false)
     } catch (error) {
       setImportFailure(error instanceof Error ? error.message : 'Could not extract prospects from this text.')
@@ -257,7 +262,7 @@ export function ProspectsPage() {
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-slate-800">Prospects</h1>
+          <h1 className="text-2xl font-bold text-slate-800">{localStorage.getItem('arlotech-login-mode') === 'blacksite' ? 'TARGET REGISTRY' : 'Prospects'}</h1>
           <p className="mt-1 text-sm text-slate-500">Manage and track your prospect pipeline</p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -303,9 +308,9 @@ export function ProspectsPage() {
       {showTextImport && (
         <Card className="space-y-3 p-4">
           <div>
-            <h2 className="text-base font-semibold text-slate-800">Paste prospect details</h2>
+            <h2 className="text-base font-semibold text-slate-800">{localStorage.getItem('arlotech-login-mode') === 'blacksite' ? 'INTELLIGENCE INTAKE' : 'Paste prospect details'}</h2>
             <p className="mt-1 text-xs text-slate-500">
-              Website links in Google Maps listings are matched to each business, then contact details are looked up from the website.
+              Paste Google Maps listings directly; hidden website links are read from clipboard formatting and matched to each business.
             </p>
           </div>
           <div className="space-y-1">
@@ -316,6 +321,14 @@ export function ProspectsPage() {
               id="prospect-text"
               value={prospectText}
               onChange={(event) => setProspectText(event.target.value)}
+              onPaste={(event) => {
+                const html = event.clipboardData.getData('text/html')
+                if (!html) return
+                const websiteLinks = extractGoogleMapsWebsitesFromHtml(html)
+                if (websiteLinks.length > 0) {
+                  setClipboardWebsiteLinks((current) => [...current, ...websiteLinks])
+                }
+              }}
               rows={7}
               disabled={isExtractingText}
               className="w-full resize-y rounded-lg border border-slate-300 px-3 py-2 text-sm placeholder:text-slate-400 focus:border-arlotech focus:outline-none focus:ring-2 focus:ring-arlotech/20 disabled:bg-slate-50"
@@ -384,7 +397,7 @@ export function ProspectsPage() {
       {(isEnriching || enrichmentResults.length > 0) && (
         <Card className="p-4 space-y-3">
           <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-slate-800">Post-import enrichment</h3>
+            <h3 className="text-sm font-semibold text-slate-800">{localStorage.getItem('arlotech-login-mode') === 'blacksite' ? 'POST-INTAKE ENRICHMENT' : 'Post-import enrichment'}</h3>
             {isEnriching && <span className="text-xs text-slate-500">Analyzing websites…</span>}
           </div>
           <div className="max-h-64 overflow-auto rounded-lg border border-slate-200">
@@ -419,7 +432,7 @@ export function ProspectsPage() {
       <Card>
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-3">
-            <h2 className="text-lg font-semibold text-slate-800">All Prospects</h2>
+            <h2 className="text-lg font-semibold text-slate-800">{localStorage.getItem('arlotech-login-mode') === 'blacksite' ? 'ALL TARGET RECORDS' : 'All Prospects'}</h2>
             <Badge variant="default">{prospects?.length ?? 0} total</Badge>
           </div>
           <label className="relative block w-full sm:max-w-xs">
@@ -526,7 +539,7 @@ export function NewProspectPage() {
   return (
     <div className="mx-auto max-w-3xl space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-slate-800">Add prospect</h1>
+        <h1 className="text-2xl font-bold text-slate-800">{localStorage.getItem('arlotech-login-mode') === 'blacksite' ? 'REGISTER TARGET' : 'Add prospect'}</h1>
         <p className="mt-1 text-sm text-slate-500">Add a business to your outreach pipeline.</p>
       </div>
 

@@ -476,7 +476,7 @@ export function EmailDraftsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-slate-800">Email Drafts</h1>
+          <h1 className="text-2xl font-bold text-slate-800">{localStorage.getItem('arlotech-login-mode') === 'blacksite' ? 'PAYLOAD ASSEMBLY' : 'Email Drafts'}</h1>
           <p className="mt-1 text-sm text-slate-500">Create drafts and prepare personalized, reviewed outreach batches.</p>
         </div>
         <Button onClick={() => { closeForm(); setShowForm(true) }}>
@@ -486,7 +486,7 @@ export function EmailDraftsPage() {
 
       <Card className="space-y-4 p-4 sm:p-6">
         <div>
-          <h2 className="text-lg font-semibold text-slate-800">Write a one-off email</h2>
+          <h2 className="text-lg font-semibold text-slate-800">{localStorage.getItem('arlotech-login-mode') === 'blacksite' ? 'ASSEMBLE SINGLE TRANSMISSION' : 'Write a one-off email'}</h2>
           <p className="mt-1 text-sm text-slate-500">
             Enter any recipient and write your own message. It is sent through the same authenticated Resend function and recorded in your email history.
           </p>
@@ -600,7 +600,7 @@ export function EmailDraftsPage() {
 
       <Card className="space-y-5 p-4 sm:p-6">
         <div>
-          <h2 className="text-lg font-semibold text-slate-800">Personalized outreach batch</h2>
+          <h2 className="text-lg font-semibold text-slate-800">{localStorage.getItem('arlotech-login-mode') === 'blacksite' ? 'BATCH TRANSMISSION ASSEMBLY' : 'Personalized outreach batch'}</h2>
           <p className="mt-1 text-sm text-slate-500">
             Select up to {MAX_OUTREACH_BATCH_SIZE} prospects. Each person gets a separate email, not a shared group message.
             Website prospects must have a completed audit; its report is attached. Prospects without a website get a separate introduction.
@@ -701,7 +701,7 @@ export function EmailDraftsPage() {
         {outreachPreviews.length > 0 && (
           <div className="space-y-4 border-t border-slate-200 pt-4">
             <div>
-              <h3 className="font-semibold text-slate-800">Review each message before sending</h3>
+              <h3 className="font-semibold text-slate-800">{localStorage.getItem('arlotech-login-mode') === 'blacksite' ? 'REVIEW PAYLOADS BEFORE DEPLOYMENT' : 'Review each message before sending'}</h3>
               <p className="mt-1 text-xs text-slate-500">
                 Messages use recorded website findings. Review names, claims, and recipients; deliverability cannot be guaranteed.
               </p>
@@ -819,7 +819,7 @@ export function EmailDraftsPage() {
 
         {outreachResults.length > 0 && (
           <div className="space-y-2 border-t border-slate-200 pt-4" role="status">
-            <h3 className="font-semibold text-slate-800">Batch results</h3>
+            <h3 className="font-semibold text-slate-800">{localStorage.getItem('arlotech-login-mode') === 'blacksite' ? 'DEPLOYMENT RESULTS' : 'Batch results'}</h3>
             {outreachResults.map((result) => (
               <p key={result.prospect_id} className="flex items-start gap-2 text-sm">
                 {result.status === 'sent' ? (

@@ -117,7 +117,7 @@ export function FollowUpsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-slate-800">Follow-ups</h1>
+          <h1 className="text-2xl font-bold text-slate-800">{localStorage.getItem('arlotech-login-mode') === 'blacksite' ? 'EXTRACTION QUEUE' : 'Follow-ups'}</h1>
           <p className="mt-1 text-sm text-slate-500">Schedule reminders and manage follow-up statuses. This does not send email automatically.</p>
         </div>
         <Button onClick={() => setShowForm((visible) => !visible)}>
@@ -135,7 +135,7 @@ export function FollowUpsPage() {
 
       {showForm && (
         <Card className="space-y-4 p-6">
-          <h2 className="text-lg font-semibold text-slate-800">Schedule a follow-up reminder</h2>
+          <h2 className="text-lg font-semibold text-slate-800">{localStorage.getItem('arlotech-login-mode') === 'blacksite' ? 'QUEUE CONTACT RECOVERY' : 'Schedule a follow-up reminder'}</h2>
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-1">
               <label htmlFor="followup-prospect" className="block text-sm font-medium text-slate-700">Prospect</label>
@@ -171,7 +171,7 @@ export function FollowUpsPage() {
       </div>
 
       <Card className="p-5">
-        <h2 className="mb-3 text-lg font-semibold text-slate-800">Scheduled Follow-ups</h2>
+        <h2 className="mb-3 text-lg font-semibold text-slate-800">{localStorage.getItem('arlotech-login-mode') === 'blacksite' ? 'ACTIVE EXTRACTION QUEUE' : 'Scheduled Follow-ups'}</h2>
         {sequenceRows.length === 0 ? (
           <p className="py-8 text-center text-sm text-slate-500">No follow-ups yet. Schedule a reminder to see it here.</p>
         ) : (

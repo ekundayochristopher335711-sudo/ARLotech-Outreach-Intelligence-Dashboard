@@ -77,7 +77,7 @@ export function WebsiteIntelligencePage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-slate-800">Website Intelligence</h1>
+        <h1 className="text-2xl font-bold text-slate-800">{localStorage.getItem('arlotech-login-mode') === 'blacksite' ? 'SURFACE RECON' : 'Website Intelligence'}</h1>
         <p className="text-sm text-slate-500 mt-1">AI-powered website analysis and improvement recommendations</p>
       </div>
 
@@ -122,7 +122,7 @@ export function WebsiteIntelligencePage() {
       {lastResult && (
         <Card className="p-6 space-y-5">
           <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-slate-800">Latest Analysis</h2>
+            <h2 className="text-lg font-semibold text-slate-800">{localStorage.getItem('arlotech-login-mode') === 'blacksite' ? 'LATEST RECON REPORTS' : 'Latest Analysis'}</h2>
             <div className="flex gap-2">
               <Button variant="secondary" size="sm" onClick={() => handleCopyReport(lastResult)}>
                 <Copy className="h-4 w-4" /> Copy

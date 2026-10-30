@@ -108,7 +108,7 @@ export function AnalyticsDashboard() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-slate-800">Analytics</h1>
+        <h1 className="text-2xl font-bold text-slate-800">{localStorage.getItem('arlotech-login-mode') === 'blacksite' ? 'SIGNAL ANALYSIS' : 'Analytics'}</h1>
         <p className="mt-1 text-sm text-slate-500">Outreach totals and activity calculated from your Supabase records.</p>
       </div>
 
@@ -125,7 +125,7 @@ export function AnalyticsDashboard() {
 
       <Card className="p-5">
         <div className="mb-5">
-          <h2 className="text-lg font-semibold text-slate-800">Email activity</h2>
+          <h2 className="text-lg font-semibold text-slate-800">{localStorage.getItem('arlotech-login-mode') === 'blacksite' ? 'TRANSMISSION ACTIVITY' : 'Email activity'}</h2>
           <p className="text-sm text-slate-500">Emails sent and replies received per day over the last 14 days</p>
         </div>
         <div className="flex h-56 items-end gap-2 overflow-x-auto border-b border-slate-200 pb-2">

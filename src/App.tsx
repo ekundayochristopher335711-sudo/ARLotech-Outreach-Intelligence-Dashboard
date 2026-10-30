@@ -76,10 +76,10 @@ function PrivateRoute({ children }: { children: React.ReactNode }) {
 }
 
 function MatrixBackdrop() {
-  const [streams, setStreams] = useState<string[]>(() => Array.from({ length: 64 }, () => Array.from({ length: 42 }, () => Math.random() > .5 ? '1' : '0').join('\n')))
+  const [streams, setStreams] = useState<string[]>(() => Array.from({ length: 64 }, () => Array.from({ length: 42 }, () => '01ABCDEF'[Math.floor(Math.random() * 8)]).join('\n')))
   useEffect(() => {
     const timer = window.setInterval(() => {
-      setStreams((current) => current.map((stream) => stream.split('\n').map((bit) => Math.random() > .58 ? (Math.random() > .5 ? '1' : '0') : bit).join('\n')))
+      setStreams((current) => current.map((stream) => stream.split('\n').map((bit) => Math.random() > .58 ? '01ABCDEF'[Math.floor(Math.random() * 8)] : bit).join('\n')))
     }, 190)
     return () => window.clearInterval(timer)
   }, [])
@@ -104,13 +104,24 @@ function AppShell() {
     }
   }, [])
 
+  useEffect(() => {
+    const favicon = document.querySelector<HTMLLinkElement>('link[rel~="icon"]')
+    if (favicon) {
+      favicon.href = blacksite ? '/favicon-blacksite.svg' : '/favicon-standard.svg'
+      favicon.type = 'image/svg+xml'
+    }
+    document.title = blacksite ? 'BLACKSITE | Arlotech Intelligence' : 'Arlotech Outreach Intelligence'
+    document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')
+      ?.setAttribute('content', blacksite ? '#030603' : '#f4f7f9')
+  }, [blacksite])
+
   const closeSidebar = () => setMobileOpen(false)
   const blacksiteCopy: Record<string, { title: string; sub: string }> = {
     '/': { title: 'COMMAND DECK', sub: 'LIVE CAMPAIGN TELEMETRY' },
     '/prospects': { title: 'TARGET REGISTRY', sub: 'LEAD ACQUISITION & DOSSIERS' },
     '/prospects/new': { title: 'NEW DOSSIER', sub: 'TARGET RECORD INITIALIZATION' },
     '/website-intelligence': { title: 'SURFACE RECON', sub: 'DOMAIN INTELLIGENCE & EXPOSURE REVIEW' },
-    '/campaigns': { title: 'DEPLOYMENT CONTROL', sub: 'OUTBOUND OPERATION SEQUENCING' },
+    '/campaigns': { title: 'TRANSMISSION OPS', sub: 'OUTBOUND OPERATION SEQUENCING' },
     '/email-drafts': { title: 'PAYLOAD LAB', sub: 'MESSAGE ASSEMBLY & DELIVERY PREP' },
     '/replies': { title: 'INTERCEPTS', sub: 'INBOUND SIGNALS & RESPONSE TRIAGE' },
     '/follow-ups': { title: 'EXTRACTION QUEUE', sub: 'PENDING CONTACT RECOVERY' },
@@ -147,7 +158,7 @@ function AppShell() {
           >
             <Menu className="h-6 w-6" />
           </button>
-          <span className="topbar-brand flex items-center" aria-label="ArloTech">{blacksite ? <img src="/blacksite%20logo.jpg" alt="ArloTech Blacksite" className="h-10 w-auto" /> : <img src="/logo.jpg" alt="ArloTech" className="h-10 w-auto" />}</span>
+          <span className="topbar-brand flex items-center" aria-label="Arlotech">{blacksite ? <img src="/arlotech-blacksite.svg" alt="Arlotech BLACKSITE" className="topbar-logo-image" /> : <img src="/arlotech-standard.svg" alt="Arlotech Intelligence Systems" className="topbar-logo-image topbar-logo-standard" />}</span>
           <div className="topbar-system-status"><span className="status-live-dot" /> <span>{blacksite ? 'UPLINK ESTABLISHED' : 'WORKSPACE ONLINE'}</span><span className="topbar-divider">/</span><span className="topbar-clock">{blacksite ? 'TRACE NULL // UPLINK LIVE' : 'OUTREACH CONSOLE'}</span></div>
           <div className="topbar-mark" aria-hidden="true">{blacksite ? <RadioTower size={18} /> : <Activity size={18} />}<span>{blacksite ? 'NODE 09' : 'AOI'}</span></div>
         </header>

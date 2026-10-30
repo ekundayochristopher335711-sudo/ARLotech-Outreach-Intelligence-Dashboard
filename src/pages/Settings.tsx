@@ -74,13 +74,13 @@ export function SettingsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-slate-800">Settings</h1>
+        <h1 className="text-2xl font-bold text-slate-800">{localStorage.getItem('arlotech-login-mode') === 'blacksite' ? 'SYSTEM CONFIGURATION' : 'Settings'}</h1>
         <p className="mt-1 text-sm text-slate-500">Manage your account details and review available integrations.</p>
       </div>
 
       <Card className="space-y-4 p-6">
         <div>
-          <h2 className="text-lg font-semibold text-slate-800">Account profile</h2>
+          <h2 className="text-lg font-semibold text-slate-800">{localStorage.getItem('arlotech-login-mode') === 'blacksite' ? 'OPERATOR PROFILE' : 'Account profile'}</h2>
           <p className="mt-1 text-sm text-slate-500">These details are saved to your account profile.</p>
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
@@ -105,7 +105,7 @@ export function SettingsPage() {
       </Card>
 
       <Card className="space-y-2 p-6">
-        <h2 className="text-lg font-semibold text-slate-800">Email integrations</h2>
+        <h2 className="text-lg font-semibold text-slate-800">{localStorage.getItem('arlotech-login-mode') === 'blacksite' ? 'TRANSMISSION CHANNELS' : 'Email integrations'}</h2>
         <p className="text-sm text-slate-600">Outreach messages are sent securely through the configured Resend integration.</p>
         <p className="text-sm text-slate-500">Resend API credentials are managed server-side and are never exposed in these settings.</p>
       </Card>

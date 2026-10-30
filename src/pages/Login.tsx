@@ -89,8 +89,7 @@ export function LoginPage() {
       {isBlacksite && <div className="matrix-rain" aria-hidden="true"><div>{matrixStreams.map((column, i) => <span key={i} style={{ animationDelay: `${-(i % 12) * 1.6}s`, animationDuration: `${13 + (i % 8) * 2}s` }}>{column}</span>)}</div></div>}
       <header className="login-topbar">
         <a className="login-brand" href="/login" aria-label="Arlotech login home">
-          <span className="login-brand-mark"><ShieldCheck size={21} strokeWidth={1.7} /><i className="login-brand-signal" /></span>
-          <img src={isBlacksite ? '/blacksite%20logo.jpg' : '/logo.jpg'} alt="ArloTech" className="h-8 w-auto" />
+          <img src={isBlacksite ? '/arlotech-blacksite.svg' : '/arlotech-standard.svg'} alt={isBlacksite ? 'Arlotech BLACKSITE' : 'Arlotech Intelligence Systems'} className="login-brand-wordmark" />
         </a>
         <div className="login-top-actions">
           <span className="login-secure-status"><span className="status-pulse" /> {isBlacksite ? 'COVERT NODE // ONLINE' : 'SECURE ACCESS'}</span>

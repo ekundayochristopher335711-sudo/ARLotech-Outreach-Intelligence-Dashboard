@@ -74,7 +74,7 @@ export function RepliesPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-slate-800">Replies</h1>
+          <h1 className="text-2xl font-bold text-slate-800">{localStorage.getItem('arlotech-login-mode') === 'blacksite' ? 'SIGNAL INTERCEPTS' : 'Replies'}</h1>
           <p className="mt-1 text-sm text-slate-500">Review inbound messages recorded in your outreach activity.</p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -122,7 +122,7 @@ export function RepliesPage() {
       </div>
 
       <Card className="p-5">
-        <h2 className="mb-4 text-lg font-semibold text-slate-800">Latest Replies</h2>
+        <h2 className="mb-4 text-lg font-semibold text-slate-800">{localStorage.getItem('arlotech-login-mode') === 'blacksite' ? 'LATEST INTERCEPTS' : 'Latest Replies'}</h2>
         {prospectsError && (
           <p className="mb-3 text-sm text-red-600">
             Could not load prospect names: {prospectsError instanceof Error ? prospectsError.message : 'Unknown error'}
@@ -173,7 +173,7 @@ export function RepliesPage() {
       </Card>
 
       <Card className="p-5">
-        <h2 className="mb-4 text-lg font-semibold text-slate-800">Recent Sent Emails</h2>
+        <h2 className="mb-4 text-lg font-semibold text-slate-800">{localStorage.getItem('arlotech-login-mode') === 'blacksite' ? 'OUTBOUND TRANSMISSIONS' : 'Recent Sent Emails'}</h2>
         {recentSentMessages.length === 0 ? (
           <p className="py-6 text-center text-sm text-slate-500">No sent emails have been recorded yet.</p>
         ) : (

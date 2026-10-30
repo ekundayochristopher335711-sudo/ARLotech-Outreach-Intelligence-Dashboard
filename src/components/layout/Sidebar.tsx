@@ -10,8 +10,6 @@ import {
   BarChart3,
   Settings,
   LogOut,
-  ChevronLeft,
-  ChevronRight,
   Plane,
   Radio,
 } from 'lucide-react'
@@ -46,15 +44,12 @@ export function Sidebar({
   setMobileOpen: (v: boolean) => void
   onNavigate: () => void
 }) {
-  const [collapsed, setCollapsed] = useState(false)
   const blacksite = (() => { try { return localStorage.getItem('arlotech-login-mode') === 'blacksite' } catch { return false } })()
   const displayLabels: Record<string, string> = blacksite ? { '/': 'Command Deck', '/prospects': 'Target Registry', '/website-intelligence': 'Surface Recon', '/campaigns': 'Transmission Ops', '/email-drafts': 'Payload Lab', '/replies': 'Intercepts', '/follow-ups': 'Extraction Queue', '/analytics': 'Signal Analysis', '/settings': 'System Config' } : {}
   const [signingOut, setSigningOut] = useState(false)
   const [signOutError, setSignOutError] = useState('')
   const { signOut } = useAuth()
   const sidebarRef = useAccessibleDialog<HTMLElement>(mobileOpen, () => setMobileOpen(false), true)
-
-  const toggleCollapse = () => setCollapsed((v) => !v)
 
   const handleSignOut = async () => {
     setSigningOut(true)
@@ -74,11 +69,7 @@ export function Sidebar({
       <aside
         ref={sidebarRef}
         id="app-sidebar"
-        className={`app-sidebar fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-slate-200 bg-white transition-all duration-300 lg:relative lg:inset-y-auto lg:left-auto lg:translate-x-0 ${
-          collapsed ? 'lg:w-20' : 'lg:w-64'
-        } ${
-          mobileOpen ? 'translate-x-0' : '-translate-x-full'
-        }`}
+        className={`app-sidebar fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-slate-200 bg-white transition-transform duration-300 lg:relative lg:inset-y-auto lg:left-auto lg:translate-x-0 ${mobileOpen ? 'translate-x-0' : '-translate-x-full'}`}
         aria-label="Main navigation"
         role={mobileOpen ? 'dialog' : undefined}
         aria-modal={mobileOpen ? true : undefined}
@@ -87,8 +78,8 @@ export function Sidebar({
       >
         <div className="sidebar-brand-row flex items-center justify-between h-20 px-4 border-b border-slate-200">
           <div className="flex items-center gap-2">
-            <img src={blacksite ? '/blacksite%20logo.jpg' : '/logo.jpg'} alt="ArloTech" className="h-8 w-auto" />
-            <span className={`sidebar-brand-copy text-sm font-bold text-slate-800 ${collapsed ? 'lg:hidden' : ''}`}>
+            <img src={blacksite ? '/favicon-blacksite.svg' : '/favicon-standard.svg'} alt="Arlotech emblem" className="sidebar-brand-image" />
+            <span className="sidebar-brand-copy text-sm font-bold text-slate-800">
               {blacksite ? <>BLACKSITE<span>FIELD OPERATIONS</span></> : <>ARLOTECH<span>INTELLIGENCE</span></>}
             </span>
           </div>
@@ -110,10 +101,9 @@ export function Sidebar({
             <div key={item.path}>
               <NavLink
                 to={item.path}
+                title={undefined}
                 className={({ isActive }) =>
-                  `flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-                    collapsed ? 'lg:justify-center' : 'justify-start'
-                  } ${
+                  `flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors justify-start ${
                     isActive
                       ? 'bg-arlotech text-white'
                       : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
@@ -125,14 +115,14 @@ export function Sidebar({
                 }}
               >
                 <item.icon className="h-4 w-4" />
-                <span className={`truncate ${collapsed ? 'lg:hidden' : ''}`}>{displayLabels[item.path] || item.label}</span>
+                <span className="truncate">{displayLabels[item.path] || item.label}</span>
               </NavLink>
             </div>
           ))}
         </div>
 
         <div className="sidebar-footer p-4 border-t border-slate-200">
-          <div className={`sidebar-node ${collapsed ? 'lg:hidden' : ''}`}><Radio size={14} /><span><strong>{blacksite ? 'GHOST NODE 09' : 'NODE 01'}</strong><small>{blacksite ? 'SIGNAL OBFUSCATED' : 'CONNECTION SECURE'}</small></span><i /></div>
+          <div className="sidebar-node"><Radio size={14} /><span><strong>{blacksite ? 'GHOST NODE 09' : 'NODE 01'}</strong><small>{blacksite ? 'SIGNAL OBFUSCATED' : 'CONNECTION SECURE'}</small></span><i /></div>
           {signOutError && (
             <p className="mb-2 text-xs text-red-600" role="alert">
               {signOutError}
@@ -145,18 +135,10 @@ export function Sidebar({
             disabled={signingOut}
           >
             <LogOut className="h-4 w-4" />
-            <span className={collapsed ? 'lg:hidden' : ''}>{signingOut ? (blacksite ? 'Terminating session…' : 'Logging out...') : (blacksite ? 'Terminate Session' : 'Log out')}</span>
+            <span>{signingOut ? (blacksite ? 'Terminating session…' : 'Logging out...') : (blacksite ? 'Terminate Session' : 'Log out')}</span>
           </button>
         </div>
 
-        <button
-          type="button"
-          className="absolute -right-3 top-16 hidden h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 lg:flex"
-          onClick={toggleCollapse}
-          aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-        >
-          {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
-        </button>
       </aside>
     </>
   )

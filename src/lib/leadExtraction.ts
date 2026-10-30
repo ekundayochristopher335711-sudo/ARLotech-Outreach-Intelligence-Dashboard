@@ -1,4 +1,8 @@
 import { supabase } from '@/lib/supabase'
+import {
+  extractGoogleMapsWebsitesFromText,
+  type GoogleMapsWebsite,
+} from '@/lib/googleMapsWebsites'
 
 export interface ExtractedLead {
   business_name: string
@@ -20,30 +24,10 @@ function normalizeBusinessName(name: string) {
   return name.toLowerCase().replace(/[^a-z0-9]/g, '')
 }
 
-function extractGoogleMapsWebsites(text: string) {
-  const links = [...text.matchAll(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/gi)].map((match) => ({
-    label: match[1].trim(),
-    url: match[2].replace(/&amp;/g, '&'),
-    index: match.index ?? 0,
-  }))
-  const mapListings = links.filter(({ url }) => /^https?:\/\/(?:www\.)?google\.[^/]+\/maps\/place\//i.test(url))
-
-  return mapListings.flatMap((listing, index) => {
-    const nextListingIndex = mapListings[index + 1]?.index ?? text.length
-    const websiteLink = links.find(
-      (link) =>
-        link.index > listing.index &&
-        link.index < nextListingIndex &&
-        /website/i.test(link.label) &&
-        !/^https?:\/\/(?:www\.)?google\./i.test(link.url),
-    )
-    return websiteLink
-      ? [{ business_name: listing.label, website: websiteLink.url }]
-      : []
-  })
-}
-
-export async function extractLeadsFromText(text: string): Promise<ExtractedLead[]> {
+export async function extractLeadsFromText(
+  text: string,
+  clipboardWebsiteLinks: GoogleMapsWebsite[] = [],
+): Promise<ExtractedLead[]> {
   const { data, error } = await (supabase as any).functions.invoke('extract-leads', { body: { text } })
   if (error) {
     let detail = error.message || 'extract-leads failed'
@@ -59,7 +43,7 @@ export async function extractLeadsFromText(text: string): Promise<ExtractedLead[
   if (data?.error) throw new Error(data.error)
   const leads = Array.isArray(data?.leads) ? data.leads : Array.isArray(data) ? data : []
   const extractedLeads = leads as ExtractedLead[]
-  const websiteLinks = extractGoogleMapsWebsites(text)
+  const websiteLinks = [...extractGoogleMapsWebsitesFromText(text), ...clipboardWebsiteLinks]
 
   for (const websiteLink of websiteLinks) {
     const normalizedListingName = normalizeBusinessName(websiteLink.business_name)

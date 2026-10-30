@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 92" role="img" aria-labelledby="title">
+<title id="title">Arlotech Blacksite Field Systems</title>
+<rect x="3" y="3" width="86" height="86" rx="7" fill="#050a06" stroke="#7cff4e" stroke-width="2"/>
+<path d="M46 13 76 30v33L46 80 16 63V30Z" fill="none" stroke="#a8ff48" stroke-width="5" stroke-linejoin="bevel"/>
+<path d="M29 37h34M29 50h22M29 63h34" fill="none" stroke="#a8ff48" stroke-width="5" stroke-linecap="square"/>
+<path d="M46 13v67" stroke="#55ce3b" stroke-width="1.5" opacity=".6"/>
+<text x="108" y="48" fill="#e0f4d8" font-family="monospace" font-size="34" font-weight="800" letter-spacing="4">ARLOTECH</text>
+<text x="110" y="71" fill="#a8ff48" font-family="monospace" font-size="10" font-weight="700" letter-spacing="3">BLACKSITE // FIELD SYSTEMS</text>
+</svg>

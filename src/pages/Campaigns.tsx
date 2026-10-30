@@ -107,7 +107,7 @@ export function CampaignsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-slate-800">Campaigns</h1>
+          <h1 className="text-2xl font-bold text-slate-800">{localStorage.getItem('arlotech-login-mode') === 'blacksite' ? 'TRANSMISSION OPERATIONS' : 'Campaigns'}</h1>
           <p className="text-sm text-slate-500 mt-1">Manage and track outreach campaigns</p>
         </div>
         <div className="flex gap-2">
@@ -133,7 +133,7 @@ export function CampaignsPage() {
       {showForm && (
         <Card className="p-6 space-y-4">
           <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-slate-800">New Campaign</h2>
+            <h2 className="text-lg font-semibold text-slate-800">{localStorage.getItem('arlotech-login-mode') === 'blacksite' ? 'NEW TRANSMISSION' : 'New Campaign'}</h2>
             <button type="button" onClick={() => setShowForm(false)} className="p-1 text-slate-500 hover:text-slate-700"><X className="h-5 w-5" /></button>
           </div>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
