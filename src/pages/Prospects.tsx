@@ -90,6 +90,7 @@ export function ProspectsPage() {
   const [clipboardWebsiteLinks, setClipboardWebsiteLinks] = useState<
     ReturnType<typeof extractGoogleMapsWebsitesFromHtml>
   >([])
+  const [importWarning, setImportWarning] = useState('')
   const [isExtractingText, setIsExtractingText] = useState(false)
   const [importMessage, setImportMessage] = useState('')
   const [importFailure, setImportFailure] = useState('')
@@ -165,15 +166,22 @@ export function ProspectsPage() {
   const completeImport = async (result: Awaited<ReturnType<typeof importLeadsInternal>>) => {
     setImportMessage('')
     setImportFailure('')
+    setImportWarning('')
     setImportSummary(null)
     setImportResults([])
     setEnrichmentResults([])
     setIsEnriching(false)
 
     if (result.success) {
-      setImportMessage(`Imported ${result.summary.success} of ${result.summary.total} prospects.`)
+      setImportMessage(
+        `Imported ${result.summary.success} of ${result.summary.total} prospects.` +
+        (result.summary.updated ? ` Updated ${result.summary.updated} existing prospects.` : ''),
+      )
     } else if (result.summary.success > 0) {
-      setImportMessage(`Imported ${result.summary.success} of ${result.summary.total} prospects with some issues.`)
+      setImportMessage(
+        `Imported ${result.summary.success} of ${result.summary.total} prospects with some issues.` +
+        (result.summary.updated ? ` Updated ${result.summary.updated} existing prospects.` : ''),
+      )
     } else {
       setImportFailure(result.errors ?? 'Import failed.')
     }
@@ -203,6 +211,7 @@ export function ProspectsPage() {
 
     setImportMessage('')
     setImportFailure('')
+    setImportWarning('')
     setImportSummary(null)
     setImportResults([])
     setEnrichmentResults([])
@@ -234,6 +243,7 @@ export function ProspectsPage() {
 
     setImportMessage('')
     setImportFailure('')
+    setImportWarning('')
     setImportSummary(null)
     setImportResults([])
     setEnrichmentResults([])
@@ -247,7 +257,14 @@ export function ProspectsPage() {
         return
       }
 
+      const websiteCount = leads.filter((lead) => lead.website).length
+      const hasWebsiteLabels = /^\s*Website\s*$/im.test(text)
       await completeImport(await importLeadsInternal(leads as any, queryClient, session?.user.id))
+      if (hasWebsiteLabels && websiteCount === 0) {
+        setImportWarning(
+          'Google Maps included “Website” buttons, but no destination URLs were present in the pasted clipboard data. These prospects could not be visually reviewed or looked up for email. Copy the listings again with rich links, or add website URLs before re-importing.',
+        )
+      }
       setProspectText('')
       setClipboardWebsiteLinks([])
       setShowTextImport(false)
@@ -320,14 +337,18 @@ export function ProspectsPage() {
             <textarea
               id="prospect-text"
               value={prospectText}
-              onChange={(event) => setProspectText(event.target.value)}
+              onChange={(event) => {
+                setProspectText(event.target.value)
+                setImportWarning('')
+              }}
               onPaste={(event) => {
                 const html = event.clipboardData.getData('text/html')
-                if (!html) return
-                const websiteLinks = extractGoogleMapsWebsitesFromHtml(html)
-                if (websiteLinks.length > 0) {
-                  setClipboardWebsiteLinks((current) => [...current, ...websiteLinks])
-                }
+                const pastedText = event.clipboardData.getData('text/plain')
+                setClipboardWebsiteLinks(
+                  html
+                    ? extractGoogleMapsWebsitesFromHtml(html, pastedText || prospectText)
+                    : [],
+                )
               }}
               rows={7}
               disabled={isExtractingText}
@@ -355,12 +376,22 @@ export function ProspectsPage() {
           {importError || importFailure || importMessage}
         </p>
       )}
+      {importWarning && (
+        <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900" role="alert">
+          {importWarning}
+        </p>
+      )}
 
       {importSummary && (
         <Card className="p-4 space-y-3">
           <div className="flex flex-wrap gap-3 text-sm">
             <span className="rounded-full bg-slate-100 px-3 py-1">Total: {importSummary.total}</span>
             <span className="rounded-full bg-green-100 text-green-700 px-3 py-1">Imported: {importSummary.success}</span>
+            {importSummary.updated > 0 && (
+              <span className="rounded-full bg-blue-100 text-blue-700 px-3 py-1">
+                Existing updated: {importSummary.updated}
+              </span>
+            )}
             <span className="rounded-full bg-amber-100 text-amber-700 px-3 py-1">Skipped duplicates: {importSummary.skipped_duplicate}</span>
             <span className="rounded-full bg-red-100 text-red-700 px-3 py-1">Invalid: {importSummary.invalid}</span>
             <span className="rounded-full bg-red-100 text-red-700 px-3 py-1">Failed: {importSummary.failed}</span>

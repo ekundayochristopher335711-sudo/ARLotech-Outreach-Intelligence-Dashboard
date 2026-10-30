@@ -26,6 +26,26 @@ function plainHtmlText(value: string) {
     .trim()
 }
 
+function businessNamesFromRepeatedLines(text: string) {
+  const lines = text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+  const names: string[] = []
+
+  for (let index = 0; index < lines.length - 1; index += 1) {
+    if (
+      lines[index].toLowerCase() === lines[index + 1].toLowerCase() &&
+      !/^(website|directions|results|share|all filters|saved|recents)$/i.test(lines[index])
+    ) {
+      names.push(lines[index])
+      index += 1
+    }
+  }
+
+  return names
+}
+
 function normalizeWebsiteUrl(value: string): string | null {
   const cleaned = decodeEntities(value.trim()).replace(/[),.;]+$/g, '')
   let url: URL
@@ -88,7 +108,7 @@ export function extractGoogleMapsWebsitesFromText(text: string): GoogleMapsWebsi
   return mapListingsToWebsites(links)
 }
 
-export function extractGoogleMapsWebsitesFromHtml(html: string): GoogleMapsWebsite[] {
+export function extractGoogleMapsWebsitesFromHtml(html: string, pastedText = ''): GoogleMapsWebsite[] {
   const links: Link[] = []
   const anchorPattern = /<a\b([^>]*)>([\s\S]*?)<\/a\s*>/gi
 
@@ -97,12 +117,36 @@ export function extractGoogleMapsWebsitesFromHtml(html: string): GoogleMapsWebsi
     const rawUrl = href?.[1] ?? href?.[2] ?? href?.[3]
     if (!rawUrl) continue
 
+    const accessibleLabel = match[1].match(/\b(?:aria-label|title)\s*=\s*(?:"([^"]*)"|'([^']*)')/i)
     links.push({
-      label: plainHtmlText(match[2]),
+      label: [
+        plainHtmlText(match[2]),
+        accessibleLabel?.[1] ?? accessibleLabel?.[2] ?? '',
+      ].filter(Boolean).join(' '),
       url: decodeEntities(rawUrl),
       index: match.index ?? 0,
     })
   }
 
-  return mapListingsToWebsites(links)
+  const linkedListings = mapListingsToWebsites(links)
+
+  const websiteLinks = links.flatMap((link) => {
+    if (!/website|web site|official site/i.test(link.label)) return []
+    const website = normalizeWebsiteUrl(link.url)
+    return website ? [website] : []
+  })
+  const businessNames = businessNamesFromRepeatedLines(pastedText)
+
+  if (websiteLinks.length === 0 || websiteLinks.length !== businessNames.length) return linkedListings
+
+  const mappedNames = new Set(linkedListings.map(({ business_name }) => business_name.toLowerCase()))
+  const mappedWebsites = new Set(linkedListings.map(({ website }) => website.toLowerCase()))
+  const fallbackListings = businessNames
+    .map((business_name, index) => ({ business_name, website: websiteLinks[index] }))
+    .filter(
+      ({ business_name, website }) =>
+        !mappedNames.has(business_name.toLowerCase()) && !mappedWebsites.has(website.toLowerCase()),
+    )
+
+  return [...linkedListings, ...fallbackListings]
 }

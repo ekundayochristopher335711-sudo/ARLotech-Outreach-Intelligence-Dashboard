@@ -31,6 +31,56 @@ describe('Google Maps website extraction', () => {
     ])
   })
 
+  it('pairs ordered website buttons with repeated Google Maps business names when listing links are omitted', () => {
+    const html = [
+      '<div><a href="https://www.google.com/url?q=https%3A%2F%2Fleathesprior.co.uk">Website</a></div>',
+      '<div><a href="https://www.google.com/url?q=https%3A%2F%2Fbirketts.co.uk" aria-label="Website"></a></div>',
+    ].join('')
+    const pastedText = [
+      'Leathes Prior Solicitors',
+      'Leathes Prior Solicitors',
+      '4.8 (368)',
+      'Website',
+      'Directions',
+      'Birketts LLP - Solicitors Norwich',
+      'Birketts LLP - Solicitors Norwich',
+      '4.0 (48)',
+      'Website',
+      'Directions',
+    ].join('\n')
+
+    expect(extractGoogleMapsWebsitesFromHtml(html, pastedText)).toEqual([
+      { business_name: 'Leathes Prior Solicitors', website: 'https://leathesprior.co.uk/' },
+      { business_name: 'Birketts LLP - Solicitors Norwich', website: 'https://birketts.co.uk/' },
+    ])
+  })
+
+  it('combines directly matched listings with remaining ordered website links', () => {
+    const html = [
+      '<a href="https://www.google.com/maps/place/Leathes+Prior">Leathes Prior Solicitors</a>',
+      '<a href="https://leathesprior.co.uk/">Website</a>',
+      '<a href="https://birketts.co.uk/" aria-label="Website"></a>',
+    ].join('')
+    const pastedText = [
+      'Leathes Prior Solicitors',
+      'Leathes Prior Solicitors',
+      'Website',
+      'Birketts LLP',
+      'Birketts LLP',
+      'Website',
+    ].join('\n')
+
+    expect(extractGoogleMapsWebsitesFromHtml(html, pastedText)).toEqual([
+      { business_name: 'Leathes Prior Solicitors', website: 'https://leathesprior.co.uk/' },
+      { business_name: 'Birketts LLP', website: 'https://birketts.co.uk/' },
+    ])
+  })
+
+  it('does not guess website URLs when the pasted data only contains Website labels', () => {
+    const pastedText = 'Leathes Prior Solicitors\nLeathes Prior Solicitors\nWebsite'
+    expect(extractGoogleMapsWebsitesFromHtml('<div>Website</div>', pastedText)).toEqual([])
+  })
+
   it('ignores Google Maps links without an external website link', () => {
     expect(extractGoogleMapsWebsitesFromText(
       '[Business](https://www.google.com/maps/place/Business)\n[Directions](https://www.google.com/maps/dir/)',

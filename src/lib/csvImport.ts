@@ -9,6 +9,11 @@ import { ImportResultSchema } from '@/lib/validation'
 
 export type ImportResultRow = z.infer<typeof ImportResultSchema>
 
+type ExistingProspect = Pick<
+  Prospect,
+  'id' | 'business_name' | 'email' | 'website' | 'phone' | 'city' | 'country' | 'business_category'
+>
+
 export type CsvImportOutcome = {
   success: boolean
   summary: ImportSummary
@@ -82,16 +87,20 @@ export async function importLeadsInternal(
 
     const [{ data: existingProspects, error: existingError }, { data: suppressedRows, error: suppressionError }] =
       await Promise.all([
-        supabase.from('prospects').select('id, business_name, email, website').eq('user_id', userId),
+        supabase
+          .from('prospects')
+          .select('id, business_name, email, website, phone, city, country, business_category')
+          .eq('user_id', userId),
         supabase.from('suppression_list').select('normalized_email').eq('user_id', userId),
       ])
 
     if (existingError) throw existingError
     if (suppressionError) throw suppressionError
 
+    const existingRows = (existingProspects ?? []) as ExistingProspect[]
     const existingByEmail = new Map<string, string>()
     const existingByNameWebsite = new Set<string>()
-    for (const prospect of existingProspects ?? []) {
+    for (const prospect of existingRows) {
       if (prospect.email) existingByEmail.set(prospect.email.toLowerCase(), prospect.id)
       const key = `${(prospect.business_name || '').trim().toLowerCase()}::${(prospect.website || '').trim().toLowerCase()}`
       existingByNameWebsite.add(key)
@@ -101,9 +110,12 @@ export async function importLeadsInternal(
 
     const seenEmails = new Set<string>()
     const seenNameWebsite = new Set<string>()
+    const updatedProspectIds = new Set<string>()
+    const updatedBusinessNames = new Set<string>()
 
     const prospectsToInsert: Omit<Prospect, 'id' | 'created_at' | 'updated_at'>[] = []
     const rowResultIndex = new Map<number, number>()
+    const insertedProspects: Prospect[] = []
 
     for (const [index, row] of rows.entries()) {
       const businessName = row.business_name?.trim() || ''
@@ -173,8 +185,77 @@ export async function importLeadsInternal(
       }
 
       const nameWebsiteKey = `${businessName.toLowerCase()}::${rawWebsite.toLowerCase()}`
+      const existingWithoutWebsite = rawWebsite
+        ? existingRows.find(
+            (prospect) =>
+              prospect.business_name.trim().toLowerCase() === businessName.toLowerCase() &&
+              !prospect.website &&
+              !updatedProspectIds.has(prospect.id) &&
+              !updatedBusinessNames.has(businessName.toLowerCase()),
+          )
+        : undefined
+      const emailOwnerId = normalizedEmail ? existingByEmail.get(normalizedEmail) : undefined
+
+      if (
+        existingWithoutWebsite &&
+        (!emailOwnerId || emailOwnerId === existingWithoutWebsite.id) &&
+        !seenNameWebsite.has(nameWebsiteKey)
+      ) {
+        const website = normalizeWebsite(rawWebsite)
+        const websiteUrl = new URL(website as string)
+        const { data: updatedProspect, error: updateError } = await supabase
+          .from('prospects')
+          .update({
+            website,
+            normalized_domain: websiteUrl.hostname.replace(/^www\./i, ''),
+            ...(normalizedEmail && !existingWithoutWebsite.email ? { email: normalizedEmail } : {}),
+            ...(phone && !existingWithoutWebsite.phone ? { phone } : {}),
+            ...(city && !existingWithoutWebsite.city ? { city } : {}),
+            ...(country && !existingWithoutWebsite.country ? { country } : {}),
+            ...(businessCategory && !existingWithoutWebsite.business_category
+              ? { business_category: businessCategory }
+              : {}),
+          })
+          .eq('id', existingWithoutWebsite.id)
+          .eq('user_id', userId)
+          .select('*')
+          .single()
+
+        if (updateError) {
+          summary.failed += 1
+          importResults.push({
+            id: `row-${index + 1}`,
+            business_name: businessName,
+            email: rawEmail || undefined,
+            website: rawWebsite,
+            status: 'failed',
+            reason: updateError.message,
+          })
+          continue
+        }
+
+        updatedProspectIds.add(existingWithoutWebsite.id)
+        updatedBusinessNames.add(businessName.toLowerCase())
+        existingByNameWebsite.add(nameWebsiteKey)
+        seenNameWebsite.add(nameWebsiteKey)
+        if (normalizedEmail) seenEmails.add(normalizedEmail)
+        summary.success += 1
+        summary.updated += 1
+        if (updatedProspect) insertedProspects.push(updatedProspect as Prospect)
+        importResults.push({
+          id: existingWithoutWebsite.id,
+          business_name: businessName,
+          email: rawEmail || undefined,
+          website: rawWebsite,
+          status: 'updated',
+          reason: 'Added missing website to existing prospect',
+        })
+        continue
+      }
+
       const isDuplicate =
-        (normalizedEmail !== null && (existingByEmail.has(normalizedEmail) || seenEmails.has(normalizedEmail))) ||
+        (normalizedEmail !== null &&
+          ((emailOwnerId !== undefined && emailOwnerId !== existingWithoutWebsite?.id) || seenEmails.has(normalizedEmail))) ||
         existingByNameWebsite.has(nameWebsiteKey) ||
         seenNameWebsite.has(nameWebsiteKey)
 
@@ -225,7 +306,6 @@ export async function importLeadsInternal(
       })
     }
 
-    const insertedProspects: Prospect[] = []
     if (prospectsToInsert.length > 0) {
       const { data: inserted, error: insertError } = await supabase
         .from('prospects')
