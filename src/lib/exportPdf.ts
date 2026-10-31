@@ -1,6 +1,12 @@
 import jsPDF from 'jspdf'
 import { lighthouseRecommendation } from '@/lib/lighthouseRecommendations'
-import { calculateTechnicalHealthScore, LIGHTHOUSE_CATEGORY_WEIGHTS } from '@/lib/websiteAudit'
+import {
+  calculateTechnicalHealthScore,
+  lighthouseCategoryLabel,
+  LIGHTHOUSE_CATEGORY_WEIGHTS,
+  rateLighthouseFinding,
+  rateCategoryScore,
+} from '@/lib/websiteAudit'
 import {
   auditFindingRecommendation,
   auditFindingTitle,
@@ -56,6 +62,7 @@ interface PdfFinding {
   category?: string | null
   display_value?: string | null
   lighthouse_score_pct?: number | null
+  assessment_rating?: string | null
   opportunity_ms?: number | null
   opportunity_bytes?: number | null
   affected_resources?: string[] | null
@@ -125,6 +132,11 @@ function createReport(title: string, subtitle: string, brand = 'OUTREACH INTELLI
     doc.setLineWidth(0.35)
     doc.line(LEFT, y, RIGHT, y)
     y += 7
+  }
+
+  const startNewPage = () => {
+    doc.addPage()
+    y = drawHeader(true) + 7
   }
 
   const addParagraph = (
@@ -200,6 +212,7 @@ function createReport(title: string, subtitle: string, brand = 'OUTREACH INTELLI
     addParagraph,
     addSection,
     ensureSpace,
+    startNewPage,
     finish,
     toBase64,
     get y() {
@@ -405,9 +418,17 @@ function buildWebsiteAnalysisPdf(
     return [category, value] as const
   })
   const allFindings: PdfFinding[] = Array.isArray(rec.findings) ? rec.findings : []
-  const uniqueFindings = normalizePdfFindings(allFindings)
+  const uniqueFindings = normalizePdfFindings(allFindings).map((finding) => ({
+    ...finding,
+    assessment_rating: rateLighthouseFinding(finding),
+  }))
   const measuredFindings = uniqueFindings.filter(
-    (finding) => finding.sourceLabel === 'Measured' || finding.sourceLabel === 'Page inspection',
+    (finding) =>
+      (finding.sourceLabel === 'Measured' || finding.sourceLabel === 'Page inspection') &&
+      finding.assessment_rating !== 'Good',
+  )
+  const goodMetricFindings = uniqueFindings.filter(
+    (finding) => finding.sourceLabel === 'Measured' && finding.assessment_rating === 'Good',
   )
   const unverifiedFindings = uniqueFindings.filter(
     (finding) => finding.sourceLabel === 'Tool-assisted suggestion' || finding.sourceLabel === 'Unverified',
@@ -430,7 +451,7 @@ function buildWebsiteAnalysisPdf(
     const concept = recommendationConcept(finding.title || finding.recommended_fix || '')
     return !concept || !measuredFindingConcepts.has(concept)
   })
-  const positives: Array<string | { title?: string | null; evidence?: string | null }> = Array.isArray(rec.positive_observations)
+  const positives: Array<string | { id?: string; title?: string | null; evidence?: string | null }> = Array.isArray(rec.positive_observations)
     ? rec.positive_observations
     : []
   const aiAnalysis = rec.ai_analysis && typeof rec.ai_analysis === 'object' ? rec.ai_analysis : {}
@@ -480,8 +501,10 @@ function buildWebsiteAnalysisPdf(
     report.addParagraph('SEO means search engine optimization: how easily search engines can find and understand your pages.', { size: 8, color: MUTED })
     report.addMetricCards(
       categoryScores.map(([key, value]) => [
-        key.replace(/-/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase()),
-        value === null ? 'Unavailable' : `${value} / 100`,
+        lighthouseCategoryLabel(key),
+        value === null
+          ? 'Unavailable'
+          : `${value} / 100 · ${rateCategoryScore(value)}`,
       ]),
     )
   }
@@ -517,6 +540,7 @@ function buildWebsiteAnalysisPdf(
         typeof finding.lighthouse_score_pct === 'number'
           ? `Lighthouse audit score ${finding.lighthouse_score_pct}%`
           : null,
+        finding.assessment_rating ? `Assessment: ${finding.assessment_rating}` : null,
       ].filter(Boolean)
       report.addParagraph(metadata.join('  |  '), { size: 7.5, color: TEAL })
       const evidence = finding.display_value || finding.evidence
@@ -655,22 +679,49 @@ function buildWebsiteAnalysisPdf(
     }
   }
 
-  if (positives.length > 0) {
-    const measuredPositives = positives.filter((item) =>
-      typeof item === 'object' && item.evidence !== 'AI-generated',
+  const goodCategoryHighlights = categoryScores.flatMap(([category, value]) =>
+    rateCategoryScore(value) === 'Good'
+      ? [`${lighthouseCategoryLabel(category)}: ${value} / 100 — Good`]
+      : [],
+  )
+  const goodMetricHighlights = goodMetricFindings.map((finding) =>
+    `${auditFindingTitle(finding)}: ${finding.display_value || finding.evidence || 'Good'} — Good`,
+  )
+  const otherPositiveHighlights = positives
+    .filter((item): item is { id?: string; title?: string | null; evidence?: string | null } =>
+      !!item && typeof item === 'object' &&
+      item.evidence !== 'AI-generated' &&
+      !item.id?.startsWith('positive-score-') &&
+      !item.id?.startsWith('positive-metric-'),
     )
-    if (measuredPositives.length > 0) {
-      report.addSection('What is working well')
-      measuredPositives.slice(0, 4).forEach((item) => {
-        report.addParagraph(`- ${typeof item === 'string' ? item : item.title || 'Positive observation'}`, { size: 8 })
-        if (typeof item === 'object' && item.evidence) {
-          report.addParagraph(item.evidence, { size: 7.5, color: MUTED, indent: 3 })
-        }
-      })
-    }
-  }
+    .slice(0, 2)
 
-  report.addSection('Conclusion and next steps')
+  report.startNewPage()
+  report.addSection(`What is working well (${goodCategoryHighlights.length + goodMetricHighlights.length + otherPositiveHighlights.length} highlights)`)
+  const summaryHighlights = [
+    ...goodMetricHighlights,
+    ...goodCategoryHighlights,
+    ...otherPositiveHighlights.map((item) =>
+      `${item.title || 'Positive observation'}${item.evidence ? ` — ${item.evidence}` : ''}`,
+    ),
+  ]
+  if (summaryHighlights.length === 0) {
+    report.addParagraph('Our assessment did not identify a Good-rated result to highlight. The findings above show what we recommend reviewing.', { size: 8.5 })
+  } else {
+    summaryHighlights.forEach((highlight) => {
+      report.addParagraph(`- ${clientFriendlyAuditText(highlight)}`, { size: 8 })
+    })
+  }
+  report.addParagraph(
+    'These highlights come from our measurements and page checks. They are included here to recognize what is working and are not listed as problems.',
+    { size: 7.5, color: MUTED },
+  )
+
+  report.addSection('Next steps')
+  report.addParagraph(
+    'We recommend prioritizing the findings above marked Poor, then reviewing items marked Needs Improvement. Confirm the affected page or files before making changes.',
+    { size: 8.5 },
+  )
   const quantifiedFindings = findings.filter(
     (finding) => (finding.opportunity_ms ?? 0) > 0 || (finding.opportunity_bytes ?? 0) > 0,
   )

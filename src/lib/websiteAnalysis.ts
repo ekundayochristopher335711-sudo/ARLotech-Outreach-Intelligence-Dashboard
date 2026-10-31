@@ -387,7 +387,11 @@ export async function analyzeWebsite(
     })
   }
 
-  const positiveObservations = buildEvidenceBasedPositiveObservations(content, categoryScores)
+  const positiveObservations = buildEvidenceBasedPositiveObservations(
+    content,
+    categoryScores,
+    lighthouseFindings,
+  )
   const inspectionCoverage = summarizePageInspectionCoverage(
     discoveredPageUrls,
     lighthousePageResults,

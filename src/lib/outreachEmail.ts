@@ -6,14 +6,18 @@ import {
   auditFindingWhy,
   auditFindingRecommendation,
 } from '@/lib/auditReportLanguage'
+import { rateLighthouseFinding } from '@/lib/websiteAudit'
 
 type AuditFinding = {
   id?: string
+  audit_id?: string
   title?: string
   classification?: string
   source?: string
   verified?: boolean
   evidence?: string | null
+  display_value?: string | null
+  assessment_rating?: string | null
   explanation?: string | null
   recommended_fix?: string | null
   priority?: string | null
@@ -81,6 +85,7 @@ function auditCompleteness(analysis: OutreachAnalysis) {
 function candidateFindings(analysis: OutreachAnalysis): SelectedOutreachFinding[] {
   const verifiedOrObserved = ((Array.isArray(analysis.findings) ? analysis.findings : []) as AuditFinding[])
     .flatMap((finding) => {
+      const findingRating = rateLighthouseFinding(finding)
       const classification = finding.classification ??
         (finding.source === 'lighthouse' && finding.verified !== false
           ? 'verified_issue'
@@ -90,6 +95,8 @@ function candidateFindings(analysis: OutreachAnalysis): SelectedOutreachFinding[
       if (
         !['verified_issue', 'observed_issue'].includes(classification) ||
         finding.verified === false ||
+        finding.assessment_rating === 'Good' ||
+        findingRating === 'Good' ||
         !finding.title?.trim() ||
         !finding.evidence?.trim() ||
         isClearlyPositiveMetric(finding)

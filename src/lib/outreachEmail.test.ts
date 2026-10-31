@@ -160,6 +160,24 @@ describe('outreach eligibility and previews', () => {
     expect(() => createOutreachPreview(prospect(), audit)).toThrow('Outreach was withheld')
   })
 
+  it('does not select a Good-rated metric as an outreach problem', () => {
+    const audit = analysis({
+      findings: [{
+        id: 'lh-speed-index',
+        audit_id: 'speed-index',
+        source: 'lighthouse',
+        classification: 'verified_issue',
+        title: 'Speed Index',
+        evidence: '2.7 s',
+        display_value: '2.7 s',
+      }],
+      ai_analysis: { audit_completeness: { status: 'complete' }, optimization_opportunities: [] },
+    })
+
+    expect(getOutreachSuitability(audit)).toBe('No Opportunity')
+    expect(() => createOutreachPreview(prospect(), audit)).toThrow('Outreach was withheld')
+  })
+
   it('withholds outreach if the audit is incomplete and has no verified opportunity', () => {
     const audit = analysis({
       category_scores: { performance: 100, seo: null, accessibility: 100, 'best-practices': 100 },

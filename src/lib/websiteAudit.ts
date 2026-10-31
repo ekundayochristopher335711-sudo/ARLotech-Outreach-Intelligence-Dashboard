@@ -12,6 +12,36 @@ export type FindingClassification =
   | 'verified_issue'
   | 'optimization_opportunity'
   | 'diagnostic'
+  | 'positive_observation'
+
+export type AssessmentRating = 'Good' | 'Needs Improvement' | 'Poor'
+
+const CATEGORY_SCORE_THRESHOLDS = {
+  good: 90,
+  needsImprovement: 50,
+} as const
+
+const LIGHTHOUSE_METRIC_THRESHOLDS: Record<string, {
+  title: string
+  goodMaximumMs: number
+  poorMinimumMs: number
+}> = {
+  'largest-contentful-paint': {
+    title: 'Largest Contentful Paint',
+    goodMaximumMs: 2500,
+    poorMinimumMs: 4000,
+  },
+  'speed-index': {
+    title: 'Speed Index',
+    goodMaximumMs: 3400,
+    poorMinimumMs: 5800,
+  },
+  'total-blocking-time': {
+    title: 'Total Blocking Time',
+    goodMaximumMs: 200,
+    poorMinimumMs: 600,
+  },
+}
 
 export interface PageInspectionResult {
   page_url: string
@@ -43,6 +73,85 @@ const NON_ACTIONABLE_DISPLAY_MODES = new Set([
 export function scoreToPercent(score: unknown): number | null {
   if (typeof score !== 'number' || !Number.isFinite(score) || score < 0 || score > 1) return null
   return Math.round(score * 100)
+}
+
+export function rateCategoryScore(score: unknown): AssessmentRating | null {
+  if (typeof score !== 'number' || !Number.isFinite(score) || score < 0 || score > 100) return null
+  if (score >= CATEGORY_SCORE_THRESHOLDS.good) return 'Good'
+  if (score >= CATEGORY_SCORE_THRESHOLDS.needsImprovement) return 'Needs Improvement'
+  return 'Poor'
+}
+
+export function lighthouseCategoryLabel(category: string) {
+  if (category.toLowerCase() === 'seo') return 'SEO'
+  return category
+    .replace(/-/g, ' ')
+    .replace(/\b\w/g, (letter) => letter.toUpperCase())
+}
+
+function metricKey(identifier: string) {
+  const normalized = identifier.toLowerCase().replace(/^lh-/, '')
+  if (/largest-contentful-paint|\blcp\b/.test(normalized)) return 'largest-contentful-paint'
+  if (/speed-index|\bspeed index\b/.test(normalized)) return 'speed-index'
+  if (/total-blocking-time|\btbt\b/.test(normalized)) return 'total-blocking-time'
+  return null
+}
+
+function metricMilliseconds(audit: {
+  numericValue?: unknown
+  numericUnit?: unknown
+  displayValue?: unknown
+}) {
+  if (typeof audit.numericValue === 'number' && Number.isFinite(audit.numericValue) && audit.numericValue >= 0) {
+    return audit.numericUnit === 'second' ? audit.numericValue * 1000 : audit.numericValue
+  }
+  if (typeof audit.displayValue !== 'string') return null
+  const match = audit.displayValue.match(/([\d,]+(?:\.\d+)?)\s*(ms|milliseconds?|s|seconds?)\b/i)
+  if (!match) return null
+  const value = Number(match[1].replace(/,/g, ''))
+  if (!Number.isFinite(value)) return null
+  return /^s|second/i.test(match[2]) ? value * 1000 : value
+}
+
+export function assessLighthouseMetric(
+  identifier: string,
+  audit: { numericValue?: unknown; numericUnit?: unknown; displayValue?: unknown },
+) {
+  const key = metricKey(identifier)
+  const thresholds = key ? LIGHTHOUSE_METRIC_THRESHOLDS[key] : null
+  const valueMs = thresholds ? metricMilliseconds(audit) : null
+  if (!thresholds || valueMs === null) return null
+
+  const rating: AssessmentRating = valueMs <= thresholds.goodMaximumMs
+    ? 'Good'
+    : valueMs >= thresholds.poorMinimumMs
+      ? 'Poor'
+      : 'Needs Improvement'
+  const displayValue = typeof audit.displayValue === 'string' && audit.displayValue.trim()
+    ? audit.displayValue.trim()
+    : `${Number.isInteger(valueMs) ? valueMs : valueMs.toFixed(1)} ms`
+
+  return { title: thresholds.title, valueMs, displayValue, rating }
+}
+
+export function rateLighthouseFinding(finding: {
+  id?: string | null
+  audit_id?: string | null
+  title?: string | null
+  evidence?: string | null
+  display_value?: string | null
+  assessment_rating?: string | null
+}) {
+  if (
+    finding.assessment_rating === 'Good' ||
+    finding.assessment_rating === 'Needs Improvement' ||
+    finding.assessment_rating === 'Poor'
+  ) return finding.assessment_rating
+
+  return assessLighthouseMetric(
+    finding.audit_id || finding.id || finding.title || '',
+    { displayValue: finding.display_value || finding.evidence },
+  )?.rating ?? null
 }
 
 export function extractCategoryScores(pagespeed: PageSpeedResult): Record<LighthouseCategory, number | null> {
@@ -179,19 +288,24 @@ export function classifyLighthouseAudits(pagespeed: PageSpeedResult) {
 
   return Object.entries(audits).flatMap(([auditId, audit]) => {
     const score = audit.score
+    const metricAssessment = assessLighthouseMetric(auditId, audit)
     if (
       typeof score !== 'number' ||
       !Number.isFinite(score) ||
       score < 0 ||
-      score >= 1 ||
+      (score >= 1 && metricAssessment?.rating !== 'Good') ||
       NON_ACTIONABLE_DISPLAY_MODES.has(audit.scoreDisplayMode)
     ) return []
 
-    const classification: FindingClassification = scoringAuditIds.has(auditId)
-      ? 'verified_issue'
-      : audit.details?.type === 'opportunity'
-        ? 'optimization_opportunity'
-        : 'diagnostic'
+    const classification: FindingClassification = metricAssessment?.rating === 'Good'
+      ? 'positive_observation'
+      : metricAssessment
+        ? 'verified_issue'
+        : scoringAuditIds.has(auditId)
+          ? 'verified_issue'
+          : audit.details?.type === 'opportunity'
+            ? 'optimization_opportunity'
+            : 'diagnostic'
     const resources = Array.isArray(audit.details?.items)
       ? audit.details.items.flatMap((item: Record<string, unknown>) => {
           const resource = item.url ?? (item.source as Record<string, unknown> | undefined)?.url
@@ -213,6 +327,7 @@ export function classifyLighthouseAudits(pagespeed: PageSpeedResult) {
       recommended_fix: audit.description || 'Review the linked Lighthouse diagnostic before changing the site.',
       affected_resources: [...new Set(resources)].slice(0, 5),
       lighthouse_score_pct: scoreToPercent(score),
+      ...(metricAssessment ? { assessment_rating: metricAssessment.rating } : {}),
       opportunity_ms: typeof audit.details?.overallSavingsMs === 'number' ? audit.details.overallSavingsMs : null,
       opportunity_bytes: typeof audit.details?.overallSavingsBytes === 'number' ? audit.details.overallSavingsBytes : null,
       priority: classification === 'verified_issue'
@@ -230,6 +345,13 @@ export function classifyLighthouseAudits(pagespeed: PageSpeedResult) {
 export function buildEvidenceBasedPositiveObservations(
   content: ExtractedContent,
   categories: Record<LighthouseCategory, number | null>,
+  metricFindings: Array<{
+    audit_id?: string
+    title?: string
+    evidence?: string
+    assessment_rating?: AssessmentRating
+    classification?: FindingClassification
+  }> = [],
 ) {
   const observations: Array<{
     id: string
@@ -241,16 +363,28 @@ export function buildEvidenceBasedPositiveObservations(
   }> = []
 
   for (const [category, score] of Object.entries(categories) as Array<[LighthouseCategory, number | null]>) {
-    if (score !== null && score >= 90) {
+    if (rateCategoryScore(score) === 'Good') {
       observations.push({
         id: `positive-score-${category}`,
-        title: `Strong Lighthouse ${category.replace('-', ' ')} result`,
-        evidence: `PageSpeed Insights measured ${score}/100 for ${category.replace('-', ' ')}.`,
+        title: `${lighthouseCategoryLabel(category)} — Good`,
+        evidence: `PageSpeed Insights measured ${score}/100.`,
         source: 'lighthouse',
         potential_benefit: 'No outcome is inferred from this measurement.',
         priority: 'informational',
       })
     }
+  }
+
+  for (const finding of metricFindings) {
+    if (finding.classification !== 'positive_observation' || finding.assessment_rating !== 'Good') continue
+    observations.push({
+      id: `positive-metric-${finding.audit_id || finding.title || observations.length}`,
+      title: `${finding.title || 'Lighthouse metric'} — Good`,
+      evidence: `PageSpeed measured ${finding.evidence || 'a result in the Good range'}.`,
+      source: 'lighthouse',
+      potential_benefit: 'No visitor or business outcome is inferred from this measurement.',
+      priority: 'informational',
+    })
   }
 
   if (content.title?.trim()) {

@@ -13,6 +13,7 @@ import { useAccessibleDialog } from '@/hooks/useAccessibleDialog'
 import { VisualReviewPanel } from '@/components/website-intelligence/VisualReviewPanel'
 import { ensureWebsiteProspect } from '@/lib/websiteProspects'
 import { auditFindingTitle, auditFindingWhy, auditFindingRecommendation, clientFriendlyAuditText } from '@/lib/auditReportLanguage'
+import { lighthouseCategoryLabel, rateCategoryScore, rateLighthouseFinding } from '@/lib/websiteAudit'
 
 export function WebsiteIntelligencePage() {
   const queryClient = useQueryClient()
@@ -82,6 +83,18 @@ export function WebsiteIntelligencePage() {
     exportWebsiteAnalysisPdf(analysis)
     toast.success('Report downloaded as PDF')
   }
+  const selectedFindings: any[] = Array.isArray(selected?.findings) ? selected.findings : []
+  const selectedProblemFindings = selectedFindings.filter((finding) => rateLighthouseFinding(finding) !== 'Good')
+  const selectedPositiveObservations = [
+    ...(Array.isArray(selected?.positive_observations) ? selected.positive_observations : []),
+    ...selectedFindings
+      .filter((finding) => rateLighthouseFinding(finding) === 'Good')
+      .map((finding) => ({
+        id: `positive-metric-${finding.audit_id || finding.id}`,
+        title: `${auditFindingTitle(finding)} — Good`,
+        evidence: finding.display_value || finding.evidence,
+      })),
+  ]
 
   if (isLoading) {
     return (
@@ -180,10 +193,12 @@ export function WebsiteIntelligencePage() {
               const percent = typeof score === 'number' && Number.isFinite(score) && score >= 0 && score <= 1
                 ? Math.round(score * 100)
                 : null
+              const rating = rateCategoryScore(percent)
               return (
                 <div key={k} className="rounded-lg border border-slate-200 p-3">
-                  <p className="text-xs text-slate-500 capitalize">{k.replace(/-/g, ' ')}</p>
+                  <p className="text-xs text-slate-500">{lighthouseCategoryLabel(k)}</p>
                   <p className="text-lg font-bold text-slate-800">{percent === null ? 'Unavailable' : percent}</p>
+                  {rating && <p className="mt-1 text-xs font-medium text-slate-600">{rating}</p>}
                 </div>
               )
             })}
@@ -232,7 +247,13 @@ export function WebsiteIntelligencePage() {
                 {lastResult.record.findings.map((item: any) => (
                   <li key={item.id} className="rounded-lg border border-slate-200 p-3">
                     <p className="text-sm font-medium text-slate-800">{auditFindingTitle(item)}</p>
-                    <p className="mt-1 text-xs text-slate-500">{item.source === 'lighthouse' ? 'Measured by Lighthouse/PageSpeed' : 'Observed in the inspected page HTML'}</p>
+                    <p className="mt-1 text-xs text-slate-500">
+                      {item.assessment_rating
+                        ? `Assessment: ${item.assessment_rating}`
+                        : item.source === 'lighthouse'
+                          ? 'Measured by Lighthouse/PageSpeed'
+                          : 'Observed in the inspected page HTML'}
+                    </p>
                     {item.evidence && <p className="mt-1 text-xs text-slate-600"><strong>Evidence:</strong> {item.evidence}</p>}
                     <p className="mt-2 text-xs text-slate-600"><strong>Why it matters:</strong> {auditFindingWhy(item)}</p>
                     <p className="mt-1 text-xs text-slate-700"><strong>What we recommend:</strong> {auditFindingRecommendation(item)}</p>
@@ -423,8 +444,11 @@ export function WebsiteIntelligencePage() {
                 <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                   {(['performance', 'seo', 'accessibility', 'best-practices'] as const).map((k) => (
                     <div key={k} className="rounded-lg border border-slate-200 p-2 text-center">
-                      <p className="text-xs text-slate-500">{k.replace(/-/g, ' ')}</p>
+                      <p className="text-xs text-slate-500">{lighthouseCategoryLabel(k)}</p>
                       <p className="text-base font-bold text-slate-800">{String(selected.category_scores?.[k] ?? 'Unavailable')}</p>
+                      {rateCategoryScore(selected.category_scores?.[k]) && (
+                        <p className="text-xs text-slate-500">{rateCategoryScore(selected.category_scores?.[k])}</p>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -458,20 +482,20 @@ export function WebsiteIntelligencePage() {
             )}
 
             <div className="mb-4">
-              <h3 className="text-sm font-semibold text-slate-700 mb-2">What we found ({selected.findings?.length ?? 0})</h3>
+              <h3 className="text-sm font-semibold text-slate-700 mb-2">What we found ({selectedProblemFindings.length})</h3>
               <div className="max-h-64 space-y-2 overflow-auto">
-                {(selected.findings || []).map((f: any, i: number) => (
+                {selectedProblemFindings.map((f: any, i: number) => (
                   <div key={f.id || i} className="rounded-lg border border-slate-200 p-3">
                     <div className="flex items-center justify-between">
                       <p className="text-sm font-medium text-slate-800">{auditFindingTitle(f)}</p>
-                      <Badge variant="default">{f.source === 'lighthouse' ? 'Measured by Lighthouse/PageSpeed' : 'Observed in page HTML'}</Badge>
+                      <Badge variant="default">{f.assessment_rating || (f.source === 'lighthouse' ? 'Measured by Lighthouse/PageSpeed' : 'Observed in page HTML')}</Badge>
                     </div>
                     {f.evidence && <p className="mt-1 text-xs text-slate-600"><strong>What we found:</strong> {f.evidence}</p>}
                     <p className="mt-1 text-xs text-slate-600"><strong>Why it matters:</strong> {auditFindingWhy(f)}</p>
                     <p className="mt-1 text-xs text-slate-700"><strong>What we recommend:</strong> {auditFindingRecommendation(f)}</p>
                   </div>
                 ))}
-                {(!selected.findings || selected.findings.length === 0) && (
+                {selectedProblemFindings.length === 0 && (
                   <p className="text-xs text-slate-400">No findings recorded.</p>
                 )}
               </div>
@@ -514,11 +538,11 @@ export function WebsiteIntelligencePage() {
               </div>
             ) : null}
 
-            {selected.positive_observations?.length ? (
+            {selectedPositiveObservations.length ? (
               <div>
                 <h3 className="text-sm font-semibold text-slate-700 mb-2">What is working well</h3>
                 <ul className="list-disc pl-5 text-sm text-slate-600 space-y-1">
-                  {selected.positive_observations.map((p: any, i: number) => (
+                  {selectedPositiveObservations.map((p: any, i: number) => (
                     <li key={p.id || i}>{clientFriendlyAuditText(`${p.title || p}${p.evidence ? ` — ${p.evidence}` : ''}`)}</li>
                   ))}
                 </ul>

@@ -2,11 +2,13 @@ import { describe, expect, it } from 'vitest'
 import {
   calculateTechnicalHealthScore,
   buildEvidenceBasedPositiveObservations,
+  assessLighthouseMetric,
   classifyLighthouseAudits,
   extractCategoryScores,
   sanitizeRecommendationList,
   sanitizeVisualObservations,
   scoreToPercent,
+  rateCategoryScore,
   summarizePageInspectionCoverage,
 } from './websiteAudit'
 import type { PageSpeedResult } from './websiteAnalysis'
@@ -24,7 +26,7 @@ function pagespeedFixture(): PageSpeedResult {
         'best-practices': { id: 'best-practices', title: 'Best Practices', score: 0.8, scoreDisplayMode: 'numeric', description: '', auditRefs: [] },
       },
       audits: {
-        lcp: { id: 'lcp', title: 'LCP', score: 0.5, scoreDisplayMode: 'numeric', displayValue: 'LCP 0.7 s', description: 'Measured LCP', details: { type: 'table', items: [] } },
+        lcp: { id: 'lcp', title: 'LCP', score: 0.5, scoreDisplayMode: 'numeric', displayValue: 'LCP 2.7 s', description: 'Measured LCP', details: { type: 'table', items: [] } },
         'network-dependency-tree-insight': { id: 'network-dependency-tree-insight', title: 'Network dependency tree', score: 0, scoreDisplayMode: 'numeric', displayValue: 'Insight', description: 'Diagnostic only', details: { type: 'table', items: [] } },
         'unused-javascript': { id: 'unused-javascript', title: 'Reduce unused JavaScript', score: 0, scoreDisplayMode: 'numeric', displayValue: '23 KiB savings', description: 'Estimated savings', details: { type: 'opportunity', overallSavingsBytes: 23000, items: [{ url: 'https://example.com/app.js' }] } },
         'missing-score': { id: 'missing-score', title: 'No score', score: null, scoreDisplayMode: 'informative', details: { type: 'table', items: [] } },
@@ -53,6 +55,61 @@ describe('Lighthouse evidence and score handling', () => {
     expect(calculateTechnicalHealthScore(categories)).toBe(93)
     expect(calculateTechnicalHealthScore({ ...categories, accessibility: null })).toBeNull()
     expect(calculateTechnicalHealthScore({ ...categories, performance: 101 })).toBeNull()
+  })
+
+  it('rates Double C Plumbing metrics and category scores with shared thresholds', () => {
+    const report = pagespeedFixture()
+    report.lighthouseResult.categories.performance.score = 0.5
+    report.lighthouseResult.categories.seo.score = 0.91
+    report.lighthouseResult.categories.accessibility.score = 0.93
+    report.lighthouseResult.categories['best-practices'].score = 0.96
+    report.lighthouseResult.categories.performance.auditRefs = [
+      { id: 'speed-index', weight: 1 },
+      { id: 'lcp', weight: 1 },
+      { id: 'tbt', weight: 1 },
+    ]
+    report.lighthouseResult.audits = {
+      'speed-index': {
+        score: 0.99,
+        scoreDisplayMode: 'numeric',
+        displayValue: '2.7 s',
+        numericValue: 2700,
+        numericUnit: 'millisecond',
+      },
+      lcp: {
+        score: 0.88,
+        scoreDisplayMode: 'numeric',
+        displayValue: '2.7 s',
+        numericValue: 2700,
+        numericUnit: 'millisecond',
+      },
+      tbt: {
+        score: 0.1,
+        scoreDisplayMode: 'numeric',
+        displayValue: '1,040 ms',
+        numericValue: 1040,
+        numericUnit: 'millisecond',
+      },
+    }
+
+    const findings = classifyLighthouseAudits(report)
+    expect(findings.map(({ audit_id, classification, assessment_rating }) => [
+      audit_id,
+      classification,
+      assessment_rating,
+    ])).toEqual([
+      ['speed-index', 'positive_observation', 'Good'],
+      ['lcp', 'verified_issue', 'Needs Improvement'],
+      ['tbt', 'verified_issue', 'Poor'],
+    ])
+    expect(rateCategoryScore(50)).toBe('Needs Improvement')
+    expect(rateCategoryScore(91)).toBe('Good')
+    expect(rateCategoryScore(93)).toBe('Good')
+    expect(rateCategoryScore(96)).toBe('Good')
+    expect(assessLighthouseMetric('speed-index', { displayValue: '2.7 s' })).toMatchObject({
+      valueMs: 2700,
+      rating: 'Good',
+    })
   })
 
   it('does not treat non-scoring insights or null scores as failed issues', () => {
@@ -160,9 +217,17 @@ describe('Lighthouse evidence and score handling', () => {
       images: { total: 0, missingAlt: 0 },
       schema: [],
       h1Count: 0,
-    }, categories)
+    }, categories, [{
+      audit_id: 'speed-index',
+      title: 'Speed Index',
+      evidence: '2.7 s',
+      classification: 'positive_observation',
+      assessment_rating: 'Good',
+    }])
 
     expect(observations.map(({ id }) => id)).toContain('positive-title-present')
+    expect(observations.map(({ id }) => id)).toContain('positive-metric-speed-index')
+    expect(observations.find(({ id }) => id === 'positive-metric-speed-index')?.title).toBe('Speed Index — Good')
     expect(observations.some(({ evidence }) => evidence === 'AI-generated')).toBe(false)
     expect(observations.every(({ evidence }) => evidence.length > 0)).toBe(true)
   })
