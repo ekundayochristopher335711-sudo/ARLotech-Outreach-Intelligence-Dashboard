@@ -1,5 +1,11 @@
 import type { Prospect, WebsiteAnalysis } from '@/types'
 import { normalizeWebsiteDomain } from '@/lib/websiteDomain'
+import {
+  auditFindingEmailTopic,
+  auditFindingTitle,
+  auditFindingWhy,
+  auditFindingRecommendation,
+} from '@/lib/auditReportLanguage'
 
 type AuditFinding = {
   id?: string
@@ -178,32 +184,34 @@ export function getOutreachSuitability(analysis: OutreachAnalysis): OutreachSuit
   return 'Low Opportunity'
 }
 
-function savingsText(finding: SelectedOutreachFinding) {
+function plainLanguageSavingsText(finding: SelectedOutreachFinding) {
   const savings: string[] = []
   if (typeof finding.opportunity_bytes === 'number' && finding.opportunity_bytes > 0) {
-    const kibibytes = finding.opportunity_bytes / 1024
-    savings.push(`approximately ${Number.isInteger(kibibytes) ? kibibytes : kibibytes.toFixed(1)} KiB`)
+    const kibibytes = Math.round(finding.opportunity_bytes / 1024)
+    const kilobytes = Math.round(finding.opportunity_bytes / 1000)
+    savings.push(`${kibibytes} KiB (about ${kilobytes} KB) less to download`)
   }
   if (typeof finding.opportunity_ms === 'number' && finding.opportunity_ms > 0) {
-    savings.push(`an estimated ${Math.round(finding.opportunity_ms)} ms under Lighthouse test conditions`)
+    const seconds = (finding.opportunity_ms / 1000).toFixed(2)
+    savings.push(`${Math.round(finding.opportunity_ms)} ms (${seconds} seconds) in Google's test`)
   }
   return savings
 }
 
 function observationText(finding: SelectedOutreachFinding) {
-  const title = finding.title!.trim()
+  const title = auditFindingTitle(finding)
   const evidence = finding.evidence!.trim()
   if (finding.classification === 'optimization_opportunity') {
-    const savings = savingsText(finding)
+    const savings = plainLanguageSavingsText(finding)
     const estimate = savings.length ? ` (${savings.join(' and ')})` : ''
     return {
-      observation: `a measured optimization opportunity: ${title}${estimate}`,
-      explanation: 'This is a potential improvement rather than a confirmed defect.',
+      observation: `${title.toLowerCase()}. Google PageSpeed estimates a possible improvement${estimate}. This is not a confirmed problem.`,
+      recommendation: auditFindingRecommendation(finding),
     }
   }
   return {
-    observation: `a verified ${finding.classification === 'observed_issue' ? 'page inspection' : 'technical'} finding: ${title}`,
-    explanation: `The audit evidence was: ${evidence.slice(0, 300)}`,
+    observation: `${title.toLowerCase()}. Our website check recorded: ${evidence.slice(0, 200)}`,
+    recommendation: auditFindingRecommendation(finding),
   }
 }
 
@@ -213,7 +221,7 @@ export function createOutreachPreview(
 ): OutreachPreview {
   const name = prospect.business_name.trim() || 'your business'
   const greetingName = firstName(prospect.contact_name)
-  const signOff = 'Kind regards,\nArloTech Digital Solutions'
+  const signOff = 'Kind regards,\nArlotech Digital Solutions'
 
   if (!prospect.website) {
     const category = prospect.business_category?.trim()
@@ -226,7 +234,7 @@ export function createOutreachPreview(
         '',
         `We came across ${name}${category ? ` while researching local ${category.toLowerCase()} businesses` : ''}. We did not find a website linked to the business information available to us, so we wanted to ask whether you are considering a simple site to help prospective customers learn about your services and get in touch.`,
         '',
-        'Our team at ArloTech Digital Solutions works on website design and digital experiences. If a website is something you are exploring, we would be glad to share a few practical ideas. If it is not relevant, let us know and we will not follow up.',
+        'Our team at Arlotech Digital Solutions works on websites and online services. If a website is something you are exploring, we would be glad to share a few practical ideas. If it is not relevant, let us know and we will not follow up.',
         '',
         'Would it be helpful if we shared a few ideas?',
         '',
@@ -254,20 +262,16 @@ export function createOutreachPreview(
   const selectedFinding = selectOutreachFinding(analysis)
   if (!selectedFinding) throw new Error('No evidence-backed website finding is available for outreach.')
 
-  const { observation, explanation } = observationText(selectedFinding)
-  const scoreText = analysis.overall_score === null
-    ? ''
-    : analysis.overall_score >= 90
-      ? ` The site also recorded a strong weighted technical score of ${analysis.overall_score}/100, so this is an opportunity to build on what is already working.`
-      : ''
-  const internalNote = `Selected "${selectedFinding.title}" (${selectedFinding.classification}) because it has the strongest evidence and priority among the report's verified findings and measured opportunities.`
+  const { observation, recommendation } = observationText(selectedFinding)
+  const internalNote = `We chose "${auditFindingTitle(selectedFinding)}" because it is the clearest item supported by this website check.`
   const body = [
     `Hi ${greetingName},`,
     '',
-    `We recently reviewed ${name}'s website and noticed ${observation}.${scoreText}`,
-    explanation,
+    `We reviewed ${name}'s website and noticed ${observation}.`,
+    auditFindingWhy(selectedFinding),
+    recommendation,
     '',
-    'We have attached a concise website assessment with the supporting evidence and practical next steps. The report focuses on this observation and other measured results, without treating diagnostics as confirmed problems.',
+    'We attached a short review with the evidence and next steps. It separates measured results from ideas to check.',
     '',
     'Would you be open to a brief conversation about this?',
     '',
@@ -279,7 +283,7 @@ export function createOutreachPreview(
   return {
     prospect_id: prospect.id,
     analysis_id: analysis.id,
-    subject: `A website observation for ${name}`,
+    subject: `A website idea for ${name}: ${auditFindingEmailTopic(selectedFinding)}`,
     body,
     has_website_report: true,
     suitability,
@@ -308,7 +312,7 @@ export function validateOutreachPreview(
   if (!prospect.website) {
     if (
       /\b(I|me|my)\b/i.test(preview.body) ||
-      !preview.body.includes('ArloTech Digital Solutions') ||
+      !preview.body.includes('Arlotech Digital Solutions') ||
       /attached|attachment/i.test(preview.body)
     ) {
       throw new Error('Outreach messages must use ArloTech company voice and signature.')
@@ -329,19 +333,20 @@ export function validateOutreachPreview(
   if (currentPreview.selected_finding?.id !== preview.selected_finding?.id) {
     throw new Error('The selected audit finding changed. Refresh the email preview before sending.')
   }
+  const finding = currentPreview.selected_finding!
   if (
     !preview.subject.includes(prospect.business_name) ||
     /\b(I|me|my)\b/i.test(preview.body) ||
-    !preview.body.includes('ArloTech Digital Solutions') ||
+    !preview.body.includes('Arlotech Digital Solutions') ||
     !/will not follow up/i.test(preview.body) ||
-    !preview.body.includes(currentPreview.selected_finding?.title ?? '') ||
+    !preview.subject.includes(auditFindingEmailTopic(finding)) ||
+    !preview.body.toLowerCase().includes(auditFindingTitle(finding).toLowerCase()) ||
     !/\bwould you\b[^?]*\?/i.test(preview.body)
   ) {
     throw new Error('The edited email no longer matches the audit evidence or ArloTech company voice.')
   }
-  const finding = currentPreview.selected_finding!
   const requiredEvidence = finding.classification === 'optimization_opportunity'
-    ? savingsText(finding)
+    ? plainLanguageSavingsText(finding)
     : [finding.evidence!.trim()]
   if (requiredEvidence.some((evidence) => !preview.body.includes(evidence))) {
     throw new Error('The edited email omits or changes evidence from the attached audit report.')

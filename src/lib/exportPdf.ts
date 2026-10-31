@@ -1,6 +1,12 @@
 import jsPDF from 'jspdf'
 import { lighthouseRecommendation } from '@/lib/lighthouseRecommendations'
 import { calculateTechnicalHealthScore, LIGHTHOUSE_CATEGORY_WEIGHTS } from '@/lib/websiteAudit'
+import {
+  auditFindingRecommendation,
+  auditFindingTitle,
+  auditFindingWhy,
+  clientFriendlyAuditText,
+} from '@/lib/auditReportLanguage'
 
 const PAGE_WIDTH = 210
 const PAGE_HEIGHT = 297
@@ -56,7 +62,7 @@ interface PdfFinding {
 }
 
 interface NormalizedPdfFinding extends PdfFinding {
-  sourceLabel: 'Measured' | 'Page inspection' | 'AI-assisted suggestion' | 'Unverified'
+  sourceLabel: 'Measured' | 'Page inspection' | 'Tool-assisted suggestion' | 'Unverified'
   dedupeKey: string
 }
 
@@ -64,20 +70,6 @@ function displayDate(value?: string | null) {
   if (!value) return 'Not recorded'
   const date = new Date(value)
   return Number.isNaN(date.getTime()) ? 'Not recorded' : date.toLocaleString()
-}
-
-function useTeamVoice(value: string) {
-  return value
-    .replace(/\bI['’]m\b/g, "we're")
-    .replace(/\bI['’]ve\b/g, "we've")
-    .replace(/\bI['’]ll\b/g, "we'll")
-    .replace(/\bI['’]d\b/g, "we'd")
-    .replace(/\bmy\b/gi, 'our')
-    .replace(/\bmine\b/gi, 'ours')
-    .replace(/\bme\b/gi, 'us')
-    .replace(/\bI\b/g, (pronoun, offset, text) =>
-      offset === 0 || /[.!?]\s*$/.test(text.slice(0, offset)) ? 'We' : 'we',
-    )
 }
 
 function createReport(title: string, subtitle: string, brand = 'OUTREACH INTELLIGENCE') {
@@ -190,8 +182,8 @@ function createReport(title: string, subtitle: string, brand = 'OUTREACH INTELLI
       doc.setTextColor(...MUTED)
       doc.text(
         brand === 'WEB INTELLIGENCE'
-          ? 'ArloTech Web Intelligence  |  Lighthouse + page inspection'
-          : 'Prepared with ArloTech Outreach Intelligence',
+          ? 'Arlotech Digital Solutions  |  Lighthouse + page inspection'
+          : 'Prepared by Arlotech Digital Solutions',
         LEFT,
         PAGE_HEIGHT - 8,
       )
@@ -324,7 +316,7 @@ function findingSource(finding: PdfFinding): NormalizedPdfFinding['sourceLabel']
     finding.id?.startsWith('html-')
   ) return 'Page inspection'
   if (finding.source === 'ai' || finding.id?.startsWith('ai-') || finding.evidence === 'AI-generated') {
-    return 'AI-assisted suggestion'
+    return 'Tool-assisted suggestion'
   }
   return 'Unverified'
 }
@@ -358,22 +350,6 @@ function formatOpportunity(finding: PdfFinding) {
   return values.length ? `Estimated opportunity: ${values.join(' · ')}` : null
 }
 
-function recommendationContext(title: string) {
-  if (/\bh1\b|heading/i.test(title)) {
-    return 'Validate the rendered page’s heading structure first; client-side content may not appear in a static HTML inspection. Ensure any primary heading accurately describes the page rather than adding one solely for SEO.'
-  }
-  if (/content|word count|copy|text/i.test(title)) {
-    return 'Review the complete rendered page, service pages, and intended audience before expanding copy. The captured text alone does not establish that more content is needed.'
-  }
-  if (/canonical/i.test(title)) {
-    return 'Check Search Console and confirm that multiple indexable URL variants or duplicate pages exist before adding or changing canonical tags.'
-  }
-  if (/meta description/i.test(title)) {
-    return 'Confirm the page is intended to appear in search results and review its existing rendered metadata before adding or revising a description.'
-  }
-  return 'Treat this as a hypothesis, not a required change. Confirm it against the rendered page, site configuration, and business goals before implementation.'
-}
-
 function recommendationConcept(title: string) {
   if (/\bh1\b|heading/i.test(title)) return 'h1'
   if (/canonical/i.test(title)) return 'canonical'
@@ -395,7 +371,7 @@ function buildWebsiteAnalysisPdf(
   } catch {
     hostname = String(url)
   }
-  const report = createReport('Website audit', `${hostname}  |  Assessed ${displayDate(rec.analyzed_at)}`, 'WEB INTELLIGENCE')
+  const report = createReport('Website audit', `${hostname}  |  Assessed ${displayDate(rec.analyzed_at)}  |  Prepared by Arlotech Digital Solutions`, 'WEB INTELLIGENCE')
   const verifiedBusinessName = (preparedFor?.verified ? preparedFor.businessName.trim() : null) || (
     rec.prospect?.business_name_verified === true ? rec.prospect.business_name?.trim() : null
   )
@@ -434,7 +410,7 @@ function buildWebsiteAnalysisPdf(
     (finding) => finding.sourceLabel === 'Measured' || finding.sourceLabel === 'Page inspection',
   )
   const unverifiedFindings = uniqueFindings.filter(
-    (finding) => finding.sourceLabel === 'AI-assisted suggestion' || finding.sourceLabel === 'Unverified',
+    (finding) => finding.sourceLabel === 'Tool-assisted suggestion' || finding.sourceLabel === 'Unverified',
   )
   const findings = measuredFindings
     .sort((left, right) => {
@@ -481,26 +457,27 @@ function buildWebsiteAnalysisPdf(
 
   report.addSection('Assessment at a glance')
   report.addMetricCards([
-    [hasLegacyStoredScore ? 'Stored legacy score' : 'Weighted technical health', score === null ? 'Unavailable' : `${score} / 100`],
-    ['Verified observations shown', primaryFindings.length],
+    [hasLegacyStoredScore ? 'Earlier saved score' : 'Overall website score', score === null ? 'Unavailable' : `${score} / 100`],
+    ['Measured observations shown', primaryFindings.length],
   ])
   report.addParagraph(
     score === null
-      ? 'A weighted technical health score is unavailable because at least one required Lighthouse category score is missing or invalid. The findings below are reported separately and do not imply a numeric overall score.'
+      ? 'Our overall website score is unavailable because PageSpeed did not return a valid result for every required area. We list the observations below separately; they do not imply a numeric overall score.'
       : scoreIsCalculated
-        ? `The weighted technical health score uses Performance 30%, SEO 25%, Accessibility 25%, and Best Practices 20% (${categoryScores.map(([key, value]) => `${key.replace(/-/g, ' ')} ${value === null ? 'unavailable' : value}`).join(', ')}). It summarizes these Lighthouse measurements; it is not a count of issues or an independent quality certification.`
-        : `This older record contains a stored score of ${score} / 100, but its category-level scores are unavailable, so its calculation cannot be verified.`,
+          ? `Our overall website score combines Lighthouse/PageSpeed results for Performance (30%), SEO (25%), Accessibility (25%), and Best Practices (20%) (${categoryScores.map(([key, value]) => `${key.replace(/-/g, ' ')} ${value === null ? 'unavailable' : value}`).join(', ')}). It summarizes these measurements; it is not a count of problems or a separate quality certification.`
+          : `This earlier report has a saved score of ${score} / 100, but its individual area scores are unavailable, so we cannot confirm how it was calculated.`,
     { size: 8.5 },
   )
 
   report.addSection('Assessment scope')
   report.addParagraph(
-    `Prepared for: ${verifiedBusinessName || hostname}\nWebsite assessed: ${assessedAddress}\nPrepared by: Arlotech Digital Solutions\n\nWe reviewed the website’s observed technical performance, accessibility, search signals, and page structure at the time shown above.`,
+    `Prepared for: ${verifiedBusinessName || hostname}\nWebsite assessed: ${assessedAddress}\nPrepared by: Arlotech Digital Solutions\n\nOur assessment reviewed the website’s loading speed, accessibility, search-related details, and page structure at the time shown above.`,
     { size: 8.5 },
   )
 
   if (storedCategoryScores.length > 0) {
-    report.addSection('PageSpeed category scores')
+    report.addSection('PageSpeed scores by area')
+    report.addParagraph('SEO means search engine optimization: how easily search engines can find and understand your pages.', { size: 8, color: MUTED })
     report.addMetricCards(
       categoryScores.map(([key, value]) => [
         key.replace(/-/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase()),
@@ -510,7 +487,7 @@ function buildWebsiteAnalysisPdf(
   }
 
   if (auditCompleteness) {
-    report.addSection('Audit completeness and limitations')
+    report.addSection('What we reviewed')
     if (typeof auditCompleteness.completeness_percent === 'number') {
       report.addParagraph(`Inspection coverage: ${auditCompleteness.completeness_percent}%`, { size: 8.5, bold: true })
     }
@@ -524,16 +501,16 @@ function buildWebsiteAnalysisPdf(
     const limitations: string[] = Array.isArray(auditCompleteness.limitations)
       ? auditCompleteness.limitations.filter((item: unknown): item is string => typeof item === 'string')
       : []
-    limitations.forEach((limitation) => report.addParagraph(`- ${limitation}`, { size: 7.5, color: MUTED }))
+    limitations.forEach((limitation) => report.addParagraph(`- ${clientFriendlyAuditText(limitation)}`, { size: 7.5, color: MUTED }))
   }
 
-  report.addSection(`Verified observations (${findings.length})`)
+  report.addSection(`What we found (${findings.length} measured observations)`)
   if (primaryFindings.length === 0) {
     report.addParagraph('No scored Lighthouse issues or direct page-inspection issues were recorded.')
   } else {
     primaryFindings.forEach((finding, index) => {
       report.ensureSpace(20)
-      report.addParagraph(`${index + 1}. ${finding.title || 'Untitled finding'}`, { bold: true, color: NAVY, size: 9.5 })
+      report.addParagraph(`${index + 1}. ${auditFindingTitle(finding)}`, { bold: true, color: NAVY, size: 9.5 })
       const metadata = [
         finding.sourceLabel,
         finding.category?.replace(/-/g, ' '),
@@ -543,39 +520,37 @@ function buildWebsiteAnalysisPdf(
       ].filter(Boolean)
       report.addParagraph(metadata.join('  |  '), { size: 7.5, color: TEAL })
       const evidence = finding.display_value || finding.evidence
-      if (evidence && evidence !== 'AI-generated') report.addParagraph(`Observed: ${evidence}`, { size: 8 })
+      if (evidence && evidence !== 'AI-generated') report.addParagraph(`What we found: ${evidence}`, { size: 8 })
+      report.addParagraph(`Why it matters: ${auditFindingWhy(finding)}`, { size: 8 })
       const opportunity = formatOpportunity(finding)
       if (opportunity) {
         report.addParagraph(opportunity, { size: 7.5 })
         report.addParagraph(
-          'Potential impact: Lighthouse estimates this opportunity under test conditions; actual user impact and production savings may differ.',
+          'Possible benefit: Lighthouse estimates this opportunity under test conditions. The actual effect for visitors and savings may differ.',
           { size: 7.5, color: MUTED },
         )
       } else if (finding.sourceLabel === 'Measured') {
         report.addParagraph('No quantified savings were reported for this Lighthouse finding.', { size: 7.5, color: MUTED })
       }
-      if (finding.explanation && finding.sourceLabel !== 'Measured') {
-        report.addParagraph(finding.explanation, { size: 8 })
-      }
       if (finding.recommended_fix || finding.sourceLabel === 'Measured') {
         const auditId = finding.audit_id || finding.id?.replace(/^ps-/, '') || ''
         const recommendation = finding.sourceLabel === 'Measured'
-          ? lighthouseRecommendation(auditId, finding.title || 'this issue')
-          : finding.recommended_fix
+          ? auditFindingRecommendation({ ...finding, recommended_fix: lighthouseRecommendation(auditId, finding.title || 'this issue') })
+          : auditFindingRecommendation(finding)
         if (recommendation) {
-          report.addParagraph(`Our recommendation: ${useTeamVoice(recommendation)}`, { size: 8, bold: true })
-          report.addParagraph(`Suggested review order: ${index + 1}`, { size: 7.5, color: MUTED })
+          report.addParagraph(`What we recommend: ${clientFriendlyAuditText(recommendation)}`, { size: 8, bold: true })
+          report.addParagraph(`Finding ${index + 1} of ${primaryFindings.length}`, { size: 7.5, color: MUTED })
         }
       }
       const resources = finding.affected_resources?.filter(Boolean).slice(0, 3) ?? []
       for (const resource of resources) {
-        report.addParagraph(`Affected resource: ${resource}`, { size: 7, color: MUTED, indent: 3 })
+        report.addParagraph(`Affected file or page address: ${resource}`, { size: 7, color: MUTED, indent: 3 })
       }
       report.y += 1
     })
   }
 
-  report.addSection(`Optimization opportunities (${optimizationOpportunities.length})`)
+  report.addSection(`Possible improvements to review (${optimizationOpportunities.length} estimated opportunities)`)
   if (optimizationOpportunities.length === 0) {
     report.addParagraph('No separately classified Lighthouse optimization opportunities were recorded.')
   } else {
@@ -585,52 +560,51 @@ function buildWebsiteAnalysisPdf(
     )
     optimizationOpportunities.forEach((finding, index) => {
       report.ensureSpace(18)
-      report.addParagraph(`${index + 1}. ${finding.title}`, { bold: true, color: NAVY, size: 9 })
-      report.addParagraph(`Optimization opportunity  |  ${finding.category?.replace(/-/g, ' ') || 'Lighthouse'}`, {
+      report.addParagraph(`${index + 1}. ${auditFindingTitle(finding)}`, { bold: true, color: NAVY, size: 9 })
+      report.addParagraph(`Possible improvement (Lighthouse estimate)  |  ${finding.category?.replace(/-/g, ' ') || 'PageSpeed'}`, {
         size: 7.5,
         color: TEAL,
       })
-      report.addParagraph(`Observed: ${finding.display_value || finding.evidence}`, { size: 8 })
+      report.addParagraph(`What we found: ${finding.display_value || finding.evidence}`, { size: 8 })
+      report.addParagraph(`Why it matters: ${auditFindingWhy(finding)}`, { size: 8 })
       const opportunity = formatOpportunity(finding)
       if (opportunity) report.addParagraph(opportunity, { size: 7.5, color: MUTED })
-      if (finding.recommended_fix) {
-        report.addParagraph(`Suggested review: ${finding.recommended_fix}`, { size: 8 })
-      }
+      report.addParagraph(`What we recommend: ${clientFriendlyAuditText(auditFindingRecommendation(finding))}`, { size: 8, bold: true })
       for (const resource of finding.affected_resources?.filter(Boolean).slice(0, 3) ?? []) {
-        report.addParagraph(`Affected resource: ${resource}`, { size: 7, color: MUTED, indent: 3 })
+        report.addParagraph(`Affected file or page address: ${resource}`, { size: 7, color: MUTED, indent: 3 })
       }
     })
   }
 
   if (additionalRecommendations.length > 0 || aiRecommendations.length > 0) {
-    report.addSection(`AI-assisted recommendations to validate (${additionalRecommendations.length + aiRecommendations.length})`)
+    report.addSection(`Additional ideas to consider (${additionalRecommendations.length + aiRecommendations.length})`)
     report.addParagraph(
-      'These are hypotheses for discussion, not measured findings or required changes. We recommend validating each against the rendered site, its configuration, and your business goals.',
+      'These are ideas from our website review tools, not measured findings or required changes. We recommend checking each one against the fully loaded website, its settings, and your business goals before acting.',
       { size: 8, color: MUTED },
     )
     aiRecommendations.forEach((suggestion) => {
-      report.addParagraph(useTeamVoice(suggestion), { size: 8, bold: true })
+      const clientSuggestion = clientFriendlyAuditText(suggestion)
+      report.addParagraph(
+        /^we recommend\b/i.test(clientSuggestion) ? clientSuggestion : `We recommend reviewing this suggestion: ${clientSuggestion}`,
+        { size: 8, bold: true },
+      )
     })
     additionalRecommendations.forEach((finding) => {
-      const suggestion = useTeamVoice(finding.title || finding.recommended_fix || 'Review this suggestion manually.')
-      report.addParagraph(suggestion, { size: 8, bold: true })
-      report.addParagraph(recommendationContext(finding.title || finding.recommended_fix || ''), {
-        size: 7.5,
-        color: MUTED,
-        indent: 3,
-      })
+      report.addParagraph(`What we found: ${auditFindingTitle(finding)}`, { size: 8, bold: true })
+      report.addParagraph(`Why it may matter: ${auditFindingWhy(finding)}`, { size: 7.5, color: MUTED, indent: 3 })
+      report.addParagraph(`What we recommend: ${clientFriendlyAuditText(auditFindingRecommendation(finding))}`, { size: 8 })
     })
   }
 
   if (visualAudit) {
     report.addSection(`Visual review to validate (${visualObservations.length} observations)`)
     report.addParagraph(
-      'AI-assisted review of initial-load screenshots. These observations are not measured defects and should be confirmed by a person. Menus, forms, and other interactive states were not tested.',
+      'We reviewed screenshots of the first page load. These tool-assisted observations are not measured problems and should be confirmed by a person. We did not test menus, forms, or other controls.',
       { size: 8, color: MUTED },
     )
     if (visualAudit.discovered_page_count === 1) {
       report.addParagraph(
-        'No additional same-site page links were found in the initial HTML. JavaScript-rendered navigation may require a browser-based crawl.',
+        'We did not find links to other pages in the initial HTML. Pages added later by JavaScript may need a separate browser review.',
         { size: 7.5, color: MUTED },
       )
     }
@@ -641,7 +615,7 @@ function buildWebsiteAnalysisPdf(
       report.addParagraph(`Screenshots saved: ${savedCount} of ${visualPages.length} attempted page/viewports.`)
       visualPages.forEach((page: any) => {
         report.addParagraph(
-          `${page.page_label || 'Page'} (${page.viewport || 'unknown viewport'}): ${page.page_url || 'URL unavailable'}`,
+          `${page.page_label || 'Page'} (${page.viewport || 'unknown screen size'}): ${page.page_url || 'URL unavailable'}`,
           { size: 7.5, color: MUTED },
         )
         if (page.error) report.addParagraph(`Capture note: ${page.error}`, { size: 7.5, color: MUTED })
@@ -649,25 +623,34 @@ function buildWebsiteAnalysisPdf(
     }
     if (visualObservations.length === 0) {
       report.addParagraph(visualPages.some((page: any) => typeof page.image_path === 'string')
-        ? 'No clear visual defects were identified in the saved screenshots. This does not confirm that all layouts or interactive states work correctly.'
+        ? 'We did not identify clear visual problems in the saved screenshots. This does not confirm that every screen size or control works correctly.'
         : 'No visual observations are available because no screenshot was saved. The page appearance was not assessed.')
     } else {
       visualObservations.forEach((observation: any, index: number) => {
         report.ensureSpace(15)
-        report.addParagraph(`${index + 1}. ${observation.title || 'Visual observation'}`, {
+        report.addParagraph(`${index + 1}. ${clientFriendlyAuditText(observation.title || 'Visual observation')}`, {
           bold: true,
           color: NAVY,
           size: 9,
         })
         report.addParagraph(
-          `${observation.viewport || 'unknown viewport'} | ${observation.severity || 'unrated'} priority | ${Math.round((observation.confidence || 0) * 100)}% AI confidence`,
+          `${observation.viewport || 'unknown screen size'} | ${observation.severity || 'unrated'} priority | ${Math.round((observation.confidence || 0) * 100)}% confidence from our tools`,
           { size: 7.5, color: TEAL },
         )
-        report.addParagraph(observation.evidence || 'No visual evidence summary was returned.', { size: 8 })
+        report.addParagraph(`What we noticed: ${clientFriendlyAuditText(observation.evidence || 'No visual evidence summary was returned.')}`, { size: 8 })
+        report.addParagraph(
+          `Why it may matter: ${observation.why_it_matters
+            ? clientFriendlyAuditText(observation.why_it_matters)
+            : 'If confirmed, this may affect how visitors see or use this part of the page.'}`,
+          { size: 8 },
+        )
         if (observation.page_url) report.addParagraph(`Page: ${observation.page_url}`, { size: 7.5, color: MUTED })
-        if (observation.recommended_fix) {
-          report.addParagraph(`Suggested check: ${observation.recommended_fix}`, { size: 8, bold: true })
-        }
+        report.addParagraph(
+          `What we recommend: ${observation.recommended_fix
+            ? clientFriendlyAuditText(observation.recommended_fix)
+            : 'We recommend confirming this observation on the live page before making changes.'}`,
+          { size: 8, bold: true },
+        )
       })
     }
   }
@@ -677,7 +660,7 @@ function buildWebsiteAnalysisPdf(
       typeof item === 'object' && item.evidence !== 'AI-generated',
     )
     if (measuredPositives.length > 0) {
-      report.addSection('Observed strengths')
+      report.addSection('What is working well')
       measuredPositives.slice(0, 4).forEach((item) => {
         report.addParagraph(`- ${typeof item === 'string' ? item : item.title || 'Positive observation'}`, { size: 8 })
         if (typeof item === 'object' && item.evidence) {
@@ -694,15 +677,15 @@ function buildWebsiteAnalysisPdf(
   if (quantifiedFindings.length > 0) {
     const opportunities = quantifiedFindings.slice(0, 3).map((finding) => {
       const estimate = formatOpportunity(finding)
-      return `${finding.title || 'Measured opportunity'}${estimate ? ` (${estimate.replace('Estimated opportunity: ', '')})` : ''}`
+      return `${auditFindingTitle(finding)}${estimate ? ` (${estimate.replace('Estimated opportunity: ', '')})` : ''}`
     })
     report.addParagraph(
-      `The clearest quantified opportunities in this assessment are ${opportunities.join('; ')}. These are Lighthouse estimates, not guaranteed improvements; we recommend validating the listed resources and addressing the opportunities that best align with your goals.`,
+      `Our assessment recorded these estimated improvement opportunities: ${opportunities.join('; ')}. These are Lighthouse estimates, not guaranteed results. We recommend checking the listed resources and prioritizing changes that fit your business goals.`,
       { size: 8.5 },
     )
   } else {
     report.addParagraph(
-      'This assessment did not record quantified savings opportunities. We recommend reviewing the observations above in the context of your site goals before making changes.',
+      'Our assessment did not record estimated savings. We recommend reviewing the observations above against your website goals before making changes.',
       { size: 8.5 },
     )
   }
@@ -712,7 +695,7 @@ function buildWebsiteAnalysisPdf(
   )
 
   report.addParagraph(
-    'Method: We used Lighthouse/PageSpeed measurements and direct HTML page inspection at the time shown above. Results can vary by device, network, location, and page state. We recommend confirming the affected resources before implementation.',
+    'How we assessed the site: We used Lighthouse/PageSpeed measurements and inspected the page HTML at the time shown above. Results can vary by device, network, location, and page state. We recommend confirming the affected files or pages before making changes.',
     { size: 7, color: MUTED },
   )
 

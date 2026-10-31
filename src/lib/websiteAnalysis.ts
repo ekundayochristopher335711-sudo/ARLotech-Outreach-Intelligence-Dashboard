@@ -78,6 +78,7 @@ export interface GeminiResult {
       viewport: 'desktop' | 'mobile'
       title: string
       evidence: string
+      why_it_matters?: string
       severity: 'high' | 'medium' | 'low'
       confidence: number
       recommended_fix?: string

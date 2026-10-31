@@ -2,6 +2,7 @@ import { useEffect, useId, useState } from 'react'
 import { Badge } from '@/components/ui/Badge'
 import { supabase } from '@/lib/supabase'
 import type { VisualAudit } from '@/lib/visualReview'
+import { clientFriendlyAuditText } from '@/lib/auditReportLanguage'
 
 interface VisualPageView {
   page_url: string
@@ -78,21 +79,21 @@ export function VisualReviewPanel({ audit }: { audit?: VisualAudit | null }) {
           <h3 id={headingId} className="text-sm font-semibold text-slate-800">
             Visual review
           </h3>
-          <Badge variant="default">AI-assisted</Badge>
+          <Badge variant="default">Website review tools</Badge>
           <span className="text-xs text-slate-500">{statusLabel}</span>
         </div>
         <p className="mt-1 text-xs text-slate-500">
-          Initial-load screenshots only. Menus, forms, and other interactive states were not tested.
+          We reviewed screenshots from the first page load only. We did not test menus, forms, or other controls.
         </p>
         {typeof inspectionCount === 'number' && typeof requestedCount === 'number' && (
           <p className="mt-1 text-xs text-slate-500">
-            Lighthouse viewports completed: {inspectionCount}/{requestedCount}
+            PageSpeed checks completed: {inspectionCount}/{requestedCount}
             {typeof audit.completeness_percent === 'number' ? ` (${audit.completeness_percent}% coverage)` : ''}.
           </p>
         )}
         {audit.discovered_page_count === 1 && (
           <p className="mt-1 text-xs text-amber-700">
-            No additional same-site page links were found in the initial HTML. JavaScript-rendered navigation may require a browser-based crawl.
+            We did not find links to other pages in the initial HTML. Pages added later by JavaScript may need a separate browser review.
           </p>
         )}
       </div>
@@ -119,7 +120,7 @@ export function VisualReviewPanel({ audit }: { audit?: VisualAudit | null }) {
                 <Badge variant="default">{page.viewport}</Badge>
               </div>
               <p className="px-3 pb-2 text-xs text-slate-500">
-                Lighthouse: {page.inspection_status ?? 'not recorded'}
+                PageSpeed check: {page.inspection_status ?? 'not recorded'}
               </p>
               {page.image_url ? (
                 <a href={page.image_url} target="_blank" rel="noreferrer" aria-label={`Open full ${page.viewport} screenshot of ${page.page_url}`}>
@@ -146,17 +147,20 @@ export function VisualReviewPanel({ audit }: { audit?: VisualAudit | null }) {
           {audit.observations.map((observation, index) => (
             <article key={`${observation.page_url}|${observation.viewport}|${index}`} className="rounded-lg border border-amber-200 bg-amber-50/50 p-3">
               <div className="flex flex-wrap items-center gap-2">
-                <p className="text-sm font-medium text-slate-800">{observation.title}</p>
+                <p className="text-sm font-medium text-slate-800">{clientFriendlyAuditText(observation.title)}</p>
                 <Badge variant="default">{observation.severity}</Badge>
                 <span className="text-xs text-slate-500">
-                  {observation.viewport} · {Math.round(observation.confidence * 100)}% confidence
+                  {observation.viewport} · {Math.round(observation.confidence * 100)}% confidence from our tools
                 </span>
               </div>
-              <p className="mt-1 text-sm text-slate-600">{observation.evidence}</p>
+              <p className="mt-1 text-sm text-slate-600"><strong>What we noticed:</strong> {clientFriendlyAuditText(observation.evidence)}</p>
+              <p className="mt-1 text-sm text-slate-600"><strong>Why it may matter:</strong> {observation.why_it_matters
+                ? clientFriendlyAuditText(observation.why_it_matters)
+                : 'If confirmed, this may affect how visitors see or use this part of the page.'}</p>
               <p className="mt-1 text-xs text-slate-500">{observation.page_url}</p>
-              {observation.recommended_fix && (
-                <p className="mt-2 text-sm text-slate-700">Suggested check: {observation.recommended_fix}</p>
-              )}
+              <p className="mt-2 text-sm text-slate-700"><strong>What we recommend:</strong> {observation.recommended_fix
+                ? clientFriendlyAuditText(observation.recommended_fix)
+                : 'We recommend confirming this observation on the live page before making changes.'}</p>
             </article>
           ))}
         </div>

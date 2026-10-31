@@ -38,6 +38,7 @@ describe('website audit PDF', () => {
             viewport: 'mobile',
             title: 'Heading clipped on mobile',
             evidence: 'The final word in the heading is cut off at the right edge.',
+            why_it_matters: 'Visitors may not see the complete heading.',
             severity: 'medium',
             confidence: 0.88,
             recommended_fix: 'Check the heading container width at this viewport.',
@@ -47,15 +48,18 @@ describe('website audit PDF', () => {
       prospect: { business_name: 'Unverified CRM Name', business_name_verified: false },
     }))
 
-    expect(report).toContain('Weighted technical health')
-    expect(report).toContain('A weighted technical health score is unavailable')
-    expect(report).toContain('VERIFIED OBSERVATIONS (9)')
+    expect(report).toContain('Overall website score')
+    expect(report).toContain('Our overall website score is unavailable')
+    expect(report).toContain('WHAT WE FOUND (9 MEASURED OBSERVATIONS)')
     expect(report).toContain('Prepared for: example.com')
     expect(report).not.toContain('Unverified CRM Name')
     expect(report).toContain('9. Measured finding 9')
     expect(report).toContain('VISUAL REVIEW TO VALIDATE (1 OBSERVATIONS)')
     expect(report).toContain('Heading clipped on mobile')
-    expect(report).toContain('interactive states were not tested')
+    expect(report).toContain('Why it may matter: Visitors may not see the complete heading')
+    expect(report).toContain('tool-assisted observations')
+    expect(report).not.toMatch(/\bAI\b|Gemini/)
+    expect(report).toContain('We did not test menus, forms, or other controls')
   })
 
   it('uses a business name as the recipient only when explicitly verified', () => {
@@ -116,7 +120,7 @@ describe('website audit PDF', () => {
       },
     }))
 
-    expect(report).toContain('Reduce unused JavaScript')
+    expect(report).toContain('Some JavaScript may not be needed when the page first loads')
     expect(report).toContain('23 KiB savings')
     expect(report).toContain('50 ms')
     expect(report).toContain('not confirmed defects')

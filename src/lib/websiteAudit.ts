@@ -27,6 +27,7 @@ export interface VisualScreenshotReference {
 export interface SanitizedVisualObservation extends VisualScreenshotReference {
   title: string
   evidence: string
+  why_it_matters?: string
   severity: 'high' | 'medium' | 'low'
   confidence: number
   recommended_fix?: string
@@ -132,6 +133,7 @@ export function sanitizeVisualObservations(
     const viewport = observation.viewport
     const title = sanitizePlainText(observation.title, 200)
     const evidence = sanitizePlainText(observation.evidence, 800)
+    const whyItMatters = sanitizePlainText(observation.why_it_matters, 500)
     const severity = observation.severity
     const confidence = observation.confidence
 
@@ -152,6 +154,7 @@ export function sanitizeVisualObservations(
       viewport: viewport as 'desktop' | 'mobile',
       title,
       evidence,
+      ...(whyItMatters ? { why_it_matters: whyItMatters } : {}),
       severity: severity as 'high' | 'medium' | 'low',
       confidence: Math.round(confidence * 100) / 100,
       ...(recommendedFix ? { recommended_fix: recommendedFix } : {}),
