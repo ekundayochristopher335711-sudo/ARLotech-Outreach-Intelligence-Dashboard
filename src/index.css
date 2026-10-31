@@ -536,3 +536,24 @@ html {
 .app-shell.theme-blacksite .app-topbar>button{color:#a8c59f!important;border:1px solid #29432a!important;border-radius:2px!important;background:#071008!important}
 .app-shell.theme-blacksite .app-topbar>button:hover{background:#a8ff4812!important;color:#cfffbd!important}
 @media(min-width:1024px){.app-shell.theme-blacksite .app-sidebar{height:100dvh!important}.app-shell.theme-blacksite .app-workspace{min-width:0!important}.app-shell.theme-blacksite .app-main{width:100%!important}}
+@media(max-width:700px){
+  .app-shell.theme-blacksite .blacksite-command-ribbon{font-size:10px!important;line-height:1.45;letter-spacing:.04em}
+  .app-shell.theme-blacksite .blacksite-kicker{font-size:10px;line-height:1.5;letter-spacing:.1em}
+  .app-shell.theme-blacksite .blacksite-deck-heading p{font-size:12px;line-height:1.5}
+  .app-shell.theme-blacksite .blacksite-export{font-size:11px;letter-spacing:.07em}
+  .app-shell.theme-blacksite .blacksite-metric-top{font-size:10px;letter-spacing:.08em}
+  .app-shell.theme-blacksite .blacksite-metric-label{font-size:11px;line-height:1.45;letter-spacing:.05em}
+  .app-shell.theme-blacksite .blacksite-metric>small{font-size:10px;line-height:1.4;letter-spacing:.06em}
+  .app-shell.theme-blacksite .blacksite-panel-index,.app-shell.theme-blacksite .blacksite-live-tag,.app-shell.theme-blacksite .blacksite-record-count{font-size:10px;line-height:1.4;letter-spacing:.06em}
+  .app-shell.theme-blacksite .blacksite-panel-head h2{font-size:12px;line-height:1.45;letter-spacing:.07em}
+  .app-shell.theme-blacksite .blacksite-panel-body .space-y-4 p{font-size:12px!important;line-height:1.5}
+  .app-shell.theme-blacksite .blacksite-panel-body .space-y-4 p.text-xs{font-size:11px!important}
+  .app-shell.theme-blacksite .blacksite-panel-body .space-y-4>div>span{font-size:10px!important;line-height:1.4;white-space:normal}
+  .app-shell.theme-blacksite .blacksite-panel-foot{font-size:10px;line-height:1.45;letter-spacing:.06em}
+  .app-shell.theme-blacksite .blacksite-panel-foot button{font-size:10px;line-height:1.4;letter-spacing:.04em}
+  .app-shell.theme-blacksite .blacksite-deck-footer{font-size:10px;line-height:1.45;letter-spacing:.06em}
+  .app-shell.theme-blacksite .app-main .text-xs{font-size:12px!important;line-height:1.45}
+}
+@media(max-width:480px){
+  .app-shell .app-mode-toggle{font-size:11px!important;line-height:1.35;min-height:40px}
+}

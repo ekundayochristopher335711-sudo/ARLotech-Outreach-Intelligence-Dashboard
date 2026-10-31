@@ -8,6 +8,7 @@ import {
   Mail,
   MessageCircle,
   BarChart3,
+  Activity,
   Settings,
   LogOut,
   Plane,
@@ -25,6 +26,7 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { label: 'Dashboard', icon: LayoutDashboard, path: '/' },
+  { label: 'Activity', icon: Activity, path: '/activity' },
   { label: 'Prospects', icon: Users, path: '/prospects' },
   { label: 'Website Analysis', icon: Globe, path: '/website-intelligence' },
   { label: 'Campaigns', icon: FileText, path: '/campaigns' },
@@ -45,7 +47,7 @@ export function Sidebar({
   onNavigate: () => void
 }) {
   const blacksite = (() => { try { return localStorage.getItem('arlotech-login-mode') === 'blacksite' } catch { return false } })()
-  const displayLabels: Record<string, string> = blacksite ? { '/': 'Command Deck', '/prospects': 'Target Registry', '/website-intelligence': 'Surface Recon', '/campaigns': 'Transmission Ops', '/email-drafts': 'Payload Lab', '/replies': 'Intercepts', '/follow-ups': 'Extraction Queue', '/analytics': 'Signal Analysis', '/settings': 'System Config' } : {}
+  const displayLabels: Record<string, string> = blacksite ? { '/': 'Command Deck', '/activity': 'Operational Ledger', '/prospects': 'Target Registry', '/website-intelligence': 'Surface Recon', '/campaigns': 'Transmission Ops', '/email-drafts': 'Payload Lab', '/replies': 'Intercepts', '/follow-ups': 'Extraction Queue', '/analytics': 'Signal Analysis', '/settings': 'System Config' } : {}
   const [signingOut, setSigningOut] = useState(false)
   const [signOutError, setSignOutError] = useState('')
   const { signOut } = useAuth()

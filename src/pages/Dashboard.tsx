@@ -190,7 +190,7 @@ export function DashboardPage() {
             <div className="blacksite-panel-body"><ActivityFeed activity={activity || []} /></div>
             <footer className="blacksite-panel-foot">
               <span>EVENT STREAM // RECENT 10</span>
-              <button type="button" onClick={() => navigate('/replies')}>OPEN INTERCEPTS ↗</button>
+              <button type="button" onClick={() => navigate('/activity')}>OPEN FULL LEDGER ↗</button>
             </footer>
           </article>
           <article className="blacksite-panel blacksite-target-panel">
@@ -258,8 +258,8 @@ export function DashboardPage() {
         <Card className="lg:col-span-2">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold text-slate-800">{blacksite ? 'Operational Ledger' : 'Recent Activity'}</h2>
-            <button type="button" onClick={() => navigate('/replies')} className="text-sm text-arlotech hover:underline">
-              {blacksite ? 'OPEN LEDGER' : 'View all'}
+            <button type="button" onClick={() => navigate('/activity')} className="text-sm text-arlotech hover:underline">
+              {blacksite ? 'OPEN LEDGER' : 'View all activity'}
             </button>
           </div>
           <ActivityFeed activity={activity || []} />

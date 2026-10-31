@@ -14,6 +14,7 @@ import { Sidebar } from '@/components/layout/Sidebar'
 
 const LoginPage = lazy(() => import('@/pages/Login').then((module) => ({ default: module.LoginPage })))
 const DashboardPage = lazy(() => import('@/pages/Dashboard').then((module) => ({ default: module.DashboardPage })))
+const ActivityPage = lazy(() => import('@/pages/Activity').then((module) => ({ default: module.ActivityPage })))
 const ProspectsPage = lazy(() => import('@/pages/Prospects').then((module) => ({ default: module.ProspectsPage })))
 const NewProspectPage = lazy(() => import('@/pages/Prospects').then((module) => ({ default: module.NewProspectPage })))
 const ProspectDetails = lazy(() => import('@/pages/ProspectDetails').then((module) => ({ default: module.ProspectDetails })))
@@ -118,6 +119,7 @@ function AppShell() {
   const closeSidebar = () => setMobileOpen(false)
   const blacksiteCopy: Record<string, { title: string; sub: string }> = {
     '/': { title: 'COMMAND DECK', sub: 'LIVE CAMPAIGN TELEMETRY' },
+    '/activity': { title: 'OPERATIONAL LEDGER', sub: 'WORKSPACE CHANGE HISTORY' },
     '/prospects': { title: 'TARGET REGISTRY', sub: 'LEAD ACQUISITION & DOSSIERS' },
     '/prospects/new': { title: 'NEW DOSSIER', sub: 'TARGET RECORD INITIALIZATION' },
     '/website-intelligence': { title: 'SURFACE RECON', sub: 'DOMAIN INTELLIGENCE & EXPOSURE REVIEW' },
@@ -168,6 +170,7 @@ function AppShell() {
             <Suspense fallback={<PageLoading />}>
               <Routes>
                 <Route index element={<DashboardPage />} />
+                <Route path="activity" element={<ActivityPage />} />
                 <Route path="prospects" element={<ProspectsPage />} />
                 <Route path="prospects/new" element={<NewProspectPage />} />
                 <Route path="prospects/:id" element={<ProspectDetails />} />
