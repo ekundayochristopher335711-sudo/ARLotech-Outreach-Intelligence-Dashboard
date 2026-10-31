@@ -51,7 +51,6 @@ const eventIcons: Record<string, LucideIcon> = {
   task_created: ListChecks,
   task_updated: Pencil,
   task_deleted: Trash2,
-  website_analysis_deleted: Trash2,
   task_insert: ListChecks,
   task_update: Pencil,
   task_delete: Trash2,
