@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Check, Mail, Pencil, Plus, Send, Trash2, X } from 'lucide-react'
+import { Check, Copy, Mail, Pencil, Plus, Send, Sparkles, Trash2, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
@@ -14,13 +14,74 @@ import {
   validateOutreachPreview,
   type OutreachPreview,
 } from '@/lib/outreachEmail'
+import {
+  generateFollowUpDraft,
+  generateProfessionalEmailDraft,
+  OUTREACH_STRATEGIES,
+  rewriteProfessionalEmail,
+  validateProfessionalEmailDraft,
+  type FollowUpStage,
+  type GeneratedEmailDraft,
+  type OutreachLength,
+  type OutreachSignature,
+  type OutreachStrategy,
+  type OutreachTone,
+  type RewriteAction,
+} from '@/lib/emailDraftGenerator'
 import type { Campaign, EmailDraft, Prospect, WebsiteAnalysis } from '@/types'
 
 const MAX_OUTREACH_BATCH_SIZE = 10
+const SIGNATURE_STORAGE_KEY = 'arlotech-email-signature'
+
+const strategyLabels: Record<OutreachStrategy, string> = {
+  general_review: 'General website review',
+  technical_improvement: 'Technical improvement',
+  website_redesign: 'Website redesign',
+  business_growth: 'Business growth',
+  personal_consultancy: 'Personal consultancy',
+}
+
+function readSignature(): OutreachSignature {
+  const saved = localStorage.getItem(SIGNATURE_STORAGE_KEY)
+  if (!saved) {
+    return {
+      businessName: 'Arlotech Digital Solutions',
+      senderName: '',
+      jobTitle: '',
+      website: '',
+      email: '',
+      phone: '',
+      socialLinks: '',
+    }
+  }
+  try {
+    const parsed = JSON.parse(saved) as Partial<OutreachSignature>
+    return {
+      businessName: parsed.businessName || 'Arlotech Digital Solutions',
+      senderName: parsed.senderName || '',
+      jobTitle: parsed.jobTitle || '',
+      website: parsed.website || '',
+      email: parsed.email || '',
+      phone: parsed.phone || '',
+      socialLinks: parsed.socialLinks || '',
+    }
+  } catch {
+    return {
+      businessName: 'Arlotech Digital Solutions',
+      senderName: '',
+      jobTitle: '',
+      website: '',
+      email: '',
+      phone: '',
+      socialLinks: '',
+    }
+  }
+}
 
 type OutreachProspect = Pick<
   Prospect,
   'id' | 'business_name' | 'business_name_verified' | 'contact_name' | 'email' | 'website' | 'business_category' | 'do_not_contact'
+  | 'city'
 >
 
 interface OutreachSendResult {
@@ -34,6 +95,15 @@ interface OutreachSendResult {
 
 interface SendOutreachResponse {
   results: OutreachSendResult[]
+}
+
+interface SentOutreachContext {
+  id: string
+  prospect_id: string | null
+  recipient_email: string | null
+  subject: string
+  body: string
+  created_at: string | null
 }
 
 interface ManualSendResponse {
@@ -101,6 +171,18 @@ export function EmailDraftsPage() {
   const [outreachBatchId, setOutreachBatchId] = useState('')
   const [complianceConfirmed, setComplianceConfirmed] = useState(false)
   const [outreachResults, setOutreachResults] = useState<OutreachSendResult[]>([])
+  const [generatorProspectId, setGeneratorProspectId] = useState('')
+  const [generatorCampaignId, setGeneratorCampaignId] = useState('')
+  const [generatorStrategy, setGeneratorStrategy] = useState<OutreachStrategy>('general_review')
+  const [generatorTone, setGeneratorTone] = useState<OutreachTone>('professional')
+  const [generatorLength, setGeneratorLength] = useState<OutreachLength>('standard')
+  const [includeReportReference, setIncludeReportReference] = useState(false)
+  const [followUpStage, setFollowUpStage] = useState<FollowUpStage>('none')
+  const [followUpMessageId, setFollowUpMessageId] = useState('')
+  const [generatedDraft, setGeneratedDraft] = useState<GeneratedEmailDraft | null>(null)
+  const [generatedSubject, setGeneratedSubject] = useState('')
+  const [generatedBody, setGeneratedBody] = useState('')
+  const [signature, setSignature] = useState<OutreachSignature>(readSignature)
 
   const { data: drafts, isLoading, error } = useQuery({
     queryKey: ['/email-drafts'],
@@ -144,6 +226,20 @@ export function EmailDraftsPage() {
     },
   })
 
+  const { data: emailProfile, error: emailProfileError } = useQuery({
+    queryKey: ['/profile', 'email-signature'],
+    queryFn: async () => {
+      const userId = await getCurrentUserId()
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('full_name, email, company_name')
+        .eq('id', userId)
+        .maybeSingle()
+      if (error) throw error
+      return data
+    },
+  })
+
   const {
     data: outreachProspects = [],
     isLoading: outreachProspectsLoading,
@@ -154,7 +250,7 @@ export function EmailDraftsPage() {
       const userId = await getCurrentUserId()
       const { data, error } = await supabase
         .from('prospects')
-        .select('id, business_name, business_name_verified, contact_name, email, website, business_category, do_not_contact')
+        .select('id, business_name, business_name_verified, contact_name, email, website, business_category, do_not_contact, city')
         .eq('user_id', userId)
         .order('business_name')
         .limit(500)
@@ -197,15 +293,13 @@ export function EmailDraftsPage() {
     },
   })
 
-  const { data: previouslySentRows = [], error: sentHistoryError } = useQuery<
-    Array<{ prospect_id: string | null; recipient_email: string | null }>
-  >({
+  const { data: previouslySentRows = [], error: sentHistoryError } = useQuery<SentOutreachContext[]>({
     queryKey: ['/email-messages', 'outreach-sent'],
     queryFn: async () => {
       const userId = await getCurrentUserId()
       const { data, error } = await supabase
         .from('email_messages')
-        .select('prospect_id, recipient_email')
+        .select('id, prospect_id, recipient_email, subject, body, created_at')
         .eq('user_id', userId)
         .eq('direction', 'outbound')
         .eq('status', 'sent')
@@ -214,14 +308,21 @@ export function EmailDraftsPage() {
     },
   })
 
+  const effectiveSignature: OutreachSignature = {
+    ...signature,
+    businessName: signature.businessName === 'Arlotech Digital Solutions'
+      ? emailProfile?.company_name || signature.businessName
+      : signature.businessName,
+    senderName: signature.senderName || emailProfile?.full_name || '',
+    email: signature.email || emailProfile?.email || '',
+  }
+
   const outreachProspectRows = outreachProspects as OutreachProspect[]
   const outreachAnalysisRows = outreachAnalyses as WebsiteAnalysis[]
   const suppressedEmailRows = suppressedRows as Array<{ normalized_email: string }>
-  const previouslySentProspectRows = previouslySentRows as Array<{ prospect_id: string | null }>
-  const sentRecipientRows = previouslySentRows as Array<{
-    prospect_id: string | null
-    recipient_email: string | null
-  }>
+  const sentEmailRows = previouslySentRows as SentOutreachContext[]
+  const previouslySentProspectRows = sentEmailRows
+  const sentRecipientRows = sentEmailRows
   const analysisByProspect = new Map<string, WebsiteAnalysis>()
   for (const analysis of outreachAnalysisRows) {
     if (analysis.prospect_id && !analysisByProspect.has(analysis.prospect_id)) {
@@ -244,6 +345,27 @@ export function EmailDraftsPage() {
       prospect.do_not_contact &&
       prospect.email?.trim().toLowerCase() === manualRecipient.trim().toLowerCase(),
   )
+  const selectedGeneratorProspect = outreachProspectRows.find((prospect) => prospect.id === generatorProspectId)
+  const selectedGeneratorAnalysis = selectedGeneratorProspect
+    ? analysisByProspect.get(selectedGeneratorProspect.id)
+    : undefined
+  const matchingGeneratorAnalysis = selectedGeneratorProspect && selectedGeneratorAnalysis &&
+    hasMatchingWebsiteAnalysis(selectedGeneratorProspect, selectedGeneratorAnalysis)
+    ? selectedGeneratorAnalysis
+    : undefined
+  const originalFollowUpMessage = sentEmailRows.find((message) => message.id === followUpMessageId)
+  const generatedValidation = generatedDraft && selectedGeneratorProspect
+    ? validateProfessionalEmailDraft(
+        {
+          ...generatedDraft,
+          body: generatedBody,
+          wordCount: generatedBody.trim().split(/\s+/).filter(Boolean).length,
+        },
+        selectedGeneratorProspect,
+        !!matchingGeneratorAnalysis,
+        generatedSubject,
+      )
+    : null
 
   const getOutreachBlockReason = (prospect: OutreachProspect) => {
     if (!prospect.email?.trim()) return 'No email address'
@@ -445,6 +567,34 @@ export function EmailDraftsPage() {
     onError: (err: Error) => toast.error(err.message || 'Could not save draft'),
   })
 
+  const saveGeneratedMutation = useMutation({
+    mutationFn: async () => {
+      if (!generatedSubject.trim() || !generatedBody.trim()) {
+        throw new Error('Add a subject and message before saving.')
+      }
+      if (generatedValidation?.errors.length) {
+        throw new Error(generatedValidation.errors.join(' '))
+      }
+      const userId = await getCurrentUserId()
+      const { error } = await supabase.from('email_drafts').insert({
+        subject: generatedSubject.trim(),
+        body: generatedBody.trim(),
+        campaign_id: generatorCampaignId || null,
+        prospect_id: generatorProspectId || null,
+        template_type: followUpStage === 'none' ? generatorStrategy : `follow_up_${followUpStage}`,
+        generation_source: 'website_review_tools',
+        user_id: userId,
+        status: 'draft',
+      })
+      if (error) throw error
+    },
+    onSuccess: () => {
+      toast.success('Generated email saved as a draft')
+      queryClient.invalidateQueries({ queryKey: ['/email-drafts'] })
+    },
+    onError: (err: Error) => toast.error(err.message || 'Could not save generated draft'),
+  })
+
   const deleteMutation = useMutation({
     mutationFn: async (draft: EmailDraft) => {
       const userId = await getCurrentUserId()
@@ -480,6 +630,66 @@ export function EmailDraftsPage() {
     setShowForm(true)
   }
 
+  const generateDraft = () => {
+    if (!selectedGeneratorProspect) {
+      toast.error('Select a prospect before generating an email.')
+      return
+    }
+    if (followUpStage !== 'none' && !originalFollowUpMessage) {
+      toast.error('Select an email that was previously sent to provide follow-up context.')
+      return
+    }
+    try {
+      const result = followUpStage !== 'none' && originalFollowUpMessage
+        ? generateFollowUpDraft(originalFollowUpMessage, selectedGeneratorProspect, followUpStage, effectiveSignature)
+        : generateProfessionalEmailDraft({
+            prospect: selectedGeneratorProspect,
+            analysis: matchingGeneratorAnalysis,
+            strategy: generatorStrategy,
+            tone: generatorTone,
+            length: generatorLength,
+            includeReport: includeReportReference,
+            signature: effectiveSignature,
+          })
+      setGeneratedDraft(result)
+      setGeneratedSubject(result.subjectSuggestions[0] || '')
+      setGeneratedBody(result.body)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not generate an email draft.')
+    }
+  }
+
+  const copyGeneratedDraft = async () => {
+    try {
+      await navigator.clipboard.writeText(`Subject: ${generatedSubject}\n\n${generatedBody}`)
+      toast.success('Email copied')
+    } catch (error) {
+      toast.error(error instanceof Error ? `Could not copy email: ${error.message}` : 'Could not copy email.')
+    }
+  }
+
+  const saveSignature = () => {
+    try {
+      localStorage.setItem(SIGNATURE_STORAGE_KEY, JSON.stringify(effectiveSignature))
+      toast.success('Email signature saved on this device')
+    } catch (error) {
+      toast.error(error instanceof Error ? `Could not save signature: ${error.message}` : 'Could not save signature.')
+    }
+  }
+
+  const updateSignature = (key: keyof OutreachSignature, value: string) => {
+    setSignature((current) => ({ ...current, [key]: value }))
+  }
+
+  const duplicateDraft = (draft: EmailDraft) => {
+    setEditingDraft(null)
+    setSubject(draft.subject)
+    setBody(draft.body)
+    setCampaignId(draft.campaign_id || '')
+    setProspectId(draft.prospect_id || '')
+    setShowForm(true)
+  }
+
   if (isLoading) {
     return <Card className="p-6"><div className="h-40 animate-pulse rounded bg-slate-200" /></Card>
   }
@@ -503,6 +713,281 @@ export function EmailDraftsPage() {
           <Plus className="h-4 w-4" /> New Draft
         </Button>
       </div>
+
+      <Card className="space-y-5 p-4 sm:p-6">
+        <div>
+          <h2 className="text-lg font-semibold text-slate-800">Personalized email workspace</h2>
+          <p className="mt-1 text-sm text-slate-500">
+            Build a client-ready draft from the prospect details and existing website review. The writing tools do not invent missing findings or promise business results.
+          </p>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <label className="block space-y-1">
+            <span className="text-sm font-medium text-slate-700">Prospect</span>
+            <select
+              value={generatorProspectId}
+              onChange={(event) => {
+                setGeneratorProspectId(event.target.value)
+                setGeneratedDraft(null)
+                setFollowUpMessageId('')
+                setIncludeReportReference(false)
+              }}
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+            >
+              <option value="">Select a prospect</option>
+              {outreachProspectRows.map((prospect) => (
+                <option key={prospect.id} value={prospect.id}>{prospect.business_name}</option>
+              ))}
+            </select>
+          </label>
+          <label className="block space-y-1">
+            <span className="text-sm font-medium text-slate-700">Outreach strategy</span>
+            <select
+              value={generatorStrategy}
+              onChange={(event) => setGeneratorStrategy(event.target.value as OutreachStrategy)}
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+            >
+              {OUTREACH_STRATEGIES.map((strategy) => (
+                <option key={strategy} value={strategy}>{strategyLabels[strategy]}</option>
+              ))}
+            </select>
+          </label>
+          <label className="block space-y-1">
+            <span className="text-sm font-medium text-slate-700">Tone</span>
+            <select
+              value={generatorTone}
+              onChange={(event) => setGeneratorTone(event.target.value as OutreachTone)}
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+            >
+              <option value="professional">Professional</option>
+              <option value="friendly">Friendly</option>
+              <option value="conversational">Conversational</option>
+              <option value="consultative">Consultative</option>
+              <option value="direct">Direct</option>
+              <option value="premium">Premium corporate</option>
+            </select>
+          </label>
+          <label className="block space-y-1">
+            <span className="text-sm font-medium text-slate-700">Length</span>
+            <select
+              value={generatorLength}
+              onChange={(event) => setGeneratorLength(event.target.value as OutreachLength)}
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+            >
+              <option value="short">Short</option>
+              <option value="standard">Standard</option>
+              <option value="detailed">Detailed</option>
+            </select>
+          </label>
+          <label className="block space-y-1">
+            <span className="text-sm font-medium text-slate-700">Campaign (optional)</span>
+            <select
+              value={generatorCampaignId}
+              onChange={(event) => setGeneratorCampaignId(event.target.value)}
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+            >
+              <option value="">No campaign</option>
+              {campaignOptions.map((campaign) => <option key={campaign.id} value={campaign.id}>{campaign.name}</option>)}
+            </select>
+          </label>
+          <label className="block space-y-1">
+            <span className="text-sm font-medium text-slate-700">Follow-up</span>
+            <select
+              value={followUpStage}
+              onChange={(event) => {
+                setFollowUpStage(event.target.value as FollowUpStage)
+                setFollowUpMessageId('')
+              }}
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+            >
+              <option value="none">New outreach</option>
+              <option value="first">First follow-up</option>
+              <option value="second">Second follow-up</option>
+              <option value="final">Final follow-up</option>
+            </select>
+          </label>
+          {followUpStage !== 'none' && (
+            <label className="block space-y-1">
+              <span className="text-sm font-medium text-slate-700">Previously sent email</span>
+              <select
+                  value={followUpMessageId}
+                  onChange={(event) => setFollowUpMessageId(event.target.value)}
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+              >
+                  <option value="">Select a sent email</option>
+                  {sentEmailRows
+                    .filter((message) => message.prospect_id === generatorProspectId)
+                    .map((message) => (
+                      <option key={message.id} value={message.id}>
+                        {message.subject} {message.created_at ? `(${new Date(message.created_at).toLocaleDateString()})` : ''}
+                      </option>
+                    ))}
+                </select>
+            </label>
+          )}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
+          <label className="flex items-start gap-2 text-sm text-slate-700">
+            <input
+              type="checkbox"
+              checked={includeReportReference}
+              disabled={!matchingGeneratorAnalysis || !selectedGeneratorProspect?.website}
+              onChange={(event) => setIncludeReportReference(event.target.checked)}
+              className="mt-1 h-4 w-4 accent-arlotech"
+            />
+            <span>
+              Mention the existing website review
+              {matchingGeneratorAnalysis ? ' (available to share; not attached to this saved draft)' : ' (no matching review available)'}
+            </span>
+          </label>
+          {selectedGeneratorProspect?.business_category && (
+            <p className="text-xs text-slate-500">Industry context: {selectedGeneratorProspect.business_category}</p>
+          )}
+        </div>
+
+        <details className="rounded-lg border border-slate-200 p-3">
+          <summary className="cursor-pointer text-sm font-medium text-slate-700">Email signature</summary>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {([
+              ['businessName', 'Business name'],
+              ['senderName', 'Sender name'],
+              ['jobTitle', 'Job title'],
+              ['website', 'Website'],
+              ['email', 'Business email'],
+              ['phone', 'Telephone'],
+              ['socialLinks', 'Social links (optional)'],
+            ] as const).map(([key, label]) => (
+              <label key={key} className="block space-y-1">
+                <span className="text-xs font-medium text-slate-600">{label}</span>
+                <input
+                  value={effectiveSignature[key]}
+                  onChange={(event) => updateSignature(key, event.target.value)}
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                />
+              </label>
+            ))}
+            <div className="sm:col-span-2 lg:col-span-3">
+              <Button variant="secondary" size="sm" onClick={saveSignature}>Save signature on this device</Button>
+            </div>
+          </div>
+        </details>
+        {emailProfileError && (
+          <p className="text-xs text-amber-800" role="status">
+            Account signature details could not be loaded. You can enter them manually.
+          </p>
+        )}
+
+        <div className="flex justify-end">
+          <Button onClick={generateDraft} disabled={!generatorProspectId || (followUpStage !== 'none' && !followUpMessageId)}>
+            <Sparkles className="h-4 w-4" /> {generatedDraft ? 'Regenerate email' : 'Generate email'}
+          </Button>
+        </div>
+
+        {generatedDraft && (
+          <div className="space-y-4 border-t border-slate-200 pt-4">
+            <div className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(16rem,1fr)]">
+              <div className="space-y-4">
+                <div>
+                  <p className="mb-2 text-sm font-medium text-slate-700">Subject suggestions (select one, or edit below)</p>
+                  <div className="flex flex-wrap gap-2">
+                    {generatedDraft.subjectSuggestions.map((suggestion) => (
+                      <button
+                        key={suggestion}
+                        type="button"
+                        onClick={() => setGeneratedSubject(suggestion)}
+                        className={`rounded-full border px-3 py-1.5 text-xs ${
+                          generatedSubject === suggestion
+                            ? 'border-arlotech bg-arlotech/10 font-semibold text-arlotech'
+                            : 'border-slate-300 text-slate-600 hover:bg-slate-50'
+                        }`}
+                      >
+                        {suggestion}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <label className="block space-y-1">
+                  <span className="text-sm font-medium text-slate-700">Subject</span>
+                  <input
+                    value={generatedSubject}
+                    onChange={(event) => setGeneratedSubject(event.target.value)}
+                    maxLength={200}
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                  />
+                </label>
+                <label className="block space-y-1">
+                  <span className="text-sm font-medium text-slate-700">Email body</span>
+                  <textarea
+                    value={generatedBody}
+                    onChange={(event) => setGeneratedBody(event.target.value)}
+                    rows={12}
+                    maxLength={12000}
+                    className="w-full resize-y rounded-lg border border-slate-300 px-3 py-2 text-sm leading-6"
+                  />
+                </label>
+                <p className="text-xs text-slate-500">Current length: {generatedBody.trim().split(/\s+/).filter(Boolean).length} words. Review all claims and recipient details before sending.</p>
+                <div className="flex flex-wrap gap-2">
+                  {([
+                    ['shorten', 'Shorten'],
+                    ['expand', 'Expand'],
+                    ['conversational', 'More conversational'],
+                    ['professional', 'More professional'],
+                    ['improve_cta', 'Improve CTA'],
+                  ] as const).map(([action, label]) => (
+                    <Button
+                      key={action}
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => setGeneratedBody((current) => rewriteProfessionalEmail(current, action as RewriteAction))}
+                    >
+                      {label}
+                    </Button>
+                  ))}
+                </div>
+                <div className="flex flex-wrap justify-end gap-2">
+                  <Button variant="secondary" onClick={copyGeneratedDraft}><Copy className="h-4 w-4" /> Copy email</Button>
+                  <Button onClick={() => saveGeneratedMutation.mutate()} disabled={saveGeneratedMutation.isPending || !generatedSubject.trim() || !generatedBody.trim() || !!generatedValidation?.errors.length}>
+                    {saveGeneratedMutation.isPending ? 'Saving...' : 'Save draft'}
+                  </Button>
+                </div>
+              </div>
+              <aside className="space-y-4 rounded-lg bg-slate-50 p-4">
+                <div>
+                  <h3 className="text-sm font-semibold text-slate-700">Personalization used</h3>
+                  <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-slate-600">
+                    {generatedDraft.personalization.map((item) => <li key={item}>{item}</li>)}
+                  </ul>
+                </div>
+                <div>
+                  <h3 className="text-sm font-semibold text-slate-700">Website observations referenced</h3>
+                  {generatedDraft.observationsUsed.length ? (
+                    <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-slate-600">
+                      {generatedDraft.observationsUsed.map((item) => <li key={item}>{item}</li>)}
+                    </ul>
+                  ) : <p className="mt-2 text-xs text-slate-500">No finding was available or needed for this approach.</p>}
+                </div>
+                <div>
+                  <h3 className="text-sm font-semibold text-slate-700">Draft checks</h3>
+                  <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-slate-600">
+                    {generatedDraft.qualityChecks.map((item) => <li key={item}>{item}</li>)}
+                  </ul>
+                  {!!generatedValidation?.errors.length && (
+                    <ul role="alert" className="mt-2 list-disc space-y-1 pl-5 text-xs text-red-700">
+                      {generatedValidation.errors.map((item) => <li key={item}>{item}</li>)}
+                    </ul>
+                  )}
+                  {!!generatedValidation?.warnings.length && (
+                    <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-amber-800">
+                      {generatedValidation.warnings.map((item) => <li key={item}>{item}</li>)}
+                    </ul>
+                  )}
+                </div>
+              </aside>
+            </div>
+          </div>
+        )}
+      </Card>
 
       <Card className="space-y-4 p-4 sm:p-6">
         <div>
@@ -927,6 +1412,9 @@ export function EmailDraftsPage() {
               <div className="flex gap-2">
                 <Button variant="secondary" size="sm" onClick={() => openEditForm(draft)}>
                   <Pencil className="h-3.5 w-3.5" /> Edit
+                </Button>
+                <Button variant="secondary" size="sm" onClick={() => duplicateDraft(draft)}>
+                  <Copy className="h-3.5 w-3.5" /> Duplicate
                 </Button>
                 <Button
                   variant="danger"
