@@ -18,6 +18,7 @@ import { lighthouseCategoryLabel, rateCategoryScore, rateLighthouseFinding } fro
 export function WebsiteIntelligencePage() {
   const queryClient = useQueryClient()
   const [url, setUrl] = useState('')
+  const [analysisSearch, setAnalysisSearch] = useState('')
   const [lastResult, setLastResult] = useState<any>(null)
   const [selected, setSelected] = useState<any>(null)
   const selectedDialogRef = useAccessibleDialog<HTMLDivElement>(!!selected, () => setSelected(null))
@@ -95,6 +96,12 @@ export function WebsiteIntelligencePage() {
         evidence: finding.display_value || finding.evidence,
       })),
   ]
+  const normalizedAnalysisSearch = analysisSearch.trim().toLowerCase()
+  const filteredAnalyses = (analyses ?? []).filter((analysis: any) => {
+    if (!normalizedAnalysisSearch) return true
+    const searchableText = `${analysis.website_url ?? ''} ${analysis.prospect?.business_name ?? ''}`.toLowerCase()
+    return searchableText.includes(normalizedAnalysisSearch)
+  })
 
   if (isLoading) {
     return (
@@ -149,7 +156,7 @@ export function WebsiteIntelligencePage() {
         )}
         {mutation.isPending && (
           <p className="mt-3 text-xs text-slate-500">
-            Running PageSpeed Insights, extracting content, and generating the report. Visual review may take longer because it checks up to four pages.
+            Analyzing {mutation.variables?.url || 'the submitted website'} only. Previous reports are not re-analyzed. Visual review may take longer because it checks up to four pages on this website.
           </p>
         )}
       </Card>
@@ -306,12 +313,34 @@ export function WebsiteIntelligencePage() {
         </Card>
       )}
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {analyses?.map((analysis: any) => (
-          <article
-            key={analysis.id}
-            className="rounded-xl border border-slate-200 bg-white p-5 text-left shadow-sm transition-shadow hover:shadow-md"
-          >
+      <section aria-labelledby="past-website-analyses-heading" className="space-y-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h2 id="past-website-analyses-heading" className="text-lg font-semibold text-slate-800">Past website analyses</h2>
+            <p className="mt-1 text-sm text-slate-500">These saved reports are history, not new analyses. Search by website address or business name.</p>
+          </div>
+          <label className="relative block w-full sm:max-w-sm">
+            <span className="sr-only">Search past website analyses</span>
+            <Search aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <input
+              type="search"
+              value={analysisSearch}
+              onChange={(event) => setAnalysisSearch(event.target.value)}
+              placeholder="Search past analyses..."
+              className="w-full rounded-lg border border-slate-300 py-2 pl-9 pr-3 text-sm focus:border-arlotech focus:outline-none focus:ring-2 focus:ring-arlotech/20"
+            />
+          </label>
+        </div>
+        <p aria-live="polite" className="text-xs text-slate-500">
+          Showing {filteredAnalyses.length} of {analyses?.length ?? 0} saved reports.
+        </p>
+
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {filteredAnalyses.length > 0 ? filteredAnalyses.map((analysis: any) => (
+            <article
+              key={analysis.id}
+              className="rounded-xl border border-slate-200 bg-white p-5 text-left shadow-sm transition-shadow hover:shadow-md"
+            >
             <button
               type="button"
               onClick={() => setSelected(analysis)}
@@ -381,13 +410,18 @@ export function WebsiteIntelligencePage() {
                 : <RotateCw className="h-4 w-4" />}
               {mutation.isPending ? 'Analyzing website...' : 'Re-analyze website'}
             </Button>
-          </article>
-        )) || (
-          <div className="col-span-3 text-center py-12">
-            <p className="text-sm text-slate-500">No analyses yet. Enter a website URL to get started.</p>
-          </div>
-        )}
-      </div>
+            </article>
+          )) : (
+            <div className="col-span-full rounded-xl border border-dashed border-slate-300 bg-white px-4 py-10 text-center">
+              <p className="text-sm text-slate-500">
+                {normalizedAnalysisSearch
+                  ? `No saved website analyses match "${analysisSearch.trim()}".`
+                  : 'No past website analyses yet. Enter a website URL above to analyze one website.'}
+              </p>
+            </div>
+          )}
+        </div>
+      </section>
 
       {selected && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setSelected(null)}>
