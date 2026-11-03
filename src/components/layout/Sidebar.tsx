@@ -82,7 +82,7 @@ export function Sidebar({
       >
         <div className="sidebar-brand-row flex items-center justify-between h-20 px-4 border-b border-slate-200">
           <div className="flex items-center gap-2">
-            <img src={blacksite ? '/favicon-blacksite.svg' : '/favicon-standard.svg'} alt="Arlotech emblem" className="sidebar-brand-image" />
+            <img src={`${import.meta.env.BASE_URL}${blacksite ? 'favicon-blacksite.png' : 'favicon-standard.jpg'}`} alt="Arlotech emblem" className="sidebar-brand-image" />
             <span className="sidebar-brand-copy text-sm font-bold text-slate-800">
               {blacksite ? <>BLACKSITE<span>FIELD OPERATIONS</span></> : <>ARLOTECH<span>INTELLIGENCE</span></>}
             </span>

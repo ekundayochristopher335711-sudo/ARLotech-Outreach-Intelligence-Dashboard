@@ -109,8 +109,8 @@ function AppShell() {
   useEffect(() => {
     const favicon = document.querySelector<HTMLLinkElement>('link[rel~="icon"]')
     if (favicon) {
-      favicon.href = blacksite ? '/favicon-blacksite.svg' : '/favicon-standard.svg'
-      favicon.type = 'image/svg+xml'
+      favicon.href = `${import.meta.env.BASE_URL}${blacksite ? 'favicon-blacksite.png' : 'favicon-standard.jpg'}`
+      favicon.type = blacksite ? 'image/png' : 'image/jpeg'
     }
     document.title = blacksite ? 'BLACKSITE | Arlotech Intelligence' : 'Arlotech Outreach Intelligence'
     document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')
@@ -162,7 +162,7 @@ function AppShell() {
           >
             <Menu className="h-6 w-6" />
           </button>
-          <span className="topbar-brand flex items-center" aria-label="Arlotech">{blacksite ? <img src="/arlotech-blacksite.svg" alt="Arlotech BLACKSITE" className="topbar-logo-image" /> : <img src="/arlotech-standard.svg" alt="Arlotech Intelligence Systems" className="topbar-logo-image topbar-logo-standard" />}</span>
+          <span className="topbar-brand flex items-center" aria-label="Arlotech">{blacksite ? <img src={`${import.meta.env.BASE_URL}arlotech-blacksite.svg`} alt="Arlotech BLACKSITE" className="topbar-logo-image" /> : <img src={`${import.meta.env.BASE_URL}arlotech-standard.svg`} alt="Arlotech Intelligence Systems" className="topbar-logo-image topbar-logo-standard" />}</span>
           <div className="topbar-system-status"><span className="status-live-dot" /> <span>{blacksite ? 'UPLINK ESTABLISHED' : 'WORKSPACE ONLINE'}</span><span className="topbar-divider">/</span><span className="topbar-clock">{blacksite ? 'TRACE NULL // UPLINK LIVE' : 'OUTREACH CONSOLE'}</span></div>
           <div className="topbar-mark" aria-hidden="true">{blacksite ? <RadioTower size={18} /> : <Activity size={18} />}<span>{blacksite ? 'NODE 09' : 'AOI'}</span></div>
         </header>

@@ -245,6 +245,8 @@ export function EmailDraftsPage() {
   const [generatedDraft, setGeneratedDraft] = useState<GeneratedEmailDraft | null>(null)
   const [generatedSubject, setGeneratedSubject] = useState('')
   const [generatedBody, setGeneratedBody] = useState('')
+  const [generatedComplianceConfirmed, setGeneratedComplianceConfirmed] = useState(false)
+  const [generatedSendResult, setGeneratedSendResult] = useState<OutreachSendResult | null>(null)
   const [signature, setSignature] = useState<OutreachSignature>(readSignature)
 
   const { data: drafts, isLoading, error } = useQuery({
@@ -344,7 +346,7 @@ export function EmailDraftsPage() {
     },
   })
 
-  const { data: suppressedRows = [], error: suppressionError } = useQuery<Array<{ normalized_email: string }>>({
+  const { data: suppressedRows = [], error: suppressionError, isLoading: suppressionLoading } = useQuery<Array<{ normalized_email: string }>>({
     queryKey: ['/suppression-list', 'outreach'],
     queryFn: async () => {
       const userId = await getCurrentUserId()
@@ -357,7 +359,7 @@ export function EmailDraftsPage() {
     },
   })
 
-  const { data: previouslySentRows = [], error: sentHistoryError } = useQuery<SentOutreachContext[]>({
+  const { data: previouslySentRows = [], error: sentHistoryError, isLoading: sentHistoryLoading } = useQuery<SentOutreachContext[]>({
     queryKey: ['/email-messages', 'outreach-sent'],
     queryFn: async () => {
       const userId = await getCurrentUserId()
@@ -463,6 +465,10 @@ export function EmailDraftsPage() {
   const hasPreviousSend = (prospect: OutreachProspect) =>
     alreadyEmailedProspects.has(prospect.id) ||
     (!!prospect.email && alreadyEmailedAddresses.has(prospect.email.trim().toLowerCase()))
+
+  const generatedSendBlockReason = selectedGeneratorProspect
+    ? getOutreachBlockReason(selectedGeneratorProspect)
+    : null
 
   const prepareOutreachPreviews = () => {
     const selectedProspects = outreachProspectRows.filter((prospect: OutreachProspect) =>
@@ -618,6 +624,86 @@ export function EmailDraftsPage() {
     onError: (error: Error) => toast.error(error.message || 'Could not send this email.'),
   })
 
+  const generatedSendMutation = useMutation({
+    mutationFn: async () => {
+      if (!selectedGeneratorProspect) throw new Error('Select a prospect before sending.')
+      if (!generatedSubject.trim() || !generatedBody.trim()) {
+        throw new Error('Add a subject and message before sending.')
+      }
+      if (generatedValidation?.errors.length) {
+        throw new Error(generatedValidation.errors.join(' '))
+      }
+      if (!generatedComplianceConfirmed) {
+        throw new Error('Confirm that you reviewed the recipient and have a lawful basis to contact them.')
+      }
+      if (generatedSendBlockReason) throw new Error(generatedSendBlockReason)
+      if (followUpStage !== 'none' && !originalFollowUpMessage) {
+        throw new Error('Select the previously sent email before sending this follow-up.')
+      }
+
+      const attachmentContent = selectedGeneratorProspect.website && matchingGeneratorAnalysis
+        ? await createAuditPdfAttachment(matchingGeneratorAnalysis, selectedGeneratorProspect)
+        : null
+      const safeFilename = selectedGeneratorProspect.business_name
+        .replace(/[^a-z0-9-]/gi, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(0, 60)
+        .toLowerCase() || 'prospect'
+      const functionClient = supabase as typeof supabase & {
+        functions: {
+          invoke: (
+            name: string,
+            options: { body: unknown },
+          ) => Promise<{ data: unknown; error: Error | null }>
+        }
+      }
+      const { data, error } = await functionClient.functions.invoke('send-outreach', {
+        body: {
+          batchId: crypto.randomUUID(),
+          complianceConfirmed: generatedComplianceConfirmed,
+          emails: [{
+            prospect_id: selectedGeneratorProspect.id,
+            subject: generatedSubject.trim(),
+            body: generatedBody.trim(),
+            ...(attachmentContent
+              ? {
+                  attachment: {
+                    filename: `website-review-${safeFilename}.pdf`,
+                    content: attachmentContent,
+                  },
+                }
+              : {}),
+          }],
+        },
+      })
+      if (error) throw new Error(await getOutreachFunctionError(error))
+      if (!isSendOutreachResponse(data) || data.results.length !== 1) {
+        const message = data && typeof data === 'object' && 'error' in data && typeof data.error === 'string'
+          ? data.error
+          : 'The send function returned an invalid response.'
+        throw new Error(message)
+      }
+      const result = data.results[0]
+      if (!result) throw new Error('The send function returned no result for this email.')
+      return result
+    },
+    onSuccess: async (result: OutreachSendResult) => {
+      setGeneratedSendResult(result)
+      if (result.status === 'sent') {
+        toast.success(`Email sent to ${result.recipient_email || selectedGeneratorProspect?.email}.`)
+      } else {
+        toast.error(result.error || 'The email was not sent.')
+      }
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['/email-messages'] }),
+        queryClient.invalidateQueries({ queryKey: ['/email-messages', 'outreach-sent'] }),
+        queryClient.invalidateQueries({ queryKey: ['/prospects'] }),
+        queryClient.invalidateQueries({ queryKey: ['/dashboard/metrics'] }),
+      ])
+    },
+    onError: (error: Error) => toast.error(error.message || 'Could not send this email.'),
+  })
+
   const saveMutation = useMutation({
     mutationFn: async () => {
       const userId = await getCurrentUserId()
@@ -728,6 +814,8 @@ export function EmailDraftsPage() {
       setGeneratedDraft(result)
       setGeneratedSubject(result.subjectSuggestions[0] || '')
       setGeneratedBody(result.body)
+      setGeneratedComplianceConfirmed(false)
+      setGeneratedSendResult(null)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Could not generate an email draft.')
     }
@@ -802,6 +890,8 @@ export function EmailDraftsPage() {
               onChange={(event) => {
                 setGeneratorProspectId(event.target.value)
                 setGeneratedDraft(null)
+                setGeneratedComplianceConfirmed(false)
+                setGeneratedSendResult(null)
                 setFollowUpMessageId('')
                 setIncludeReportReference(false)
               }}
@@ -870,6 +960,8 @@ export function EmailDraftsPage() {
               value={followUpStage}
               onChange={(event) => {
                 setFollowUpStage(event.target.value as FollowUpStage)
+                setGeneratedComplianceConfirmed(false)
+                setGeneratedSendResult(null)
                 setFollowUpMessageId('')
               }}
               className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
@@ -982,7 +1074,11 @@ export function EmailDraftsPage() {
                       <button
                         key={suggestion}
                         type="button"
-                        onClick={() => setGeneratedSubject(suggestion)}
+                        onClick={() => {
+                          setGeneratedSubject(suggestion)
+                          setGeneratedComplianceConfirmed(false)
+                          setGeneratedSendResult(null)
+                        }}
                         className={`rounded-full border px-3 py-1.5 text-xs ${
                           generatedSubject === suggestion
                             ? 'border-arlotech bg-arlotech/10 font-semibold text-arlotech'
@@ -998,7 +1094,11 @@ export function EmailDraftsPage() {
                   <span className="text-sm font-medium text-slate-700">Subject</span>
                   <input
                     value={generatedSubject}
-                    onChange={(event) => setGeneratedSubject(event.target.value)}
+                    onChange={(event) => {
+                      setGeneratedSubject(event.target.value)
+                      setGeneratedComplianceConfirmed(false)
+                      setGeneratedSendResult(null)
+                    }}
                     maxLength={200}
                     className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
                   />
@@ -1007,7 +1107,11 @@ export function EmailDraftsPage() {
                   <span className="text-sm font-medium text-slate-700">Email body</span>
                   <textarea
                     value={generatedBody}
-                    onChange={(event) => setGeneratedBody(event.target.value)}
+                    onChange={(event) => {
+                      setGeneratedBody(event.target.value)
+                      setGeneratedComplianceConfirmed(false)
+                      setGeneratedSendResult(null)
+                    }}
                     rows={12}
                     maxLength={12000}
                     className="w-full resize-y rounded-lg border border-slate-300 px-3 py-2 text-sm leading-6"
@@ -1026,7 +1130,11 @@ export function EmailDraftsPage() {
                       key={action}
                       variant="secondary"
                       size="sm"
-                      onClick={() => setGeneratedBody((current) => rewriteProfessionalEmail(current, action as RewriteAction))}
+                      onClick={() => {
+                        setGeneratedBody((current) => rewriteProfessionalEmail(current, action as RewriteAction))
+                        setGeneratedComplianceConfirmed(false)
+                        setGeneratedSendResult(null)
+                      }}
                     >
                       {label}
                     </Button>
@@ -1071,6 +1179,86 @@ export function EmailDraftsPage() {
                   )}
                 </div>
               </aside>
+            </div>
+            <div className="space-y-3 rounded-lg border border-slate-200 p-4">
+              <div>
+                <h3 className="text-sm font-semibold text-slate-800">Send this email</h3>
+                <p className="mt-1 text-sm text-slate-600">
+                  To: {selectedGeneratorProspect?.email || 'No email address on this prospect'}
+                  {selectedGeneratorProspect?.website && matchingGeneratorAnalysis
+                    ? ' — the matching website audit PDF will be attached.'
+                    : ''}
+                </p>
+              </div>
+              {(outreachProspectsError || outreachAnalysesError || suppressionError || sentHistoryError) && (
+                <p className="text-sm text-red-700" role="alert">
+                  Sending is disabled until recipient eligibility and send history can be checked.
+                </p>
+              )}
+              {generatedSendBlockReason && (
+                <p className="text-sm text-red-700" role="alert">{generatedSendBlockReason}</p>
+              )}
+              {selectedGeneratorProspect && hasPreviousSend(selectedGeneratorProspect) && (
+                <p className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+                  This prospect or email address was contacted before. Sending again requires confirmation.
+                </p>
+              )}
+              <label className="flex items-start gap-2 text-sm text-slate-600">
+                <input
+                  type="checkbox"
+                  checked={generatedComplianceConfirmed}
+                  onChange={(event) => setGeneratedComplianceConfirmed(event.target.checked)}
+                  className="mt-1 h-4 w-4 shrink-0 accent-arlotech"
+                />
+                <span>I reviewed this recipient and have a lawful basis to contact them.</span>
+              </label>
+              {generatedSendResult && (
+                <p
+                  className={`rounded-lg p-3 text-sm ${
+                    generatedSendResult.status === 'sent'
+                      ? 'bg-green-50 text-green-800'
+                      : 'bg-red-50 text-red-700'
+                  }`}
+                  role="status"
+                >
+                  {generatedSendResult.status === 'sent'
+                    ? `Sent to ${generatedSendResult.recipient_email || selectedGeneratorProspect?.email}.${generatedSendResult.tracking_error ? ` History warning: ${generatedSendResult.tracking_error}` : ''}`
+                    : generatedSendResult.error || 'The email was not sent.'}
+                </p>
+              )}
+              <div className="flex justify-end">
+                <Button
+                  disabled={
+                    generatedSendMutation.isPending ||
+                    !selectedGeneratorProspect?.email?.trim() ||
+                    !generatedComplianceConfirmed ||
+                    !!generatedValidation?.errors.length ||
+                    !!generatedSendBlockReason ||
+                    outreachProspectsLoading ||
+                    outreachAnalysesLoading ||
+                    suppressionLoading ||
+                    sentHistoryLoading ||
+                    !!outreachProspectsError ||
+                    !!outreachAnalysesError ||
+                    !!suppressionError ||
+                    !!sentHistoryError ||
+                    (followUpStage !== 'none' && !originalFollowUpMessage)
+                  }
+                  onClick={() => {
+                    if (selectedGeneratorProspect && hasPreviousSend(selectedGeneratorProspect)) {
+                      const recipient = selectedGeneratorProspect.email?.trim().toLowerCase()
+                      const confirmed = window.confirm(
+                        `You have emailed ${recipient || selectedGeneratorProspect.business_name} before. Do you want to send this email again?`,
+                      )
+                      if (!confirmed) return
+                    }
+                    generatedSendMutation.mutate()
+                  }}
+                >
+                  <Send className="h-4 w-4" />
+                  {generatedSendMutation.isPending ? 'Sending...' : 'Send email'}
+                </Button>
+              </div>
             </div>
           </div>
         )}
