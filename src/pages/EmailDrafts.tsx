@@ -11,7 +11,6 @@ import {
   createOutreachPreview,
   getOutreachSuitability,
   hasMatchingWebsiteAnalysis,
-  validateOutreachPreview,
   type OutreachPreview,
 } from '@/lib/outreachEmail'
 import {
@@ -116,6 +115,11 @@ interface OutreachSendResult {
 
 interface SendOutreachResponse {
   results: OutreachSendResult[]
+}
+
+interface GeneratedOutreachPreview extends OutreachPreview {
+  generatedDraft: GeneratedEmailDraft
+  savedDraftId: string
 }
 
 interface SentOutreachContext {
@@ -229,7 +233,7 @@ export function EmailDraftsPage() {
   const [campaignId, setCampaignId] = useState('')
   const [prospectId, setProspectId] = useState('')
   const [selectedOutreachIds, setSelectedOutreachIds] = useState<string[]>([])
-  const [outreachPreviews, setOutreachPreviews] = useState<OutreachPreview[]>([])
+  const [outreachPreviews, setOutreachPreviews] = useState<GeneratedOutreachPreview[]>([])
   const [outreachBatchId, setOutreachBatchId] = useState('')
   const [complianceConfirmed, setComplianceConfirmed] = useState(false)
   const [outreachResults, setOutreachResults] = useState<OutreachSendResult[]>([])
@@ -470,7 +474,7 @@ export function EmailDraftsPage() {
     ? getOutreachBlockReason(selectedGeneratorProspect)
     : null
 
-  const prepareOutreachPreviews = () => {
+  const prepareOutreachPreviews = async () => {
     const selectedProspects = outreachProspectRows.filter((prospect: OutreachProspect) =>
       selectedOutreachIds.includes(prospect.id),
     )
@@ -488,26 +492,123 @@ export function EmailDraftsPage() {
       return
     }
     try {
-      const previews = selectedProspects.map((prospect: OutreachProspect) =>
-        createOutreachPreview(prospect, analysisByProspect.get(prospect.id)),
+      const previews = selectedProspects.map((prospect) => {
+        const analysis = analysisByProspect.get(prospect.id)
+        const preview = createOutreachPreview(prospect, analysis)
+        let generatedDraft: GeneratedEmailDraft
+        if (followUpStage !== 'none') {
+          const previousEmail = sentEmailRows.find((message) => message.prospect_id === prospect.id)
+          if (!previousEmail) {
+            throw new Error(`No previously sent email is available for ${prospect.business_name}'s follow-up.`)
+          }
+          generatedDraft = generateFollowUpDraft(
+            previousEmail,
+            prospect,
+            followUpStage,
+            effectiveSignature,
+          )
+        } else {
+          generatedDraft = generateProfessionalEmailDraft({
+            prospect,
+            analysis,
+            strategy: generatorStrategy,
+            tone: generatorTone,
+            length: generatorLength,
+            includeReport: includeReportReference,
+            signature: effectiveSignature,
+            senderContext,
+          })
+        }
+        const generatedSubject = generatedDraft.subjectSuggestions[0] || ''
+        const validation = validateProfessionalEmailDraft(
+          generatedDraft,
+          prospect,
+          !!analysis && hasMatchingWebsiteAnalysis(prospect, analysis),
+          generatedSubject,
+        )
+        if (validation.errors.length) {
+          throw new Error(`${prospect.business_name}: ${validation.errors.join(' ')}`)
+        }
+        if (generatedSubject.length > 200 || generatedDraft.body.length > 12_000) {
+          throw new Error(`${prospect.business_name}'s generated email exceeds the sending limits. Shorten it before preparing the batch.`)
+        }
+        return {
+          ...preview,
+          subject: generatedSubject,
+          body: generatedDraft.body,
+          generatedDraft,
+        }
+      })
+      const userId = await getCurrentUserId()
+      const { data: savedDrafts, error } = await supabase
+        .from('email_drafts')
+        .insert(previews.map((preview) => ({
+          user_id: userId,
+          prospect_id: preview.prospect_id,
+          campaign_id: generatorCampaignId || null,
+          subject: preview.subject,
+          body: preview.body,
+          template_type: followUpStage === 'none' ? generatorStrategy : `follow_up_${followUpStage}`,
+          generation_source: 'website_review_tools',
+          status: 'draft',
+        })))
+        .select('id, prospect_id')
+      if (error) throw error
+      if (!savedDrafts || savedDrafts.length !== previews.length) {
+        throw new Error('Generated emails were saved, but their draft records could not be matched for review.')
+      }
+      const savedDraftIdentities = savedDrafts as Array<{ id: string; prospect_id: string }>
+      const draftIdByProspect = new Map<string, string>(
+        savedDraftIdentities.map((draft) => [draft.prospect_id, draft.id]),
       )
-      setOutreachPreviews(previews)
+      const preparedPreviews = previews.map((preview) => {
+        const savedDraftId = draftIdByProspect.get(preview.prospect_id)
+        if (!savedDraftId) throw new Error(`Could not match the saved draft for ${preview.prospect_id}.`)
+        return { ...preview, savedDraftId }
+      })
+      setOutreachPreviews(preparedPreviews)
+      setOutreachResults([])
+      setOutreachBatchId(crypto.randomUUID())
+      setComplianceConfirmed(false)
+      await queryClient.invalidateQueries({ queryKey: ['/email-drafts'] })
+      toast.success(`Generated and saved ${preparedPreviews.length} personalized draft${preparedPreviews.length === 1 ? '' : 's'}. Review each before sending.`)
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Could not prepare outreach previews.')
-      return
+      toast.error(error instanceof Error ? error.message : 'Could not generate and save outreach drafts.')
     }
-    setOutreachResults([])
-    setOutreachBatchId(crypto.randomUUID())
-    setComplianceConfirmed(false)
   }
 
   const sendOutreachMutation = useMutation({
     mutationFn: async () => {
-      const emailPayload = await Promise.all(outreachPreviews.map(async (preview: OutreachPreview) => {
+      const emailPayload = await Promise.all(outreachPreviews.map(async (preview) => {
         const prospect = outreachProspectRows.find((item: OutreachProspect) => item.id === preview.prospect_id)
         if (!prospect) throw new Error('A selected prospect is no longer available.')
         const analysis = analysisByProspect.get(prospect.id)
-        validateOutreachPreview(preview, prospect, analysis)
+        if (!!prospect.website !== preview.has_website_report) {
+          throw new Error(`${prospect.business_name}'s report attachment no longer matches the prospect website.`)
+        }
+        if (prospect.website && (
+          !analysis ||
+          analysis.id !== preview.analysis_id ||
+          !hasMatchingWebsiteAnalysis(prospect, analysis)
+        )) {
+          throw new Error(`${prospect.business_name}'s website audit changed. Regenerate the email before sending.`)
+        }
+        const validation = validateProfessionalEmailDraft(
+          {
+            ...preview.generatedDraft,
+            body: preview.body,
+            wordCount: preview.body.trim().split(/\s+/).filter(Boolean).length,
+          },
+          prospect,
+          !!analysis && hasMatchingWebsiteAnalysis(prospect, analysis),
+          preview.subject,
+        )
+        if (validation.errors.length) {
+          throw new Error(`${prospect.business_name}: ${validation.errors.join(' ')}`)
+        }
+        if (!preview.subject.trim() || preview.subject.length > 200 || !preview.body.trim() || preview.body.length > 12_000) {
+          throw new Error(`${prospect.business_name}'s email has an empty or over-limit subject or message.`)
+        }
         const safeFilename = prospect.business_name
           .replace(/[^a-z0-9-]/gi, '-')
           .replace(/^-+|-+$/g, '')
@@ -529,6 +630,15 @@ export function EmailDraftsPage() {
               }
             : {}),
         }
+      }))
+      const userId = await getCurrentUserId()
+      await Promise.all(outreachPreviews.map(async (preview) => {
+        const { error } = await supabase
+          .from('email_drafts')
+          .update({ subject: preview.subject.trim(), body: preview.body.trim() })
+          .eq('id', preview.savedDraftId)
+          .eq('user_id', userId)
+        if (error) throw error
       }))
       const functionClient = supabase as typeof supabase & {
         functions: {
@@ -556,8 +666,27 @@ export function EmailDraftsPage() {
       const failedCount = data.results.length - sentCount
       if (failedCount > 0) toast.error(`Sent ${sentCount}; ${failedCount} were skipped or failed.`)
       else toast.success(`Sent ${sentCount} personalized email${sentCount === 1 ? '' : 's'}.`)
+      const userId = await getCurrentUserId()
+      const draftStatusErrors: string[] = []
+      await Promise.all(data.results.flatMap((result) => {
+        if (result.status !== 'sent') return []
+        const preview = outreachPreviews.find((item) => item.prospect_id === result.prospect_id)
+        if (!preview) return []
+        return [supabase
+          .from('email_drafts')
+          .update({ status: 'sent' })
+          .eq('id', preview.savedDraftId)
+          .eq('user_id', userId)
+          .then(({ error }: { error: { message: string } | null }) => {
+            if (error) draftStatusErrors.push(`${result.business_name}: ${error.message}`)
+          })]
+      }))
+      if (draftStatusErrors.length) {
+        toast.error(`Emails sent, but some saved drafts could not be marked sent: ${draftStatusErrors.join('; ')}`)
+      }
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['/email-messages'] }),
+        queryClient.invalidateQueries({ queryKey: ['/email-drafts'] }),
         queryClient.invalidateQueries({ queryKey: ['/prospects'] }),
         queryClient.invalidateQueries({ queryKey: ['/dashboard/metrics'] }),
       ])
@@ -1382,7 +1511,7 @@ export function EmailDraftsPage() {
         <div>
           <h2 className="text-lg font-semibold text-slate-800">{localStorage.getItem('arlotech-login-mode') === 'blacksite' ? 'BATCH TRANSMISSION ASSEMBLY' : 'Personalized outreach batch'}</h2>
           <p className="mt-1 text-sm text-slate-500">
-            Select up to {MAX_OUTREACH_BATCH_SIZE} prospects. Each person gets a separate email, not a shared group message.
+            Select up to {MAX_OUTREACH_BATCH_SIZE} eligible prospects to generate a separate, editable email for each using the generator settings above. Generated messages are saved to Drafts before review; sending remains a separate confirmed action.
             Website prospects must have a completed audit; its report is attached. Prospects without a website get a separate introduction.
           </p>
         </div>
@@ -1474,16 +1603,16 @@ export function EmailDraftsPage() {
               !!sentHistoryError
             }
           >
-            <Mail className="h-4 w-4" /> Preview personalized emails
+            <Sparkles className="h-4 w-4" /> Generate and save personalized drafts
           </Button>
         </div>
 
         {outreachPreviews.length > 0 && (
           <div className="space-y-4 border-t border-slate-200 pt-4">
             <div>
-              <h3 className="font-semibold text-slate-800">{localStorage.getItem('arlotech-login-mode') === 'blacksite' ? 'REVIEW PAYLOADS BEFORE DEPLOYMENT' : 'Review each message before sending'}</h3>
+              <h3 className="font-semibold text-slate-800">{localStorage.getItem('arlotech-login-mode') === 'blacksite' ? 'REVIEW PAYLOADS BEFORE DEPLOYMENT' : 'Review each generated draft before sending'}</h3>
               <p className="mt-1 text-xs text-slate-500">
-                Messages use recorded website findings. Review names, claims, and recipients; deliverability cannot be guaranteed.
+                These messages are saved in Drafts now. Edits here are saved before sending. Review names, recipient details, and claims; deliverability cannot be guaranteed.
               </p>
             </div>
             {outreachPreviews.map((preview: OutreachPreview) => {
@@ -1520,6 +1649,7 @@ export function EmailDraftsPage() {
                     <span className="text-xs font-medium text-slate-600">Subject</span>
                     <input
                       value={preview.subject}
+                      maxLength={200}
                       onChange={(event) =>
                         setOutreachPreviews((current) =>
                           current.map((item) =>
@@ -1536,6 +1666,7 @@ export function EmailDraftsPage() {
                     <span className="text-xs font-medium text-slate-600">Message</span>
                     <textarea
                       value={preview.body}
+                      maxLength={12000}
                       onChange={(event) =>
                         setOutreachPreviews((current) =>
                           current.map((item) =>
