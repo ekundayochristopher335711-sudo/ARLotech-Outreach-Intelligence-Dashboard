@@ -59,7 +59,10 @@ export async function enrichProspectContacts(
 
 export async function enrichAndAnalyzeProspect(
   prospect: Prospect,
-  { createDraft = true }: { createDraft?: boolean } = {},
+  {
+    createDraft = true,
+    includeVisualReview = true,
+  }: { createDraft?: boolean; includeVisualReview?: boolean } = {},
 ): Promise<EnrichmentResult> {
   const result: EnrichmentResult = {
     prospect_id: prospect.id,
@@ -77,7 +80,7 @@ export async function enrichAndAnalyzeProspect(
   }
 
   try {
-    const analysis = await analyzeWebsite(prospect.website, prospect.id, true)
+    const analysis = await analyzeWebsite(prospect.website, prospect.id, includeVisualReview)
     result.analysis_completed = true
     result.analysis_score = analysis.overallScore
     if (analysis.contentExtractionError) {

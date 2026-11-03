@@ -294,7 +294,10 @@ export function ProspectsPage() {
 
   const analyzeProspectWebsites = async (
     targets: Prospect[],
-    { createDrafts = true }: { createDrafts?: boolean } = {},
+    {
+      createDrafts = true,
+      includeVisualReview = true,
+    }: { createDrafts?: boolean; includeVisualReview?: boolean } = {},
   ) => {
     if (targets.length === 0) {
       toast.info('All prospects with websites have already been analyzed.')
@@ -317,9 +320,17 @@ export function ProspectsPage() {
     try {
       const results = await mapWithConcurrency(targets, 3, async (prospect, index) => {
         let enrichmentResult: EnrichmentResult
+        setEnrichmentResults((current) =>
+          current.map((item, itemIndex) =>
+            itemIndex === index ? { ...item, error: 'Analyzing website…' } : item,
+          ),
+        )
         try {
           try {
-            enrichmentResult = await enrichAndAnalyzeProspect(prospect, { createDraft: createDrafts })
+            enrichmentResult = await enrichAndAnalyzeProspect(prospect, {
+              createDraft: createDrafts,
+              includeVisualReview,
+            })
           } catch (error) {
             enrichmentResult = {
               prospect_id: prospect.id,
@@ -372,13 +383,16 @@ export function ProspectsPage() {
     }
 
     const confirmed = window.confirm(
-      `Re-analyze all ${prospectsWithWebsites.length} prospects with websites? Existing analyses will be kept, and no new email drafts will be created.`,
+      `Re-analyze all ${prospectsWithWebsites.length} prospects with websites? Existing analyses will be kept, no new email drafts will be created, and multi-page visual screenshots will be skipped for this batch.`,
     )
     if (!confirmed) return
 
     setIsReanalyzingAll(true)
     try {
-      await analyzeProspectWebsites(prospectsWithWebsites, { createDrafts: false })
+      await analyzeProspectWebsites(prospectsWithWebsites, {
+        createDrafts: false,
+        includeVisualReview: false,
+      })
     } finally {
       setIsReanalyzingAll(false)
     }
@@ -782,6 +796,8 @@ export function ProspectsPage() {
             <h3 className="text-sm font-semibold text-slate-800">
               {contactScanMode
                 ? 'Contact lookup'
+                : isReanalyzingAll
+                  ? 'Re-analyzing websites'
                 : localStorage.getItem('arlotech-login-mode') === 'blacksite'
                   ? 'POST-INTAKE ENRICHMENT'
                   : 'Post-import enrichment'}

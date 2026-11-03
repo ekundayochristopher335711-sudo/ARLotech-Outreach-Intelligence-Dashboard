@@ -95,8 +95,44 @@ describe('enrichAndAnalyzeProspect', () => {
 
     const result = await enrichAndAnalyzeProspect(prospect, { createDraft: false })
 
+    expect(analyzeWebsiteMock).toHaveBeenCalledWith(prospect.website, prospect.id, true)
     expect(result.analysis_completed).toBe(true)
     expect(result.draft_created).toBe(false)
     expect(result.draft_reason).toBe('Draft not created for this re-analysis.')
+  })
+
+  it('can skip the optional visual review during bulk re-analysis', async () => {
+    const prospect: Prospect = {
+      id: 'prospect-1',
+      user_id: 'user-1',
+      business_name: 'Example Business',
+      business_name_verified: false,
+      contact_name: '',
+      email: 'contact@example.com',
+      website: 'https://example.com',
+      normalized_domain: 'example.com',
+      business_category: null,
+      city: null,
+      country: null,
+      phone: null,
+      linkedin_url: null,
+      notes: null,
+      source: 'manual',
+      status: 'New',
+      do_not_contact: false,
+      last_contacted_at: null,
+      created_at: '',
+      updated_at: '',
+    }
+    analyzeWebsiteMock.mockResolvedValue({
+      overallScore: 82,
+      record: { findings: [], positive_observations: [] },
+      content: { contacts: { emails: [], phones: [] } },
+      contentExtractionError: null,
+    })
+
+    await enrichAndAnalyzeProspect(prospect, { createDraft: false, includeVisualReview: false })
+
+    expect(analyzeWebsiteMock).toHaveBeenCalledWith(prospect.website, prospect.id, false)
   })
 })
