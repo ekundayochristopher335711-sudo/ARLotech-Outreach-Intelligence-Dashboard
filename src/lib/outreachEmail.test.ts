@@ -145,6 +145,29 @@ describe('outreach eligibility and previews', () => {
     expect(() => validateOutreachPreview(preview, prospect(), audit)).not.toThrow()
   })
 
+  it('rewrites technical list-structure findings in plain customer language', () => {
+    const audit = analysis({
+      findings: [{
+        id: 'list',
+        source: 'html_inspection',
+        classification: 'verified_issue',
+        verified: true,
+        title: 'Lists do not contain only <li> elements and script supporting elements (<script> and <template>).',
+        evidence: 'The list has invalid markup.',
+        explanation: 'Screen readers have a specific way of announcing lists. Ensuring proper list structure aids screen reader output. https://dequeuniversity.com/rules/axe/4.14/list',
+        category: 'accessibility',
+        priority: 'medium',
+      }],
+      ai_analysis: { audit_completeness: { status: 'complete' }, optimization_opportunities: [] },
+    })
+    const preview = createOutreachPreview(prospect(), audit)
+
+    expect(preview.body).toMatch(/service details may be harder for some visitors to follow/i)
+    expect(preview.body).toContain('visitors may have a harder time scanning the page')
+    expect(preview.body).not.toMatch(/<li>|<script>|<template>|screen reader|dequeuniversity|axe\/4\.14|invalid markup/i)
+    expect(() => validateOutreachPreview(preview, prospect(), audit)).not.toThrow()
+  })
+
   it('withholds outreach when only positive results or diagnostics exist', () => {
     const audit = analysis({
       findings: [],

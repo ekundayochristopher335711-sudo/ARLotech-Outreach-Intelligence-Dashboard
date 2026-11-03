@@ -79,6 +79,27 @@ describe('professional email draft generation', () => {
     expect(result.body).not.toMatch(/4\.8 s|Lighthouse|PageSpeed|LCP|score|guarantee|increase revenue/i)
   })
 
+  it('rewrites technical list-structure findings without exposing audit details', () => {
+    const result = generateProfessionalEmailDraft({
+      prospect,
+      analysis: analysis({
+        findings: [{
+          id: 'list',
+          category: 'accessibility',
+          classification: 'verified_issue',
+          title: 'Lists do not contain only <li> elements and script supporting elements (<script> and <template>).',
+          evidence: 'The list has invalid markup.',
+          explanation: 'Screen readers have a specific way of announcing lists. Ensuring proper list structure aids screen reader output. https://dequeuniversity.com/rules/axe/4.14/list',
+          priority: 'medium',
+        }],
+      }),
+    })
+
+    expect(result.body).toMatch(/service details may be harder for some visitors to follow/i)
+    expect(result.body).toContain('visitors may have a harder time scanning the page')
+    expect(result.body).not.toMatch(/<li>|<script>|<template>|screen reader|dequeuniversity|axe\/4\.14|invalid markup/i)
+  })
+
   it('uses the saved visual observation without pitching a redesign', () => {
     const result = generateProfessionalEmailDraft({
       prospect,

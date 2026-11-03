@@ -62,6 +62,10 @@ const findingCopies: Array<[RegExp, FindingCopy]> = [
     title: 'The page may not clearly explain what the business offers',
     impact: 'A visitor should be able to tell quickly what the business does and who it serves. If the main message is unclear, someone comparing providers may leave before checking whether you can help.',
   }],
+  [/\blists?\b|list-structure|listitem/i, {
+    title: 'Service details may be harder for some visitors to follow',
+    impact: 'When services or steps are not grouped clearly, visitors may have a harder time scanning the page or following it with reading tools. That can make it less clear how to choose a service or get in touch.',
+  }],
 ]
 
 const technicalOrPressuringLanguage =
