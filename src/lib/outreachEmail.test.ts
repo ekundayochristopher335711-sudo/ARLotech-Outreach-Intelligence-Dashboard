@@ -101,25 +101,25 @@ describe('outreach eligibility and previews', () => {
     expect(selectOutreachFinding(record)?.id).toBe('a11y')
   })
 
-  it('treats the AmigoDev unused-JavaScript measurement as a modest opportunity', () => {
+  it('turns the AmigoDev loading opportunity into plain-language outreach', () => {
     const audit = analysis()
     const preview = createOutreachPreview(prospect(), audit)
     expect(getOutreachSuitability(audit)).toBe('Good Opportunity')
     expect(preview.selected_finding?.id).toBe('unused-javascript')
-    expect(preview.body).toContain('23 KiB')
-    expect(preview.body).toContain('50 ms (0.05 seconds) in Google\'s test')
-    expect(preview.body).toContain('23 KiB (about 24 KB)')
+    expect(preview.body).toMatch(/extra website features may slow down taps and clicks/i)
+    expect(preview.body).toContain('especially on a phone')
+    expect(preview.body).not.toMatch(/23 KiB|50 ms|PageSpeed|Lighthouse|JavaScript|score/i)
     expect(preview.subject).toBe('A website idea for AmigoDev: faster page loading')
-    expect(preview.internal_note).toContain('Some JavaScript may not be needed when the page first loads')
+    expect(preview.internal_note).toContain('Extra website features may slow down taps and clicks')
     expect(preview.body).toContain('Arlotech Digital Solutions')
-    expect(preview.body).toContain('We recommend')
+    expect(preview.body).toContain('not pitching a costly, full website redesign')
     expect(preview.body).not.toMatch(/\b(?:AI|Gemini|weighted technical)\b/i)
     expect(preview.body).not.toMatch(/\b(I|me|my)\b/i)
     expect(preview.has_website_report).toBe(true)
     expect(preview.body.split('?')).toHaveLength(2)
     expect(preview.body.trim().split(/\s+/).length).toBeGreaterThanOrEqual(90)
     expect(preview.body.trim().split(/\s+/).length).toBeLessThanOrEqual(150)
-    expect(preview.internal_note).toContain('Some JavaScript may not be needed when the page first loads')
+    expect(preview.internal_note).toContain('Extra website features may slow down taps and clicks')
     expect(() => validateOutreachPreview(preview, prospect(), audit)).not.toThrow()
   })
 
@@ -138,7 +138,8 @@ describe('outreach eligibility and previews', () => {
     })
     const preview = createOutreachPreview(prospect(), audit)
     expect(preview.subject).toBe('A website idea for AmigoDev: easier-to-read text')
-    expect(preview.body).toContain('Low contrast')
+    expect(preview.body).toMatch(/some text may be difficult for visitors to read/i)
+    expect(preview.body).not.toMatch(/2\.1:1|#777|#fff/i)
     expect(() => validateOutreachPreview(preview, prospect(), audit)).not.toThrow()
   })
 
@@ -203,8 +204,10 @@ describe('outreach eligibility and previews', () => {
     const audit = analysis()
     const preview = createOutreachPreview(prospect(), audit)
     expect(() => validateOutreachPreview(preview, prospect(), { ...audit, id: 'analysis-2' })).toThrow('audit changed')
-    expect(() => validateOutreachPreview({ ...preview, body: preview.body.replace('23 KiB', '23 MB') }, prospect(), audit))
-      .toThrow('omits or changes evidence')
+    expect(() => validateOutreachPreview({
+      ...preview,
+      body: preview.body.replace(/extra website features may slow down taps and clicks/i, 'a 23 KiB JavaScript issue'),
+    }, prospect(), audit)).toThrow('contains technical language')
     expect(() => validateOutreachPreview({ ...preview, body: preview.body.replace('We reviewed', 'I reviewed') }, prospect(), audit))
       .toThrow('company voice')
     expect(() => validateOutreachPreview({ ...preview, subject: 'A quick hello, AmigoDev' }, prospect(), audit))

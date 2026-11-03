@@ -1,11 +1,7 @@
 import type { Prospect, WebsiteAnalysis } from '@/types'
 import { normalizeWebsiteDomain } from '@/lib/websiteDomain'
-import {
-  auditFindingEmailTopic,
-  auditFindingTitle,
-  auditFindingWhy,
-  auditFindingRecommendation,
-} from '@/lib/auditReportLanguage'
+import { auditFindingEmailTopic } from '@/lib/auditReportLanguage'
+import { containsEmailJargon, emailFindingImpact, emailFindingTitle } from '@/lib/emailCopy'
 import { rateLighthouseFinding } from '@/lib/websiteAudit'
 
 type AuditFinding = {
@@ -191,34 +187,10 @@ export function getOutreachSuitability(analysis: OutreachAnalysis): OutreachSuit
   return 'Low Opportunity'
 }
 
-function plainLanguageSavingsText(finding: SelectedOutreachFinding) {
-  const savings: string[] = []
-  if (typeof finding.opportunity_bytes === 'number' && finding.opportunity_bytes > 0) {
-    const kibibytes = Math.round(finding.opportunity_bytes / 1024)
-    const kilobytes = Math.round(finding.opportunity_bytes / 1000)
-    savings.push(`${kibibytes} KiB (about ${kilobytes} KB) less to download`)
-  }
-  if (typeof finding.opportunity_ms === 'number' && finding.opportunity_ms > 0) {
-    const seconds = (finding.opportunity_ms / 1000).toFixed(2)
-    savings.push(`${Math.round(finding.opportunity_ms)} ms (${seconds} seconds) in Google's test`)
-  }
-  return savings
-}
-
 function observationText(finding: SelectedOutreachFinding) {
-  const title = auditFindingTitle(finding)
-  const evidence = finding.evidence!.trim()
-  if (finding.classification === 'optimization_opportunity') {
-    const savings = plainLanguageSavingsText(finding)
-    const estimate = savings.length ? ` (${savings.join(' and ')})` : ''
-    return {
-      observation: `${title.toLowerCase()}. Google PageSpeed estimates a possible improvement${estimate}. This is not a confirmed problem.`,
-      recommendation: auditFindingRecommendation(finding),
-    }
-  }
   return {
-    observation: `${title.toLowerCase()}. Our website check recorded: ${evidence.slice(0, 200)}`,
-    recommendation: auditFindingRecommendation(finding),
+    title: emailFindingTitle(finding),
+    impact: emailFindingImpact(finding),
   }
 }
 
@@ -269,16 +241,14 @@ export function createOutreachPreview(
   const selectedFinding = selectOutreachFinding(analysis)
   if (!selectedFinding) throw new Error('No evidence-backed website finding is available for outreach.')
 
-  const { observation, recommendation } = observationText(selectedFinding)
-  const internalNote = `We chose "${auditFindingTitle(selectedFinding)}" because it is the clearest item supported by this website check.`
+  const { title, impact } = observationText(selectedFinding)
+  const internalNote = `We chose "${title}" because it is the clearest item supported by this website check.`
   const body = [
     `Hi ${greetingName},`,
     '',
-    `We reviewed ${name}'s website and noticed ${observation}.`,
-    auditFindingWhy(selectedFinding),
-    recommendation,
+    `We reviewed ${name}'s website and noticed a possible improvement: ${title.toLowerCase()}. ${impact}`,
     '',
-    'We attached a short review with the evidence and next steps. It separates measured results from ideas to check.',
+    'We are not pitching a costly, full website redesign. Small, targeted changes may make it easier for customers to understand your services and get in touch.',
     '',
     'Would you be open to a brief conversation about this?',
     '',
@@ -312,9 +282,10 @@ export function validateOutreachPreview(
     !preview.subject.includes(prospect.business_name) ||
     !preview.body.includes(prospect.business_name) ||
     !/will not follow up/i.test(preview.body) ||
+    containsEmailJargon(`${preview.subject}\n${preview.body}`) ||
     (preview.body.match(/\?/g) ?? []).length !== 1
   ) {
-    throw new Error('The email is missing the correct business name, opt-out, or single conversational question.')
+    throw new Error('The email is missing the correct business name, opt-out, or single conversational question, or contains technical language.')
   }
   if (!prospect.website) {
     if (
@@ -341,21 +312,19 @@ export function validateOutreachPreview(
     throw new Error('The selected audit finding changed. Refresh the email preview before sending.')
   }
   const finding = currentPreview.selected_finding!
+  const { title, impact } = observationText(finding)
   if (
     !preview.subject.includes(prospect.business_name) ||
     /\b(I|me|my)\b/i.test(preview.body) ||
     !preview.body.includes('Arlotech Digital Solutions') ||
     !/will not follow up/i.test(preview.body) ||
+    !/we are not pitching a costly, full website redesign/i.test(preview.body) ||
+    containsEmailJargon(`${preview.subject}\n${preview.body}`) ||
     !preview.subject.includes(auditFindingEmailTopic(finding)) ||
-    !preview.body.toLowerCase().includes(auditFindingTitle(finding).toLowerCase()) ||
+    !preview.body.toLowerCase().includes(title.toLowerCase()) ||
+    !preview.body.includes(impact) ||
     !/\bwould you\b[^?]*\?/i.test(preview.body)
   ) {
     throw new Error('The edited email no longer matches the audit evidence or ArloTech company voice.')
-  }
-  const requiredEvidence = finding.classification === 'optimization_opportunity'
-    ? plainLanguageSavingsText(finding)
-    : [finding.evidence!.trim()]
-  if (requiredEvidence.some((evidence) => !preview.body.includes(evidence))) {
-    throw new Error('The edited email omits or changes evidence from the attached audit report.')
   }
 }
