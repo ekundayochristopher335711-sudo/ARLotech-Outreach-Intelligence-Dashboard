@@ -6,6 +6,8 @@ import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { getCurrentUserId, supabase } from '@/lib/supabase'
 import { recommendNextOutreachAction, scoreProspectOpportunity } from '@/lib/growthIntelligence'
+import { loadArlotechLogoDataUrl } from '@/lib/brandAssets'
+import { toast } from 'sonner'
 
 type ProspectRow = { id: string; business_name: string; email: string | null; website: string | null; business_category: string | null; status: string; do_not_contact: boolean; created_at: string }
 type AuditRow = { prospect_id: string | null; overall_score: number | null; performance_score: number | null; seo_score: number | null; accessibility_score: number | null; best_practices_score: number | null; created_at?: string | null }
@@ -65,14 +67,23 @@ export function GrowthCenterPage() {
   const latestMessageFor = (id: string, direction: string) => (data?.messages || []).filter(m => m.prospect_id === id && m.direction === direction).sort((a,b) => new Date(b.received_at || b.sent_at || 0).getTime() - new Date(a.received_at || a.sent_at || 0).getTime())[0]
   const followUpRecommendations = (data?.prospects || []).map(prospect => { const inbound = latestMessageFor(prospect.id, 'inbound'); const outbound = latestMessageFor(prospect.id, 'outbound'); return { prospect, ...recommendNextOutreachAction({ status: prospect.status, do_not_contact: prospect.do_not_contact, latestInbound: inbound?.body, latestOutboundAt: outbound?.sent_at }) } }).filter(item => item.safeToDraft || item.action === 'Stop outreach' || item.action === 'Pause and investigate').slice(0, 8)
 
-  const exportProposal = () => {
+  const exportProposal = async () => {
     const prospect = data?.prospects.find(p => p.id === proposalProspect)
     if (!prospect || !proposalPrice.trim() || !proposalTimeline.trim()) return
+    let logo: string
+    try {
+      logo = await loadArlotechLogoDataUrl()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not load the Arlotech logo for this PDF.')
+      return
+    }
+
     const pdf = new jsPDF()
     const navy = [8, 25, 53] as [number, number, number]
     pdf.setFillColor(...navy); pdf.rect(0, 0, 210, 42, 'F')
-    pdf.setTextColor(255, 255, 255); pdf.setFont('helvetica', 'bold'); pdf.setFontSize(22); pdf.text('ARLOTECH', 16, 20)
-    pdf.setFont('helvetica', 'normal'); pdf.setFontSize(9); pdf.text('DIGITAL SOLUTIONS  |  PROJECT PROPOSAL', 16, 29)
+    pdf.addImage(logo, 'PNG', 14, 5, 32, 32)
+    pdf.setTextColor(255, 255, 255); pdf.setFont('helvetica', 'bold'); pdf.setFontSize(16); pdf.text('ARLOTECH DIGITAL SOLUTIONS', 52, 18)
+    pdf.setFont('helvetica', 'normal'); pdf.setFontSize(9); pdf.text('PROJECT PROPOSAL', 52, 28)
     pdf.setTextColor(25, 35, 50); pdf.setFont('helvetica', 'bold'); pdf.setFontSize(20); pdf.text('Website Project Proposal', 16, 61)
     pdf.setFont('helvetica', 'normal'); pdf.setFontSize(10); pdf.text(`Prepared for: ${prospect.business_name}`, 16, 72)
     if (prospect.email) pdf.text(`Contact: ${prospect.email}`, 16, 79)

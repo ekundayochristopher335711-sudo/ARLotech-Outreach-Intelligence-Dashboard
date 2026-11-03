@@ -70,7 +70,7 @@ The Website Intelligence page orchestrates three Supabase Edge Functions:
 
 The combined report is stored in the `website_analyses` Supabase table.
 
-Customer-facing website audit PDFs are limited to three pages: an executive summary with the health score and up to three customer friction points, plain-English explanations of those same priority issues, and a business-impact close with a direct Arlotech call to action. The heading uses the same standard or blacksite favicon selected in the app. They omit raw file paths, developer-only terms, do-it-yourself instructions, and estimated savings that could be mistaken for guaranteed results. Verified prospect names are used only when explicitly confirmed.
+Customer-facing PDFs use the official Arlotech Digital Solutions logo; the same supplied favicon is used throughout the app and browser tabs. Website audit PDFs are limited to three pages: an executive summary with the health score and up to three distinct customer friction points, plain-English explanations of those same issues, and a business-impact close with a direct Arlotech call to action. Repeated findings and duplicate explanations are omitted. Reports also omit raw file paths, developer-only terms, do-it-yourself instructions, and estimated savings that could be mistaken for guaranteed results. Verified prospect names are used only when explicitly confirmed.
 
 The displayed ArloTech composite score is the rounded arithmetic mean of available Lighthouse category scores; it is not an official Lighthouse score. Prospect business names default to unverified and appear as the report recipient only after an account user verifies them in the prospect record.
 

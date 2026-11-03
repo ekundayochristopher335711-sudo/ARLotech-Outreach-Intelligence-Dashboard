@@ -11,6 +11,7 @@ import { AuthProvider } from '@/hooks/useAuth'
 import { useAuth } from '@/hooks/useAuthState'
 import { useLocation } from 'react-router-dom'
 import { Sidebar } from '@/components/layout/Sidebar'
+import { ARLOTECH_FAVICON_FILE, ARLOTECH_LOGO_FILE, getBrandAssetUrl } from '@/lib/brandAssets'
 
 const LoginPage = lazy(() => import('@/pages/Login').then((module) => ({ default: module.LoginPage })))
 const DashboardPage = lazy(() => import('@/pages/Dashboard').then((module) => ({ default: module.DashboardPage })))
@@ -108,10 +109,9 @@ function AppShell() {
 
   useEffect(() => {
     const favicon = document.querySelector<HTMLLinkElement>('link[rel~="icon"]')
-    if (favicon) {
-      favicon.href = `${import.meta.env.BASE_URL}${blacksite ? 'favicon-blacksite.png' : 'favicon-standard.jpg'}`
-      favicon.type = blacksite ? 'image/png' : 'image/jpeg'
-    }
+    if (favicon) favicon.href = getBrandAssetUrl(ARLOTECH_FAVICON_FILE)
+    const appleIcon = document.querySelector<HTMLLinkElement>('link[rel="apple-touch-icon"]')
+    if (appleIcon) appleIcon.href = getBrandAssetUrl(ARLOTECH_FAVICON_FILE)
     document.title = blacksite ? 'BLACKSITE | Arlotech Intelligence' : 'Arlotech Outreach Intelligence'
     document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')
       ?.setAttribute('content', blacksite ? '#030603' : '#f4f7f9')
@@ -162,7 +162,9 @@ function AppShell() {
           >
             <Menu className="h-6 w-6" />
           </button>
-          <span className="topbar-brand flex items-center" aria-label="Arlotech">{blacksite ? <img src={`${import.meta.env.BASE_URL}arlotech-blacksite.svg`} alt="Arlotech BLACKSITE" className="topbar-logo-image" /> : <img src={`${import.meta.env.BASE_URL}arlotech-standard.svg`} alt="Arlotech Intelligence Systems" className="topbar-logo-image topbar-logo-standard" />}</span>
+          <span className="topbar-brand flex items-center" aria-label="Arlotech Digital Solutions">
+            <img src={getBrandAssetUrl(ARLOTECH_LOGO_FILE)} alt="Arlotech Digital Solutions" className="topbar-logo-image" />
+          </span>
           <div className="topbar-system-status"><span className="status-live-dot" /> <span>{blacksite ? 'UPLINK ESTABLISHED' : 'WORKSPACE ONLINE'}</span><span className="topbar-divider">/</span><span className="topbar-clock">{blacksite ? 'TRACE NULL // UPLINK LIVE' : 'OUTREACH CONSOLE'}</span></div>
           <div className="topbar-mark" aria-hidden="true">{blacksite ? <RadioTower size={18} /> : <Activity size={18} />}<span>{blacksite ? 'NODE 09' : 'AOI'}</span></div>
         </header>

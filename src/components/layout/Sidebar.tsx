@@ -17,6 +17,7 @@ import {
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuthState'
 import { useAccessibleDialog } from '@/hooks/useAccessibleDialog'
+import { ARLOTECH_LOGO_FILE, getBrandAssetUrl } from '@/lib/brandAssets'
 
 interface NavItem {
   label: string
@@ -82,9 +83,9 @@ export function Sidebar({
       >
         <div className="sidebar-brand-row flex items-center justify-between h-20 px-4 border-b border-slate-200">
           <div className="flex items-center gap-2">
-            <img src={`${import.meta.env.BASE_URL}${blacksite ? 'favicon-blacksite.png' : 'favicon-standard.jpg'}`} alt="Arlotech emblem" className="sidebar-brand-image" />
+            <img src={getBrandAssetUrl(ARLOTECH_LOGO_FILE)} alt="Arlotech Digital Solutions" className="sidebar-brand-image" />
             <span className="sidebar-brand-copy text-sm font-bold text-slate-800">
-              {blacksite ? <>BLACKSITE<span>FIELD OPERATIONS</span></> : <>ARLOTECH<span>INTELLIGENCE</span></>}
+              <>ARLOTECH<span>DIGITAL SOLUTIONS</span></>
             </span>
           </div>
           <button

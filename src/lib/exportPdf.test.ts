@@ -1,16 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { createWebsiteAnalysisPdfBase64 } from './exportPdf'
+import { ARLOTECH_FAVICON_FILE, ARLOTECH_LOGO_FILE, getBrandAssetUrl } from './brandAssets'
 
-const standardFavicon = readFileSync(new URL('../../public/favicon-standard.jpg', import.meta.url))
-const blacksiteFavicon = readFileSync(new URL('../../public/favicon-blacksite.png', import.meta.url))
+const arlotechLogo = readFileSync(new URL('../../public/overall logo.png', import.meta.url))
 
 beforeEach(() => {
-  vi.stubGlobal('localStorage', { getItem: () => null })
-  vi.stubGlobal('fetch', vi.fn(async (input: string | URL | Request) => {
-    const isBlacksite = String(input).includes('favicon-blacksite.png')
-    return new Response(isBlacksite ? blacksiteFavicon : standardFavicon, {
-      headers: { 'Content-Type': isBlacksite ? 'image/png' : 'image/jpeg' },
+  vi.stubGlobal('fetch', vi.fn(async () => {
+    return new Response(arlotechLogo, {
+      headers: { 'Content-Type': 'image/png' },
     })
   }))
 })
@@ -44,6 +42,40 @@ function pdfPages(base64: string) {
 }
 
 describe('website audit PDF', () => {
+  it('keeps the summary and detailed issues distinct without repeating customer explanations', async () => {
+    const findings = [
+      ['largest-contentful-paint', 'Largest Contentful Paint'],
+      ['render-blocking-resources', 'Render-blocking resources'],
+      ['unused-css-rules', 'Unused CSS'],
+      ['unused-css-duplicate', 'Unused CSS on another page'],
+      ['unused-javascript', 'Unused JavaScript'],
+    ].map(([auditId, title]) => ({
+      id: `ps-${auditId}`,
+      audit_id: auditId,
+      source: 'lighthouse',
+      title,
+      category: 'performance',
+      priority: 'high',
+      lighthouse_score_pct: 40,
+      affected_resources: [],
+    }))
+    const pages = pdfPages(await createWebsiteAnalysisPdfBase64({
+      website_url: 'https://example.com',
+      category_scores: { performance: 40 },
+      findings,
+    }))
+    const summaryTitles = pages[0].match(/\d+\.\s+[^\n]+/g) ?? []
+    const issueDescriptions = pages[1].match(/Why it matters to your customers: [^\n]+/g) ?? []
+
+    expect(pages).toHaveLength(3)
+    expect(pages[0]).toContain('Top customer friction points (3)')
+    expect(pages[1]).toContain('PRIORITY CUSTOMER ISSUES (3)')
+    expect(summaryTitles).toHaveLength(3)
+    expect(new Set(summaryTitles.map((title) => title.toLowerCase())).size).toBe(3)
+    expect(issueDescriptions).toHaveLength(3)
+    expect(new Set(issueDescriptions.map((description) => description.toLowerCase())).size).toBe(3)
+  })
+
   it('creates a three-page, plain-English report with the same three issues in its summary and detail', async () => {
     const findings = Array.from({ length: 9 }, (_, index) => ({
       id: `ps-audit-${index}`,
@@ -111,7 +143,7 @@ describe('website audit PDF', () => {
     expect(report).toContain('book a 10-minute website review call')
   })
 
-  it('uses the verified recipient name and selected favicon in the PDF header', async () => {
+  it('uses the verified recipient name and official Arlotech logo in the PDF header', async () => {
     const reportBase64 = await createWebsiteAnalysisPdfBase64({
       website_url: 'https://example.com',
       category_scores: {},
@@ -120,7 +152,9 @@ describe('website audit PDF', () => {
     const report = pdfText(reportBase64)
 
     expect(report).toContain('Prepared for: Example Legal')
+    expect(report).toContain('ARLOTECH DIGITAL SOLUTIONS')
     expect(atob(reportBase64)).toContain('/Subtype /Image')
+    expect(fetch).toHaveBeenCalledWith(getBrandAssetUrl(ARLOTECH_LOGO_FILE))
     expect(pdfPages(await createWebsiteAnalysisPdfBase64({
       website_url: 'https://example.com',
       category_scores: {},
@@ -128,16 +162,15 @@ describe('website audit PDF', () => {
     }, { businessName: 'Example Legal', verified: true }))).toHaveLength(3)
   })
 
-  it('uses the blacksite favicon when the blacksite theme is selected', async () => {
-    vi.stubGlobal('localStorage', { getItem: () => 'blacksite' })
-
+  it('uses one brand logo in PDFs regardless of the active workspace appearance', async () => {
     await createWebsiteAnalysisPdfBase64({
       website_url: 'https://example.com',
       category_scores: {},
       findings: [],
     })
 
-    expect(fetch).toHaveBeenCalledWith(expect.stringContaining('favicon-blacksite.png'))
+    expect(fetch).toHaveBeenCalledWith(getBrandAssetUrl(ARLOTECH_LOGO_FILE))
+    expect(getBrandAssetUrl(ARLOTECH_FAVICON_FILE)).toContain('favicon-32x32.png')
   })
 
   it('omits technical diagnostics and unverified savings rather than making contradictory claims', async () => {

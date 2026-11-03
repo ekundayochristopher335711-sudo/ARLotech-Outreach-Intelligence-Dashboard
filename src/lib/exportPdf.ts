@@ -8,6 +8,7 @@ import {
   auditFindingBusinessImpact,
   auditFindingBusinessTitle,
 } from '@/lib/auditReportLanguage'
+import { loadArlotechLogoDataUrl } from '@/lib/brandAssets'
 
 const PAGE_WIDTH = 210
 const PAGE_HEIGHT = 297
@@ -24,23 +25,11 @@ const WHITE = [255, 255, 255] as const
 
 interface PdfBrandLogo {
   data: string
-  format: 'JPEG' | 'PNG'
+  format: 'PNG'
 }
 
 async function loadPdfBrandLogo(): Promise<PdfBrandLogo> {
-  const isBlacksite = typeof localStorage !== 'undefined' &&
-    localStorage.getItem('arlotech-login-mode') === 'blacksite'
-  const file = isBlacksite ? 'favicon-blacksite.png' : 'favicon-standard.jpg'
-  const format = isBlacksite ? 'PNG' : 'JPEG'
-  const response = await fetch(`${import.meta.env.BASE_URL}${file}`)
-  if (!response.ok) throw new Error(`Could not load the Arlotech PDF logo (${response.status}).`)
-
-  const bytes = new Uint8Array(await response.arrayBuffer())
-  let binary = ''
-  for (let offset = 0; offset < bytes.length; offset += 0x8000) {
-    binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000))
-  }
-  return { data: `data:image/${format.toLowerCase()};base64,${btoa(binary)}`, format }
+  return { data: await loadArlotechLogoDataUrl(), format: 'PNG' }
 }
 
 interface PdfProspect {
@@ -116,7 +105,7 @@ function createReport(
     doc.setTextColor(...WHITE)
     doc.setFont('helvetica', 'bold')
     doc.setFontSize(9)
-    doc.text('ARLOTECH', LEFT + (logo ? 25 : 8), 15)
+    doc.text('ARLOTECH DIGITAL SOLUTIONS', LEFT + (logo ? 25 : 8), 15)
     doc.setFont('helvetica', 'normal')
     doc.setFontSize(8)
     doc.text(brand, LEFT + (logo ? 25 : 8), 21)
@@ -467,16 +456,29 @@ function buildConsultantWebsiteAnalysisPdf(
         const viewportKey = observation.viewport === 'mobile' ? 'mobile' : 'desktop'
         if (seenVisualViewports.has(viewportKey)) return []
         seenVisualViewports.add(viewportKey)
-        const viewport = viewportKey === 'mobile' ? 'on mobile' : 'on a larger screen'
         return [{
-          title: `A possible display issue needs checking ${viewport}`,
-          impact: 'If confirmed, this could make the page harder to read or use on this screen size.',
+          title: viewportKey === 'mobile'
+            ? 'The page may be difficult to use on a phone'
+            : 'The page may look uneven on a larger screen',
+          impact: viewportKey === 'mobile'
+            ? 'A display problem on phones could hide important details or make it harder for customers to contact you.'
+            : 'A display problem on larger screens could make the business look less professional to customers comparing local options.',
           rank: (severity === 'high' ? 12 : 8) + confidence,
         }]
       })
     : []
+  const selectedTitles = new Set<string>()
+  const selectedImpacts = new Set<string>()
   const topFindings = [...measuredCandidates, ...visualCandidates]
     .sort((left, right) => right.rank - left.rank)
+    .filter((finding) => {
+      const titleKey = finding.title.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+      const impactKey = finding.impact.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+      if (!titleKey || !impactKey || selectedTitles.has(titleKey) || selectedImpacts.has(impactKey)) return false
+      selectedTitles.add(titleKey)
+      selectedImpacts.add(impactKey)
+      return true
+    })
     .slice(0, 3)
   const report = createReport(
     'Website review',
@@ -507,7 +509,6 @@ function buildConsultantWebsiteAnalysisPdf(
   } else {
     topFindings.forEach((finding, index) => {
       report.addParagraph(`${index + 1}. ${finding.title}`, { size: 8.5, bold: true, color: NAVY })
-      report.addParagraph(finding.impact, { size: 8 })
     })
   }
   report.addParagraph(

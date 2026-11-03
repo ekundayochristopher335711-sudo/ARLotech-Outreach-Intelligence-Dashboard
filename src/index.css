@@ -376,7 +376,7 @@ html {
 .app-shell.theme-blacksite .app-sidebar{flex-basis:226px!important;width:226px!important;min-width:0!important;background:#030704!important;border-right:1px solid #284b25!important;box-shadow:14px 0 44px #0008!important}
 .app-shell.theme-blacksite  .app-sidebar[class~="lg:w-20"]{flex-basis:76px!important;width:76px!important;min-width:76px!important}
 .app-shell.theme-blacksite .sidebar-brand-row{height:82px!important;padding:0 15px!important;gap:8px!important}
-.app-shell.theme-blacksite .sidebar-brand-image{width:34px!important;height:34px!important;border:1px solid #6fff4b;border-radius:4px!important;padding:2px;background:#050905!important;box-shadow:0 0 18px #54ff3625}
+.app-shell.theme-blacksite .sidebar-brand-image{width:36px!important;height:36px!important;object-fit:contain!important;border:0!important;border-radius:7px!important;padding:0!important;background:transparent!important;box-shadow:none!important}
 .app-shell.theme-blacksite .sidebar-brand-copy{font-size:11px!important;letter-spacing:.18em!important;line-height:1.35}
 .app-shell.theme-blacksite .sidebar-brand-row:after{left:60px!important;bottom:8px!important;font-size:7px!important;letter-spacing:.12em!important}
 .app-shell.theme-blacksite .sidebar-section-label{padding:19px 16px 8px!important;font-size:8px!important;letter-spacing:.2em!important}
@@ -424,7 +424,7 @@ html {
 .app-shell.theme-blacksite{--app-bg:#030604;--app-panel:#080d09;--app-panel-2:#0b130c;--app-border:#1b3020;--app-text:#d9ead5;--app-muted:#82947d;--app-accent:#a8ff48;--app-accent-soft:#10200f;background:#030604;color:#d9ead5}
 .app-shell.theme-blacksite .app-sidebar{width:224px!important;min-width:224px!important;flex:0 0 224px!important;background:linear-gradient(180deg,#070d08 0%,#030604 100%)!important;border-right:1px solid #244026!important;box-shadow:12px 0 36px #0008!important}
 .app-shell.theme-blacksite .sidebar-brand-row{height:76px!important;padding:0 15px!important;border-bottom:1px solid #1d3320!important}
-.app-shell.theme-blacksite .sidebar-brand-image{width:35px!important;height:35px!important;object-fit:contain!important;border:1px solid #3b6732!important;border-radius:5px!important;background:#050a06!important;padding:4px!important;box-shadow:0 0 18px #70ff3520!important}
+.app-shell.theme-blacksite .sidebar-brand-image{width:36px!important;height:36px!important;object-fit:contain!important;border:0!important;border-radius:7px!important;background:transparent!important;padding:0!important;box-shadow:none!important}
 .app-shell.theme-blacksite .sidebar-brand-copy{font:800 11px/1.35 'DM Mono',monospace!important;letter-spacing:.17em!important;color:#d9ead5!important}
 .app-shell.theme-blacksite .sidebar-brand-copy span{font:8px 'DM Mono',monospace!important;letter-spacing:.13em!important;color:#7fa477!important}
 .app-shell.theme-blacksite .sidebar-section-label{padding:22px 16px 10px!important;font:700 8px 'DM Mono',monospace!important;letter-spacing:.2em!important;color:#5d8257!important}

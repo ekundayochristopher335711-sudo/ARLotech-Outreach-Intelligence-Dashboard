@@ -217,7 +217,7 @@ export function DashboardPage() {
         </section>
 
         <div className="blacksite-deck-footer">
-          <span>ARLOTECH INTELLIGENCE SYSTEMS</span>
+          <span>ARLOTECH DIGITAL SOLUTIONS</span>
           <span>NODE 09 <i /> SESSION ACTIVE</span>
           <span>END OF OVERVIEW</span>
         </div>

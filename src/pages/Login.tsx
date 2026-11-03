@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ArrowUpRight, AudioLines, Check, Fingerprint, KeyRound, LockKeyhole, ShieldCheck, Terminal } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
+import { ARLOTECH_LOGO_FILE, getBrandAssetUrl } from '@/lib/brandAssets'
 import './Login.css'
 
 type LoginMode = 'standard' | 'blacksite'
@@ -89,7 +90,7 @@ export function LoginPage() {
       {isBlacksite && <div className="matrix-rain" aria-hidden="true"><div>{matrixStreams.map((column, i) => <span key={i} style={{ animationDelay: `${-(i % 12) * 1.6}s`, animationDuration: `${13 + (i % 8) * 2}s` }}>{column}</span>)}</div></div>}
       <header className="login-topbar">
         <a className="login-brand" href="/login" aria-label="Arlotech login home">
-          <img src={`${import.meta.env.BASE_URL}${isBlacksite ? 'arlotech-blacksite.svg' : 'arlotech-standard.svg'}`} alt={isBlacksite ? 'Arlotech BLACKSITE' : 'Arlotech Intelligence Systems'} className="login-brand-wordmark" />
+          <img src={getBrandAssetUrl(ARLOTECH_LOGO_FILE)} alt="Arlotech Digital Solutions" className="login-brand-wordmark" />
         </a>
         <div className="login-top-actions">
           <span className="login-secure-status"><span className="status-pulse" /> {isBlacksite ? 'COVERT NODE // ONLINE' : 'SECURE ACCESS'}</span>
@@ -122,7 +123,7 @@ export function LoginPage() {
             <div className="visual-scanline" />
             <div className="visual-label label-left"><span>ENCRYPTION</span><strong>AES-256</strong></div>
             <div className="visual-label label-right"><span>{isBlacksite ? 'NODE STATUS' : 'AUTH STATUS'}</span><strong><i /> {isBlacksite ? 'AWAITING OPERATOR' : 'VERIFIED'}</strong></div>
-            <div className="visual-coordinate">{isBlacksite ? 'BLACKSITE // ACCESS LAYER 09' : 'ARLOTECH INTELLIGENCE SYSTEMS'}</div>
+            <div className="visual-coordinate">{isBlacksite ? 'BLACKSITE // ACCESS LAYER 09' : 'ARLOTECH DIGITAL SOLUTIONS'}</div>
           </div>
 
           <div className="login-feature-row">

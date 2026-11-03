@@ -132,14 +132,17 @@ export function auditFindingBusinessTitle(finding: AuditFindingInput) {
   if (/largest-contentful-paint|\blcp\b/i.test(searchText)) return 'The main page content takes too long to appear'
   if (/total-blocking-time|\btbt\b|forced-reflow/i.test(searchText)) return 'The page may take too long to respond'
   if (/cumulative-layout-shift|\bcls\b/i.test(searchText)) return 'Page content may move while it loads'
-  if (/render.blocking|unused.javascript|unused.css/i.test(searchText)) return 'Page files may delay content from appearing'
+  if (/render.blocking/i.test(searchText)) return 'Files may delay the first view of your website'
+  if (/unused.javascript/i.test(searchText)) return 'Extra website features may slow down taps and clicks'
+  if (/unused.css/i.test(searchText)) return 'Parts of the page may take longer to look ready'
   if (/server-response-time|document-request-latency|time-to-first-byte/i.test(searchText)) return 'The website may take too long to start loading'
   if (/document-title|html-title|meta-description|content-meta|canonical|crawlable|robots\.txt/i.test(searchText)) {
     return 'Search engines may have difficulty understanding or finding this page'
   }
   if (/color-contrast/i.test(searchText)) return 'Some text may be difficult for visitors to read'
   if (/image-alt|image.*alt|content-alt/i.test(searchText)) return 'Some visitors may not be able to understand important images'
-  if (/image|font-display/i.test(searchText)) return 'Images or text may take too long to appear'
+  if (/font-display/i.test(searchText)) return 'Some text may be slow to appear'
+  if (/image/i.test(searchText)) return 'Website images may take too long to appear'
   if (/content-h1|h1|heading/i.test(searchText)) return 'The page may not clearly explain what the business offers'
   if (/performance/i.test(finding.category || '')) return 'The page may feel slow or difficult to use'
   if (/seo/i.test(finding.category || '')) return 'Customers may have difficulty finding or understanding this page'
@@ -149,10 +152,31 @@ export function auditFindingBusinessTitle(finding: AuditFindingInput) {
 
 export function auditFindingBusinessImpact(finding: AuditFindingInput) {
   const searchText = `${finding.audit_id || ''} ${finding.id || ''} ${finding.title || ''}`
-  if (/image-alt|image.*alt|content-alt|color-contrast|accessibility/i.test(searchText)) {
+  if (/image-alt|image.*alt|content-alt/i.test(searchText)) {
+    return 'Visitors who rely on image descriptions may miss important information or lose confidence in what your business offers.'
+  }
+  if (/color-contrast/i.test(searchText)) {
+    return 'Text that blends into its background can be hard to read, making visitors more likely to miss important details or contact options.'
+  }
+  if (/accessibility/i.test(searchText)) {
     return 'Some people may struggle to read or use this part of the site, making it harder for them to contact your business.'
   }
-  if (/largest-contentful-paint|\blcp\b|render.blocking|unused.javascript|unused.css|server-response-time|document-request-latency|image|font-display/i.test(searchText)) {
+  if (/render.blocking/i.test(searchText)) {
+    return 'A delay before the page appears can send potential customers elsewhere before they see what you offer.'
+  }
+  if (/unused.javascript/i.test(searchText)) {
+    return 'If page actions respond slowly, customers may give up before calling, booking, or asking for a quote.'
+  }
+  if (/unused.css/i.test(searchText)) {
+    return 'A page that looks unfinished while it loads can make a poor first impression and weaken trust.'
+  }
+  if (/font-display/i.test(searchText)) {
+    return 'Visitors may have to wait for readable text, making it harder to quickly find your services or contact details.'
+  }
+  if (/image/i.test(searchText)) {
+    return 'Visitors on slower connections may leave before important photos, services, or trust signals appear.'
+  }
+  if (/largest-contentful-paint|\blcp\b|server-response-time|document-request-latency/i.test(searchText)) {
     return 'A longer wait can frustrate potential customers and may give them a reason to leave before they contact you.'
   }
   if (/total-blocking-time|\btbt\b|forced-reflow/i.test(searchText)) {
