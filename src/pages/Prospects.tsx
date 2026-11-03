@@ -20,12 +20,13 @@ import {
   type EnrichmentResult,
 } from '@/lib/leadEnrichment'
 import { mapWithConcurrency } from '@/lib/mapWithConcurrency'
+import { getErrorMessage } from '@/lib/utils'
 import {
   loadPersistedAnalysisProgress,
   savePersistedAnalysisProgress,
   type PersistedAnalysisProgress,
 } from '@/lib/persistedAnalysisProgress'
-import { ClipboardPaste, FileSpreadsheet, Plus, Search, Trash2 } from 'lucide-react'
+import { ClipboardPaste, FileSpreadsheet, Pause, Play, Plus, Search, Trash2, X } from 'lucide-react'
 import { toast } from 'sonner'
 
 interface ProspectFormValues {
@@ -114,9 +115,16 @@ export function ProspectsPage() {
   const [enrichmentResults, setEnrichmentResults] = useState<EnrichmentResult[]>([])
   const [isEnriching, setIsEnriching] = useState(false)
   const [isReanalyzingAll, setIsReanalyzingAll] = useState(false)
+  const [hasPersistedAnalysisQueue, setHasPersistedAnalysisQueue] = useState(false)
+  const [isAnalysisPaused, setIsAnalysisPaused] = useState(false)
   const [enrichmentProgress, setEnrichmentProgress] = useState({ completed: 0, total: 0 })
   const [contactScanMode, setContactScanMode] = useState(false)
   const restoredAnalysisUserId = useRef<string | null>(null)
+  const pauseRequestedRef = useRef(false)
+  const activePersistedProgressRef = useRef<{
+    userId: string
+    value: PersistedAnalysisProgress
+  } | null>(null)
   const { importCsv, isImporting, importError } = useCsvImport()
   const deleteProspect = useMutation<void, Error, string>({
     mutationFn: async (prospectId: string) => {
@@ -323,6 +331,10 @@ export function ProspectsPage() {
       ? targets.filter((prospect) => !completedProspectIds.has(prospect.id))
       : targets
     const total = persistedProgress?.value.prospect_ids.length ?? targets.length
+    pauseRequestedRef.current = false
+    activePersistedProgressRef.current = persistedProgress ?? null
+    setHasPersistedAnalysisQueue(Boolean(persistedProgress))
+    setIsAnalysisPaused(false)
     const resultForProspect = (prospect: Prospect): EnrichmentResult => {
       const outcome = outcomesByProspect.get(prospect.id)
       return {
@@ -344,74 +356,82 @@ export function ProspectsPage() {
     setIsReanalyzingAll(Boolean(persistedProgress))
     setIsEnriching(true)
     try {
-      const results = await mapWithConcurrency(pendingTargets, 3, async (prospect) => {
-        let enrichmentResult: EnrichmentResult
-        setEnrichmentResults((current) =>
-          current.map((item) =>
-            item.prospect_id === prospect.id ? { ...item, error: 'Analyzing website…' } : item,
-          ),
-        )
-        try {
-          try {
-            enrichmentResult = await enrichAndAnalyzeProspect(prospect, {
-              createDraft: createDrafts,
-              includeVisualReview,
-            })
-          } catch (error) {
-            enrichmentResult = {
-              prospect_id: prospect.id,
-              business_name: prospect.business_name,
-              website: prospect.website,
-              contact_email: prospect.email,
-              contact_phone: prospect.phone,
-              analysis_score: null,
-              draft_created: false,
-              error: error instanceof Error ? error.message : 'Website enrichment failed.',
-            }
-          }
-          if (!enrichmentResult.analysis_completed && enrichmentResult.error) {
-            try {
-              await recordFailedWebsiteAnalysis(prospect, enrichmentResult.error)
-            } catch (recordError) {
-              enrichmentResult.error += `; Could not save failure status: ${recordError instanceof Error ? recordError.message : 'Unknown error'}`
-            }
-          }
-        } finally {
-          setEnrichmentProgress((progress) => ({ ...progress, completed: progress.completed + 1 }))
-        }
-        setEnrichmentResults((current) =>
-          current.map((item) => item.prospect_id === prospect.id ? enrichmentResult : item),
-        )
-        if (persistedProgress) {
-          const outcome = {
-            prospect_id: prospect.id,
-            analysis_completed: !!enrichmentResult.analysis_completed,
-            analysis_score: enrichmentResult.analysis_score,
-            ...(enrichmentResult.error ? { error: enrichmentResult.error } : {}),
-          }
-          const existingIndex = persistedProgress.value.outcomes.findIndex(
-            (item) => item.prospect_id === prospect.id,
+      const results: EnrichmentResult[] = []
+      for (let offset = 0; offset < pendingTargets.length; offset += 3) {
+        if (pauseRequestedRef.current) break
+        const batchResults = await mapWithConcurrency(pendingTargets.slice(offset, offset + 3), 3, async (prospect) => {
+          let enrichmentResult: EnrichmentResult
+          setEnrichmentResults((current) =>
+            current.map((item) =>
+              item.prospect_id === prospect.id ? { ...item, error: 'Analyzing website…' } : item,
+            ),
           )
-          if (existingIndex < 0) persistedProgress.value.outcomes.push(outcome)
-          else persistedProgress.value.outcomes[existingIndex] = outcome
           try {
-            savePersistedAnalysisProgress(persistedProgress.userId, persistedProgress.value)
-          } catch (error) {
-            toast.error(error instanceof Error
-              ? `Analysis continues, but progress could not be saved for refresh: ${error.message}`
-              : 'Analysis continues, but progress could not be saved for refresh.')
+            try {
+              enrichmentResult = await enrichAndAnalyzeProspect(prospect, {
+                createDraft: createDrafts,
+                includeVisualReview,
+              })
+            } catch (error) {
+              enrichmentResult = {
+                prospect_id: prospect.id,
+                business_name: prospect.business_name,
+                website: prospect.website,
+                contact_email: prospect.email,
+                contact_phone: prospect.phone,
+                analysis_score: null,
+                draft_created: false,
+                error: error instanceof Error ? error.message : 'Website enrichment failed.',
+              }
+            }
+            if (!enrichmentResult.analysis_completed && enrichmentResult.error) {
+              try {
+                await recordFailedWebsiteAnalysis(prospect, enrichmentResult.error)
+              } catch (recordError) {
+                enrichmentResult.error += `; Could not save failure status: ${getErrorMessage(recordError, 'Unknown error')}`
+              }
+            }
+          } finally {
+            setEnrichmentProgress((progress) => ({ ...progress, completed: progress.completed + 1 }))
           }
-        }
-        return enrichmentResult
-      })
+          setEnrichmentResults((current) =>
+            current.map((item) => item.prospect_id === prospect.id ? enrichmentResult : item),
+          )
+          if (persistedProgress) {
+            const outcome = {
+              prospect_id: prospect.id,
+              analysis_completed: !!enrichmentResult.analysis_completed,
+              analysis_score: enrichmentResult.analysis_score,
+              ...(enrichmentResult.error ? { error: enrichmentResult.error } : {}),
+            }
+            const existingIndex = persistedProgress.value.outcomes.findIndex(
+              (item) => item.prospect_id === prospect.id,
+            )
+            if (existingIndex < 0) persistedProgress.value.outcomes.push(outcome)
+            else persistedProgress.value.outcomes[existingIndex] = outcome
+            try {
+              savePersistedAnalysisProgress(persistedProgress.userId, persistedProgress.value)
+            } catch (error) {
+              toast.error(error instanceof Error
+                ? `Analysis continues, but progress could not be saved for refresh: ${error.message}`
+                : 'Analysis continues, but progress could not be saved for refresh.')
+            }
+          }
+          return enrichmentResult
+        })
+        results.push(...batchResults)
+        if (pauseRequestedRef.current) break
+      }
+      const paused = Boolean(persistedProgress && pauseRequestedRef.current)
       if (persistedProgress) {
-        persistedProgress.value.active = false
+        persistedProgress.value.active = paused || persistedProgress.value.outcomes.length < total
+        persistedProgress.value.paused = paused
         try {
           savePersistedAnalysisProgress(persistedProgress.userId, persistedProgress.value)
         } catch (error) {
           toast.error(error instanceof Error
-            ? `Analysis finished, but final progress could not be saved: ${error.message}`
-            : 'Analysis finished, but final progress could not be saved.')
+            ? `Could not save the final analysis progress: ${error.message}`
+            : 'Could not save the final analysis progress.')
         }
         setEnrichmentProgress({ completed: persistedProgress.value.outcomes.length, total })
       }
@@ -422,9 +442,14 @@ export function ProspectsPage() {
       const completed = persistedProgress
         ? persistedProgress.value.outcomes.filter((outcome) => outcome.analysis_completed).length
         : results.filter((result) => result.analysis_completed).length
-      const failed = total - completed
-      if (failed > 0) {
-        toast.warning(`Completed ${completed} of ${total} website analyses. ${failed} failed; review the Failed analysis filter to retry or correct their URLs.`)
+      const failed = (persistedProgress?.value.outcomes.length ?? results.length) - completed
+      if (paused) {
+        setIsAnalysisPaused(true)
+        toast.info(`Analysis paused after ${persistedProgress?.value.outcomes.length ?? 0} of ${total} websites. Resume when you’re ready.`)
+      } else if (persistedProgress && persistedProgress.value.outcomes.length < total) {
+        toast.error('Analysis stopped before all websites were processed. Resume to continue the saved queue.')
+      } else if (failed > 0) {
+        toast.warning(`Completed ${completed} of ${persistedProgress?.value.outcomes.length ?? total} website analyses. ${failed} failed; review the Failed analysis filter to retry or correct their URLs.`)
       } else {
         toast.success(`Analyzed ${completed} of ${total} websites.`)
       }
@@ -433,6 +458,7 @@ export function ProspectsPage() {
     } finally {
       setIsEnriching(false)
       setIsReanalyzingAll(false)
+      activePersistedProgressRef.current = null
     }
   }, [queryClient])
 
@@ -440,6 +466,8 @@ export function ProspectsPage() {
     const userId = session?.user.id
     if (!userId) {
       restoredAnalysisUserId.current = null
+      setHasPersistedAnalysisQueue(false)
+      setIsAnalysisPaused(false)
       return
     }
     if (!prospects || restoredAnalysisUserId.current === userId) return
@@ -454,6 +482,8 @@ export function ProspectsPage() {
     }
     if (!progress) return
 
+    setHasPersistedAnalysisQueue(progress.active)
+    setIsAnalysisPaused(progress.active && progress.paused === true)
     let updatedMissingOutcomes = false
     const targets = progress.prospect_ids.flatMap((id) => {
       const prospect = (prospects as Prospect[]).find((item) => item.id === id)
@@ -494,7 +524,7 @@ export function ProspectsPage() {
         error: outcome?.error ?? 'Queued for website analysis',
       }
     }))
-    if (progress.active) {
+    if (progress.active && !progress.paused) {
       if (targets.length) {
         void analyzeProspectWebsites(targets, {
           createDrafts: false,
@@ -533,6 +563,7 @@ export function ProspectsPage() {
     const progress: PersistedAnalysisProgress = {
       version: 1,
       active: true,
+      paused: false,
       prospect_ids: prospectsWithWebsites.map(({ id }) => id),
       outcomes: [],
     }
@@ -550,6 +581,86 @@ export function ProspectsPage() {
       includeVisualReview: false,
       persistedProgress: { userId, value: progress },
     })
+  }
+
+  const handlePauseAnalysis = () => {
+    const activeProgress = activePersistedProgressRef.current
+    if (!activeProgress) return
+
+    pauseRequestedRef.current = true
+    activeProgress.value.paused = true
+    setIsAnalysisPaused(true)
+    try {
+      savePersistedAnalysisProgress(activeProgress.userId, activeProgress.value)
+    } catch (error) {
+      toast.error(error instanceof Error
+        ? `The current analysis will pause, but the pause could not be saved for refresh: ${error.message}`
+        : 'The current analysis will pause, but the pause could not be saved for refresh.')
+    }
+  }
+
+  const handleResumeAnalysis = async () => {
+    const userId = session?.user.id
+    if (!userId) {
+      toast.error('You must be signed in to resume website analysis.')
+      return
+    }
+
+    let progress: PersistedAnalysisProgress | null
+    try {
+      progress = loadPersistedAnalysisProgress(userId)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not load saved website analysis progress.')
+      return
+    }
+    if (!progress?.active || !progress.paused) {
+      toast.error('There is no paused website analysis to resume.')
+      return
+    }
+
+    const targets = progress.prospect_ids.flatMap((id) => {
+      const prospect = prospectRecords.find((item) => item.id === id)
+      return prospect?.website?.trim() ? [prospect] : []
+    })
+    for (const id of progress.prospect_ids) {
+      if (targets.some((prospect) => prospect.id === id) ||
+        progress.outcomes.some((outcome) => outcome.prospect_id === id)) continue
+      progress.outcomes.push({
+        prospect_id: id,
+        analysis_completed: false,
+        analysis_score: null,
+        error: 'This prospect or its website is no longer available.',
+      })
+    }
+
+    progress.paused = false
+    progress.active = progress.outcomes.length < progress.prospect_ids.length
+    try {
+      savePersistedAnalysisProgress(userId, progress)
+    } catch (error) {
+      toast.error(error instanceof Error
+        ? `Could not save the resumed website analysis: ${error.message}`
+        : 'Could not save the resumed website analysis.')
+      return
+    }
+    if (!progress.active) {
+      setIsAnalysisPaused(false)
+      setHasPersistedAnalysisQueue(false)
+      setEnrichmentProgress({ completed: progress.outcomes.length, total: progress.prospect_ids.length })
+      toast.info('There are no remaining websites in this analysis queue.')
+      return
+    }
+
+    await analyzeProspectWebsites(targets, {
+      createDrafts: false,
+      includeVisualReview: false,
+      persistedProgress: { userId, value: progress },
+    })
+  }
+
+  const handleCloseAnalysisProgress = () => {
+    setEnrichmentResults([])
+    setHasPersistedAnalysisQueue(false)
   }
 
   const handleDeleteSelected = () => {
@@ -946,7 +1057,7 @@ export function ProspectsPage() {
 
       {(isEnriching || enrichmentResults.length > 0) && (
         <Card className="p-4 space-y-3">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-3">
             <h3 className="text-sm font-semibold text-slate-800">
               {contactScanMode
                 ? 'Contact lookup'
@@ -956,15 +1067,59 @@ export function ProspectsPage() {
                   ? 'POST-INTAKE ENRICHMENT'
                   : 'Website analysis progress'}
             </h3>
-            {(isEnriching || enrichmentResults.length > 0) && (
-              <span className="text-xs text-slate-500">
-                {contactScanMode
-                  ? `Looking up contacts… ${enrichmentProgress.completed}/${enrichmentProgress.total}`
-                  : isEnriching
-                    ? `Analyzing websites… ${enrichmentProgress.completed}/${enrichmentProgress.total}`
-                    : `Saved progress: ${enrichmentProgress.completed}/${enrichmentProgress.total} processed`}
-              </span>
-            )}
+            <div className="flex shrink-0 items-center gap-3">
+              {(isEnriching || enrichmentResults.length > 0) && (
+                <span className="text-xs text-slate-500">
+                  {contactScanMode
+                    ? `Looking up contacts… ${enrichmentProgress.completed}/${enrichmentProgress.total}`
+                    : isEnriching
+                      ? isAnalysisPaused
+                        ? `Pausing after this batch… ${enrichmentProgress.completed}/${enrichmentProgress.total}`
+                        : `Analyzing websites… ${enrichmentProgress.completed}/${enrichmentProgress.total}`
+                      : `Processed: ${enrichmentProgress.completed} · Remaining: ${Math.max(0, enrichmentProgress.total - enrichmentProgress.completed)}`}
+                </span>
+              )}
+              {hasPersistedAnalysisQueue && isReanalyzingAll && !isAnalysisPaused && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  onClick={handlePauseAnalysis}
+                  ariaLabel="Pause website analysis"
+                  className="min-h-10"
+                >
+                  <Pause className="mr-1 h-4 w-4" />
+                  Pause
+                </Button>
+              )}
+              {hasPersistedAnalysisQueue && isAnalysisPaused && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => void handleResumeAnalysis()}
+                  disabled={isEnriching}
+                  ariaLabel="Resume website analysis"
+                  className="min-h-10"
+                >
+                  <Play className="mr-1 h-4 w-4" />
+                  {isEnriching ? 'Pausing…' : 'Resume'}
+                </Button>
+              )}
+              {!isEnriching && !isAnalysisPaused && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  onClick={handleCloseAnalysisProgress}
+                  ariaLabel="Close analysis progress"
+                  className="min-h-10"
+                >
+                  <X className="h-4 w-4" />
+                  Close
+                </Button>
+              )}
+            </div>
           </div>
           <div className="max-h-64 overflow-auto rounded-lg border border-slate-200">
             <table className="w-full text-xs">

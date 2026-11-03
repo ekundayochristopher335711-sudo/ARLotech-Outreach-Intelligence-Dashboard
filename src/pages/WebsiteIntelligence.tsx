@@ -109,7 +109,12 @@ export function WebsiteIntelligencePage() {
         // Keep the text report available if an optional screenshot cannot be retrieved.
       }
     }))
-    exportWebsiteAnalysisPdf(analysis, screenshotImages)
+    try {
+      await exportWebsiteAnalysisPdf(analysis, screenshotImages)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not download the website report.')
+      return
+    }
     toast.success(Object.keys(screenshotImages).length
       ? 'Website report downloaded with saved screenshots'
       : 'Website report downloaded')

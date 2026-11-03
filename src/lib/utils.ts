@@ -5,6 +5,19 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
+export function getErrorMessage(error: unknown, fallback = 'An unexpected error occurred.'): string {
+  if (error instanceof Error) return error.message
+  if (
+    error &&
+    typeof error === 'object' &&
+    'message' in error &&
+    typeof error.message === 'string'
+  ) {
+    return error.message
+  }
+  return fallback
+}
+
 export function classNames(...classes: (string | false | null | undefined)[]) {
   return classes.filter(Boolean).join(' ')
 }

@@ -88,10 +88,11 @@ export function RepliesPage() {
           </button>
           <button
             type="button"
-            onClick={() => {
-              exportRepliesPdf(repliedMessages, prospectNames)
-              toast.success('Replies exported as PDF')
-            }}
+            onClick={() => void exportRepliesPdf(repliedMessages, prospectNames)
+              .then(() => toast.success('Replies exported as PDF'))
+              .catch((exportError: unknown) =>
+                toast.error(exportError instanceof Error ? exportError.message : 'Could not export replies as PDF.'),
+              )}
             disabled={repliedMessages.length === 0}
             className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
           >

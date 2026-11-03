@@ -162,10 +162,9 @@ export function DashboardPage() {
           <button
             type="button"
             className="blacksite-export"
-            onClick={() => {
-              exportDashboardPdf(metrics, prospects || [], activity || [])
-              toast.success('Intelligence brief exported')
-            }}
+            onClick={() => void exportDashboardPdf(metrics, prospects || [], activity || [])
+              .then(() => toast.success('Intelligence brief exported'))
+              .catch((error: unknown) => toast.error(error instanceof Error ? error.message : 'Could not export the intelligence brief.'))}
           >
             <span>↓</span> EXPORT INTELLIGENCE BRIEF
           </button>
@@ -234,10 +233,10 @@ export function DashboardPage() {
           <p className="text-sm text-slate-500 mt-1">{blacksite ? 'Operational overview // campaign telemetry and field activity' : 'Welcome to your outreach intelligence dashboard'}</p>
         </div>
         <div className="flex gap-2">
-          <button type="button" onClick={() => {
-            exportDashboardPdf(metrics, prospects || [], activity || [])
-            toast.success('Exported as PDF')
-          }} className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50">
+          <button type="button" onClick={() => void exportDashboardPdf(metrics, prospects || [], activity || [])
+            .then(() => toast.success('Exported as PDF'))
+            .catch((error: unknown) => toast.error(error instanceof Error ? error.message : 'Could not export the PDF.'))}
+            className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50">
             {blacksite ? 'EXPORT BRIEF' : 'Export'}
           </button>
         </div>

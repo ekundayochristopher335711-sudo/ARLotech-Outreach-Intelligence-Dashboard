@@ -1,5 +1,21 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { readFileSync } from 'node:fs'
 import { createWebsiteAnalysisPdfBase64 } from './exportPdf'
+
+const standardFavicon = readFileSync(new URL('../../public/favicon-standard.jpg', import.meta.url))
+const blacksiteFavicon = readFileSync(new URL('../../public/favicon-blacksite.png', import.meta.url))
+
+beforeEach(() => {
+  vi.stubGlobal('localStorage', { getItem: () => null })
+  vi.stubGlobal('fetch', vi.fn(async (input: string | URL | Request) => {
+    const isBlacksite = String(input).includes('favicon-blacksite.png')
+    return new Response(isBlacksite ? blacksiteFavicon : standardFavicon, {
+      headers: { 'Content-Type': isBlacksite ? 'image/png' : 'image/jpeg' },
+    })
+  }))
+})
+
+afterEach(() => vi.unstubAllGlobals())
 
 function pdfText(base64: string) {
   return [...atob(base64).matchAll(/\(((?:\\.|[^\\)])*)\)\s*Tj/g)]
@@ -28,21 +44,31 @@ function pdfPages(base64: string) {
 }
 
 describe('website audit PDF', () => {
-  it('includes all unique measured observations and only verified recipient names', () => {
+  it('creates a three-page, plain-English report with the same three issues in its summary and detail', async () => {
     const findings = Array.from({ length: 9 }, (_, index) => ({
       id: `ps-audit-${index}`,
       source: 'lighthouse',
-      title: `Measured finding ${index + 1}`,
-      audit_id: `audit-${index}`,
+      title: [
+        'Largest Contentful Paint',
+        'Total Blocking Time',
+        'Cumulative Layout Shift',
+        ...Array.from({ length: 6 }, (_value, findingIndex) => `Unrecognized internal check ${findingIndex + 1}`),
+      ][index],
+      audit_id: [
+        'largest-contentful-paint',
+        'total-blocking-time',
+        'cumulative-layout-shift',
+        ...Array.from({ length: 6 }, (_value, findingIndex) => `internal-check-${findingIndex + 1}`),
+      ][index],
       category: 'performance',
       lighthouse_score_pct: 50,
+      priority: index < 3 ? 'high' : 'low',
       affected_resources: [],
     }))
-    const report = pdfText(createWebsiteAnalysisPdfBase64({
+    const base64 = await createWebsiteAnalysisPdfBase64({
       website_url: 'https://example.com',
       analyzed_at: '2026-10-27T12:00:00.000Z',
-      category_scores: { performance: 90, seo: 80 },
-      overall_score: 85,
+      category_scores: { performance: 90, seo: 90, accessibility: 90, 'best-practices': 90 },
       findings,
       ai_analysis: {
         visual_audit: {
@@ -66,34 +92,56 @@ describe('website audit PDF', () => {
         },
       },
       prospect: { business_name: 'Unverified CRM Name', business_name_verified: false },
-    }))
+    })
+    const report = pdfText(base64)
+    const pages = pdfPages(base64)
 
-    expect(report).toContain('Overall website score')
-    expect(report).toContain('Our overall website score is unavailable')
-    expect(report).toContain('WHAT WE FOUND (9 MEASURED OBSERVATIONS)')
+    expect(pages).toHaveLength(3)
+    expect(report).toContain('Website health score')
+    expect(report).toContain('Top customer friction points (3)')
+    expect(report).toContain('PRIORITY CUSTOMER ISSUES (3)')
     expect(report).toContain('Prepared for: example.com')
     expect(report).not.toContain('Unverified CRM Name')
-    expect(report).toContain('9. Measured finding 9')
-    expect(report).toContain('VISUAL REVIEW TO VALIDATE (1 OBSERVATIONS)')
-    expect(report).toContain('Heading clipped on mobile')
-    expect(report).toContain('Why it may matter: Visitors may not see the complete heading')
-    expect(report).toContain('tool-assisted observations')
-    expect(report).not.toMatch(/\bAI\b|Gemini/)
-    expect(report).toContain('We did not test menus, forms, or other controls')
+    expect(report).toContain('The main page content takes too long to appear')
+    expect(report).toContain('The page may take too long to respond')
+    expect(report).toContain('Page content may move while it loads')
+    expect(report).not.toContain('Unrecognized internal check')
+    expect(report).not.toMatch(/\bLighthouse\b|\bPageSpeed\b|\bKiB\b|\bDOM\b|\bARIA\b|\bTBT\b|\bFCP\b|\bLCP\b/)
+    expect(report).not.toContain('user-id/analysis-id')
+    expect(report).toContain('book a 10-minute website review call')
   })
 
-  it('uses a business name as the recipient only when explicitly verified', () => {
-    const report = pdfText(createWebsiteAnalysisPdfBase64({
+  it('uses the verified recipient name and selected favicon in the PDF header', async () => {
+    const reportBase64 = await createWebsiteAnalysisPdfBase64({
       website_url: 'https://example.com',
       category_scores: {},
       findings: [],
-    }, { businessName: 'Example Legal', verified: true }))
+    }, { businessName: 'Example Legal', verified: true })
+    const report = pdfText(reportBase64)
 
     expect(report).toContain('Prepared for: Example Legal')
+    expect(atob(reportBase64)).toContain('/Subtype /Image')
+    expect(pdfPages(await createWebsiteAnalysisPdfBase64({
+      website_url: 'https://example.com',
+      category_scores: {},
+      findings: [],
+    }, { businessName: 'Example Legal', verified: true }))).toHaveLength(3)
   })
 
-  it('includes the exact optimization opportunity and incomplete capture limitation for the attached report', () => {
-    const report = pdfText(createWebsiteAnalysisPdfBase64({
+  it('uses the blacksite favicon when the blacksite theme is selected', async () => {
+    vi.stubGlobal('localStorage', { getItem: () => 'blacksite' })
+
+    await createWebsiteAnalysisPdfBase64({
+      website_url: 'https://example.com',
+      category_scores: {},
+      findings: [],
+    })
+
+    expect(fetch).toHaveBeenCalledWith(expect.stringContaining('favicon-blacksite.png'))
+  })
+
+  it('omits technical diagnostics and unverified savings rather than making contradictory claims', async () => {
+    const base64 = await createWebsiteAnalysisPdfBase64({
       website_url: 'https://www.amigodev.com.ng',
       analyzed_at: '2026-10-30T12:00:00.000Z',
       overall_score: 100,
@@ -138,18 +186,22 @@ describe('website audit PDF', () => {
           observations: [],
         },
       },
-    }))
+    })
+    const report = pdfText(base64)
 
-    expect(report).toContain('Some JavaScript may not be needed when the page first loads')
-    expect(report).toContain('23 KiB savings')
-    expect(report).toContain('50 ms')
-    expect(report).toContain('not confirmed defects')
-    expect(report).toContain('BOOT_ERROR')
+    expect(pdfPages(base64)).toHaveLength(3)
+    expect(atob(base64)).toContain('/Subtype /Image')
     expect(report).toContain('100 / 100')
+    expect(report).not.toContain('23 KiB')
+    expect(report).not.toContain('50 ms')
+    expect(report).not.toContain('BOOT_ERROR')
+    expect(report).not.toMatch(/\bLighthouse\b|\bPageSpeed\b|\bJavaScript\b/)
+    expect(report).toContain('No confirmed customer friction points')
+    expect(report).toContain('The issues in this review are opportunities')
   })
 
-  it('keeps the Double C Plumbing classifications consistent and summarizes Good results on the final page', () => {
-    const base64 = createWebsiteAnalysisPdfBase64({
+  it('shows only the highest-priority customer issues and ends with a direct business-focused call to action', async () => {
+    const base64 = await createWebsiteAnalysisPdfBase64({
       website_url: 'https://doublecplumbing.example',
       analyzed_at: '2026-10-31T12:00:00.000Z',
       category_scores: {
@@ -202,46 +254,42 @@ describe('website audit PDF', () => {
     })
     const pages = pdfPages(base64)
     const fullReport = pdfText(base64)
-    const finalPage = pages.at(-1) || ''
-    const mainProblemPages = pages.slice(0, -1)
+    const executivePage = pages[0] || ''
+    const issuePage = pages[1] || ''
+    const finalPage = pages[2] || ''
 
-    expect(pages.length).toBeGreaterThan(1)
+    expect(pages).toHaveLength(3)
     expect(pages.every((page) => page.includes('ARLOTECH'))).toBe(true)
-    expect(pages.map((page) => page.includes('REPORT - CONTINUED')))
-      .toEqual([false, ...Array(pages.length - 1).fill(true)])
-    expect(fullReport).toContain('performance 50')
-    expect(fullReport).toContain('50 / 100 · Needs Improvement')
-    expect(fullReport).toContain('91 / 100 · Good')
-    expect(fullReport).toContain('93 / 100 · Good')
-    expect(fullReport).toContain('96 / 100 · Good')
-    expect(mainProblemPages.join('\n')).toContain('Largest Contentful Paint')
-    expect(mainProblemPages.join('\n')).toContain('Needs Improvement')
-    expect(mainProblemPages.join('\n')).toContain('Total Blocking Time')
-    expect(mainProblemPages.join('\n')).toContain('Poor')
-    expect(mainProblemPages.join('\n')).toContain('We recommend reviewing the main content and the resources needed to display it.')
-    expect(mainProblemPages.join('\n')).toContain('We recommend reviewing the scripts and page work identified by Lighthouse')
-    expect(mainProblemPages.join('\n')).not.toContain('Speed Index')
-    expect(finalPage).toContain('WHAT IS WORKING WELL')
-    expect(finalPage).toContain('Speed Index: 2.7 s')
-    expect(finalPage).toContain('SEO: 91 / 100')
-    expect(finalPage).toContain('Accessibility: 93 / 100')
-    expect(finalPage).toContain('Best Practices: 96 / 100')
-    expect(finalPage.match(/Good/g)).toHaveLength(4)
-    expect(finalPage).toContain('NEXT STEPS')
+    expect(executivePage).toContain('Top customer friction points (2)')
+    expect(issuePage).toContain('PRIORITY CUSTOMER ISSUES (2)')
+    expect(issuePage).toContain('The main page content takes too long to appear')
+    expect(issuePage).toContain('The page may take too long to respond')
+    expect(issuePage).not.toContain('Speed Index')
+    expect(issuePage).not.toContain('Affected file or page address')
+    expect(finalPage).toContain('PROTECT YOUR REPUTATION')
+    expect(finalPage).toContain('Reply to the email')
+    expect(finalPage).toContain('book a 10-minute website review call')
+    expect(fullReport).not.toMatch(/\bLighthouse\b|\bPageSpeed\b|\bLargest Contentful Paint\b|\bTotal Blocking Time\b/)
+    expect(fullReport).not.toContain('A practical improvement plan')
   })
 
-  it('adds a client-facing executive summary and practical next-step plan', () => {
-    const report = pdfText(createWebsiteAnalysisPdfBase64({
+  it('keeps an empty or incomplete assessment within three pages', async () => {
+    const base64 = await createWebsiteAnalysisPdfBase64({
       website_url: 'https://example.com',
       analyzed_at: '2026-11-02T10:00:00.000Z',
-      category_scores: { performance: 72, seo: 81, accessibility: 76, 'best-practices': 88 },
+      category_scores: { performance: 72 },
+      overall_score: 100,
       findings: [],
       positive_observations: [],
       ai_analysis: {},
-    }))
-    expect(report).toContain('EXECUTIVE SUMMARY')
-    expect(report).toContain('A PRACTICAL IMPROVEMENT PLAN')
-    expect(report).toContain('request a project-specific quote')
+    })
+    const report = pdfText(base64)
+    const pages = pdfPages(base64)
+    expect(report).toContain('YOUR WEBSITE AT A GLANCE')
+    expect(report).toContain('Top customer friction points (0)')
+    expect(report).toContain('We could not calculate a reliable overall score')
+    expect(report).not.toContain('100 / 100')
+    expect(pages).toHaveLength(3)
   })
 
 })

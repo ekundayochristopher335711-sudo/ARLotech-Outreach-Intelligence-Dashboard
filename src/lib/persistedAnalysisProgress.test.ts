@@ -19,6 +19,7 @@ describe('persisted website analysis progress', () => {
     const progress: PersistedAnalysisProgress = {
       version: 1,
       active: true,
+      paused: true,
       prospect_ids: ['prospect-1', 'prospect-2'],
       outcomes: [{
         prospect_id: 'prospect-1',

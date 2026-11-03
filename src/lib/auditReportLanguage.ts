@@ -127,6 +127,58 @@ export function auditFindingEmailTopic(finding: AuditFindingInput) {
   return 'a website improvement'
 }
 
+export function auditFindingBusinessTitle(finding: AuditFindingInput) {
+  const searchText = `${finding.audit_id || ''} ${finding.id || ''} ${finding.title || ''}`
+  if (/largest-contentful-paint|\blcp\b/i.test(searchText)) return 'The main page content takes too long to appear'
+  if (/total-blocking-time|\btbt\b|forced-reflow/i.test(searchText)) return 'The page may take too long to respond'
+  if (/cumulative-layout-shift|\bcls\b/i.test(searchText)) return 'Page content may move while it loads'
+  if (/render.blocking|unused.javascript|unused.css/i.test(searchText)) return 'Page files may delay content from appearing'
+  if (/server-response-time|document-request-latency|time-to-first-byte/i.test(searchText)) return 'The website may take too long to start loading'
+  if (/document-title|html-title|meta-description|content-meta|canonical|crawlable|robots\.txt/i.test(searchText)) {
+    return 'Search engines may have difficulty understanding or finding this page'
+  }
+  if (/color-contrast/i.test(searchText)) return 'Some text may be difficult for visitors to read'
+  if (/image-alt|image.*alt|content-alt/i.test(searchText)) return 'Some visitors may not be able to understand important images'
+  if (/image|font-display/i.test(searchText)) return 'Images or text may take too long to appear'
+  if (/content-h1|h1|heading/i.test(searchText)) return 'The page may not clearly explain what the business offers'
+  if (/performance/i.test(finding.category || '')) return 'The page may feel slow or difficult to use'
+  if (/seo/i.test(finding.category || '')) return 'Customers may have difficulty finding or understanding this page'
+  if (/accessibility/i.test(finding.category || '')) return 'Some visitors may find this page difficult to use'
+  return 'A website issue may be creating friction for visitors'
+}
+
+export function auditFindingBusinessImpact(finding: AuditFindingInput) {
+  const searchText = `${finding.audit_id || ''} ${finding.id || ''} ${finding.title || ''}`
+  if (/image-alt|image.*alt|content-alt|color-contrast|accessibility/i.test(searchText)) {
+    return 'Some people may struggle to read or use this part of the site, making it harder for them to contact your business.'
+  }
+  if (/largest-contentful-paint|\blcp\b|render.blocking|unused.javascript|unused.css|server-response-time|document-request-latency|image|font-display/i.test(searchText)) {
+    return 'A longer wait can frustrate potential customers and may give them a reason to leave before they contact you.'
+  }
+  if (/total-blocking-time|\btbt\b|forced-reflow/i.test(searchText)) {
+    return 'If the page is slow to respond, visitors may struggle to use it or reach the information they need.'
+  }
+  if (/cumulative-layout-shift|\bcls\b/i.test(searchText)) {
+    return 'Moving text or buttons can confuse visitors and make it harder to choose the right next step.'
+  }
+  if (/document-title|html-title|meta-description|content-meta|canonical|crawlable|robots\.txt/i.test(searchText)) {
+    return 'If search engines have trouble understanding this page, nearby customers may have a harder time finding your business online.'
+  }
+  if (/content-h1|h1|heading/i.test(searchText)) {
+    return 'Visitors who cannot quickly understand what you offer may leave without taking the next step.'
+  }
+  if (/performance/i.test(finding.category || '')) {
+    return 'A frustrating page experience may cause potential customers to leave before they contact you.'
+  }
+  if (/seo/i.test(finding.category || '')) {
+    return 'This may make it harder for people searching for your service to understand or find the page.'
+  }
+  if (/accessibility/i.test(finding.category || '')) {
+    return 'Some visitors may find it harder to get the information or help they came for.'
+  }
+  return 'If this issue affects a key page, it may make it harder for visitors to trust your business or get in touch.'
+}
+
 export function auditFindingWhy(finding: AuditFindingInput) {
   const copy = getFindingCopy(finding)
   if (copy) return copy.whyItMatters

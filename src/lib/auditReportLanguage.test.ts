@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
+  auditFindingBusinessImpact,
+  auditFindingBusinessTitle,
   auditFindingRecommendation,
   auditFindingTitle,
   auditFindingWhy,
@@ -7,6 +9,18 @@ import {
 } from './auditReportLanguage'
 
 describe('client-friendly audit language', () => {
+  it('gives business owners a plain-language title and customer impact', () => {
+    const finding = {
+      audit_id: 'largest-contentful-paint',
+      title: 'Largest Contentful Paint',
+      category: 'performance',
+    }
+
+    expect(auditFindingBusinessTitle(finding)).toBe('The main page content takes too long to appear')
+    expect(auditFindingBusinessImpact(finding)).toContain('potential customers')
+    expect(auditFindingBusinessTitle(finding)).not.toMatch(/Lighthouse|PageSpeed|LCP/i)
+  })
+
   it('explains common Lighthouse findings without losing their technical names', () => {
     const finding = {
       audit_id: 'largest-contentful-paint',

@@ -8,6 +8,7 @@ export interface PersistedAnalysisOutcome {
 export interface PersistedAnalysisProgress {
   version: 1
   active: boolean
+  paused?: boolean
   prospect_ids: string[]
   outcomes: PersistedAnalysisOutcome[]
 }
@@ -26,6 +27,7 @@ function isProgress(value: unknown): value is PersistedAnalysisProgress {
   const progress = value as Partial<PersistedAnalysisProgress>
   return progress.version === 1 &&
     typeof progress.active === 'boolean' &&
+  (progress.paused === undefined || typeof progress.paused === 'boolean') &&
     Array.isArray(progress.prospect_ids) &&
     progress.prospect_ids.every((id) => typeof id === 'string') &&
     Array.isArray(progress.outcomes) &&
