@@ -288,7 +288,7 @@ export function generateProfessionalEmailDraft(input: {
     : []
 
   if (selectedObservations.length) {
-    lines.push(`Our review highlighted that ${selectedObservations.map((item) => item.title.toLowerCase()).join(' and ')}. ${selectedObservations[0].why}`)
+    lines.push(`Our website review highlighted ${selectedObservations.length === 1 ? 'a possible point of friction for visitors' : 'a couple of possible points of friction for visitors'}: ${selectedObservations.map((item) => item.title.toLowerCase()).join(' and ')}. ${selectedObservations[0].why}`)
     if (selectedObservations.length > 1) lines.push(selectedObservations[1].why)
     lines.push('')
   } else if (analysis && !['no_website', 'cold_outreach'].includes(strategy)) {

@@ -108,6 +108,8 @@ describe('outreach eligibility and previews', () => {
     expect(preview.selected_finding?.id).toBe('unused-javascript')
     expect(preview.body).toMatch(/extra website features may slow down taps and clicks/i)
     expect(preview.body).toContain('especially on a phone')
+    expect(preview.body).toContain('Our website review of AmigoDev')
+    expect(preview.body).toContain('a possible point of friction for visitors')
     expect(preview.body).not.toMatch(/23 KiB|50 ms|PageSpeed|Lighthouse|JavaScript|score/i)
     expect(preview.subject).toBe('A website idea for AmigoDev: faster page loading')
     expect(preview.internal_note).toContain('Extra website features may slow down taps and clicks')
@@ -208,7 +210,10 @@ describe('outreach eligibility and previews', () => {
       ...preview,
       body: preview.body.replace(/extra website features may slow down taps and clicks/i, 'a 23 KiB JavaScript issue'),
     }, prospect(), audit)).toThrow('contains technical language')
-    expect(() => validateOutreachPreview({ ...preview, body: preview.body.replace('We reviewed', 'I reviewed') }, prospect(), audit))
+    expect(() => validateOutreachPreview({
+      ...preview,
+      body: preview.body.replace('Our website review of AmigoDev', "I reviewed AmigoDev"),
+    }, prospect(), audit))
       .toThrow('company voice')
     expect(() => validateOutreachPreview({ ...preview, subject: 'A quick hello, AmigoDev' }, prospect(), audit))
       .toThrow('company voice')

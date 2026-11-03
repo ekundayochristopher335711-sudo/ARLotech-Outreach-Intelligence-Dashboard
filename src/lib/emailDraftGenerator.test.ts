@@ -49,6 +49,7 @@ describe('professional email draft generation', () => {
     })
 
     expect(result.body).toMatch(/some text may be difficult for visitors to read/i)
+    expect(result.body).toContain('Our website review highlighted a possible point of friction for visitors')
     expect(result.body).not.toMatch(/94\/100|92\/100|91\/100|2\.1:1|Lighthouse|PageSpeed|score/i)
     expect(result.body).toContain('not pitching a costly, full website redesign')
     expect(result.observationsUsed).toHaveLength(1)

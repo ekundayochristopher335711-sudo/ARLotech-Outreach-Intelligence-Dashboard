@@ -246,7 +246,7 @@ export function createOutreachPreview(
   const body = [
     `Hi ${greetingName},`,
     '',
-    `We reviewed ${name}'s website and noticed a possible improvement: ${title.toLowerCase()}. ${impact}`,
+    `Our website review of ${name}'s site highlighted a possible point of friction for visitors: ${title.toLowerCase()}. ${impact}`,
     '',
     'We are not pitching a costly, full website redesign. Small, targeted changes may make it easier for customers to understand your services and get in touch.',
     '',
