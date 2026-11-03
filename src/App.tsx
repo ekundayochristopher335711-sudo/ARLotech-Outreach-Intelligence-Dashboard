@@ -24,6 +24,7 @@ const FollowUpsPage = lazy(() => import('@/pages/FollowUps').then((module) => ({
 const EmailDraftsPage = lazy(() => import('@/pages/EmailDrafts').then((module) => ({ default: module.EmailDraftsPage })))
 const WebsiteIntelligencePage = lazy(() => import('@/pages/WebsiteIntelligence').then((module) => ({ default: module.WebsiteIntelligencePage })))
 const AnalyticsDashboard = lazy(() => import('@/pages/Analytics').then((module) => ({ default: module.AnalyticsDashboard })))
+const GrowthCenterPage = lazy(() => import('@/pages/GrowthCenter').then((module) => ({ default: module.GrowthCenterPage })))
 const SettingsPage = lazy(() => import('@/pages/Settings').then((module) => ({ default: module.SettingsPage })))
 
 function PageLoading() {
@@ -128,6 +129,7 @@ function AppShell() {
     '/replies': { title: 'INTERCEPTS', sub: 'INBOUND SIGNALS & RESPONSE TRIAGE' },
     '/follow-ups': { title: 'EXTRACTION QUEUE', sub: 'PENDING CONTACT RECOVERY' },
     '/analytics': { title: 'SIGNAL ANALYSIS', sub: 'PERFORMANCE INTELLIGENCE' },
+    '/growth-center': { title: 'GROWTH OPERATIONS', sub: 'PROSPECT PRIORITY & CLIENT CONVERSION' },
     '/settings': { title: 'SYSTEM CONTROLS', sub: 'NODE CONFIGURATION' },
   }
   const activeBlacksiteCopy = blacksiteCopy[location.pathname] || (location.pathname.startsWith('/prospects/') ? { title: 'TARGET DOSSIER', sub: 'RECORD INTELLIGENCE' } : { title: 'FIELD OPERATIONS', sub: 'INTELLIGENCE CHANNEL ACTIVE' })
@@ -180,6 +182,7 @@ function AppShell() {
                 <Route path="email-drafts" element={<EmailDraftsPage />} />
                 <Route path="website-intelligence" element={<WebsiteIntelligencePage />} />
                 <Route path="analytics" element={<AnalyticsDashboard />} />
+                <Route path="growth-center" element={<GrowthCenterPage />} />
                 <Route path="settings" element={<SettingsPage />} />
               </Routes>
             </Suspense>

@@ -229,4 +229,19 @@ describe('website audit PDF', () => {
     expect(finalPage.match(/Good/g)).toHaveLength(4)
     expect(finalPage).toContain('NEXT STEPS')
   })
+
+  it('adds a client-facing executive summary and practical next-step plan', () => {
+    const report = pdfText(createWebsiteAnalysisPdfBase64({
+      website_url: 'https://example.com',
+      analyzed_at: '2026-11-02T10:00:00.000Z',
+      category_scores: { performance: 72, seo: 81, accessibility: 76, 'best-practices': 88 },
+      findings: [],
+      positive_observations: [],
+      ai_analysis: {},
+    }))
+    expect(report).toContain('EXECUTIVE SUMMARY')
+    expect(report).toContain('A PRACTICAL IMPROVEMENT PLAN')
+    expect(report).toContain('request a project-specific quote')
+  })
+
 })

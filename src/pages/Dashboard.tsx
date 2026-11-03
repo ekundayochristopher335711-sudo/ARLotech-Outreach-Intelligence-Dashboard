@@ -31,6 +31,8 @@ export function DashboardPage() {
         { count: contactedProspects, error: contactedError },
         { count: sentEmails, error: sentError },
         { count: receivedReplies, error: repliesError },
+        { count: followUpsDue, error: followUpsError },
+        { data: statusRows, error: statusError },
       ] = await Promise.all([
         supabase.from('prospects').select('id', { count: 'exact', head: true }).eq('user_id', userId),
         supabase
@@ -49,18 +51,20 @@ export function DashboardPage() {
           .select('id', { count: 'exact', head: true })
           .eq('user_id', userId)
           .eq('direction', 'inbound'),
+        supabase.from('follow_up_sequences').select('id', { count: 'exact', head: true }).eq('user_id', userId).eq('status', 'Active').lte('next_action_at', new Date().toISOString()),
+        supabase.from('prospects').select('status').eq('user_id', userId),
       ])
-      const queryError = prospectsError || contactedError || sentError || repliesError
+      const queryError = prospectsError || contactedError || sentError || repliesError || followUpsError || statusError
       if (queryError) throw queryError
       return {
         total_prospects: totalProspects ?? 0,
         prospects_contacted: contactedProspects ?? 0,
         emails_sent: sentEmails ?? 0,
         replies_received: receivedReplies ?? 0,
-        interested_prospects: 0,
-        follow_ups_due: 0,
-        meetings_booked: 0,
-        clients_won: 0,
+        interested_prospects: (statusRows || []).filter((row: { status: string }) => row.status === 'Interested').length,
+        follow_ups_due: followUpsDue ?? 0,
+        meetings_booked: (statusRows || []).filter((row: { status: string }) => row.status === 'Meeting Booked').length,
+        clients_won: (statusRows || []).filter((row: { status: string }) => row.status === 'Won').length,
       } satisfies DashboardMetrics
     },
   })
@@ -205,6 +209,14 @@ export function DashboardPage() {
             </footer>
           </article>
         </section>
+        <section className="blacksite-panel blacksite-conversion-panel">
+          <header className="blacksite-panel-head"><div><span className="blacksite-panel-index">03 / CONVERSION SIGNALS</span><h2>PIPELINE MOMENTUM</h2></div><span className="blacksite-record-count">LIVE COUNTS</span></header>
+          <div className="grid grid-cols-2 gap-3 p-4 md:grid-cols-4">
+            {[['INTERESTED', metrics?.interested_prospects ?? 0], ['MEETINGS', metrics?.meetings_booked ?? 0], ['WON', metrics?.clients_won ?? 0], ['FOLLOW-UPS DUE', metrics?.follow_ups_due ?? 0]].map(([label, value]) => <div key={label} className="rounded border border-white/10 bg-black/20 p-3"><strong className="block text-2xl text-amber-300">{value}</strong><span className="text-[10px] tracking-widest text-slate-400">{label}</span></div>)}
+          </div>
+          <footer className="blacksite-panel-foot"><span>PRIORITIZE REPLIES AND OVERDUE FOLLOW-UPS</span><button type="button" onClick={() => navigate('/follow-ups')}>OPEN FOLLOW-UP QUEUE ↗</button></footer>
+        </section>
+
         <div className="blacksite-deck-footer">
           <span>ARLOTECH INTELLIGENCE SYSTEMS</span>
           <span>NODE 09 <i /> SESSION ACTIVE</span>
@@ -253,6 +265,19 @@ export function DashboardPage() {
           icon={<svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z"/></svg>}
         />
       </div>
+
+      <Card className="border-amber-200 bg-gradient-to-r from-amber-50 via-white to-white">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div><p className="text-xs font-bold uppercase tracking-[0.18em] text-amber-700">Conversion snapshot</p><h2 className="mt-1 text-lg font-semibold text-slate-900">Turn conversations into customers</h2><p className="mt-1 max-w-2xl text-sm text-slate-600">Keep warm leads moving. Review replies first, then clear follow-ups due today.</p></div>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" onClick={() => navigate('/replies')} className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-700">Review replies ({metrics?.replies_received ?? 0})</button>
+            <button type="button" onClick={() => navigate('/follow-ups')} className="rounded-lg border border-amber-300 bg-white px-4 py-2 text-sm font-semibold text-amber-900 hover:bg-amber-100">Follow-ups due ({metrics?.follow_ups_due ?? 0})</button>
+          </div>
+        </div>
+        <div className="mt-4 grid grid-cols-2 gap-3 border-t border-amber-100 pt-4 sm:grid-cols-4">
+          {[['Interested', metrics?.interested_prospects ?? 0], ['Meetings booked', metrics?.meetings_booked ?? 0], ['Customers won', metrics?.clients_won ?? 0], ['Reply rate', `${(metrics?.emails_sent ?? 0) > 0 ? Math.round(((metrics?.replies_received ?? 0) / (metrics?.emails_sent ?? 1)) * 100) : 0}%`]].map(([label, value]) => <div key={label}><p className="text-2xl font-bold text-slate-900">{value}</p><p className="text-xs text-slate-500">{label}</p></div>)}
+        </div>
+      </Card>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <Card className="lg:col-span-2">

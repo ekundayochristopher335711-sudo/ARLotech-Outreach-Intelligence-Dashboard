@@ -8,6 +8,12 @@ export const OUTREACH_STRATEGIES = [
   'website_redesign',
   'business_growth',
   'personal_consultancy',
+  'cold_outreach',
+  'no_website',
+  'seo_performance',
+  'interested_response',
+  'pricing_response',
+  'meeting_request',
 ] as const
 
 export type OutreachStrategy = typeof OUTREACH_STRATEGIES[number]
@@ -181,7 +187,13 @@ function subjectOptions(name: string, strategy: OutreachStrategy, topic?: string
         ? 'A website improvement to consider'
         : strategy === 'personal_consultancy'
           ? 'A quick note about your website'
-          : `A website review for ${business}`
+          : strategy === 'no_website'
+            ? `A website idea for ${business}`
+            : strategy === 'cold_outreach'
+              ? `A quick introduction from Arlotech`
+              : strategy === 'seo_performance'
+                ? `Search visibility and website performance for ${business}`
+                : `A website review for ${business}`
   return [...new Set([
     strategySubject,
     `A quick website observation for ${business}`,
@@ -201,6 +213,7 @@ export function generateProfessionalEmailDraft(input: {
   signature?: Partial<OutreachSignature>
   followUpStage?: FollowUpStage
   originalSubject?: string
+  senderContext?: string
 }) : GeneratedEmailDraft {
   const {
     prospect,
@@ -238,6 +251,26 @@ export function generateProfessionalEmailDraft(input: {
     ? input.originalSubject.replace(/^(Re:\s*)+/i, '').trim()
     : ''
   const topic = observations[0]?.title || originalTopic || 'website experience'
+  const senderContext = input.senderContext?.trim()
+  const contextualReply = strategy === 'interested_response' || strategy === 'pricing_response' || strategy === 'meeting_request'
+  if (contextualReply && followUpStage === 'none') {
+    const contextLine = senderContext ? `\n\n${senderContext}` : ''
+    const replyBody = strategy === 'interested_response'
+      ? `Hi ${greetingName},\n\nThank you for getting back to us. We appreciate your interest in exploring improvements to ${name}'s online presence.\n\nThe best next step is to understand what you want the website to achieve, what is working well today, and what you would like to improve. From there, we can suggest a sensible scope rather than recommending work you may not need.${contextLine}\n\nWould you be available for a brief conversation this week?\n\nKind regards,\n${signoff(tone, signature).split('\n').slice(1).join('\n')}`
+      : strategy === 'pricing_response'
+        ? `Hi ${greetingName},\n\nThanks for asking about pricing. The cost depends on the scope of work, the pages or features required, and whether this is a new website, a redesign, or improvements to an existing site.\n\nWe would rather confirm what you need first and give you a clear quote than suggest a figure that does not match the project.${contextLine}\n\nIf you share a little about what you have in mind, we can outline the most suitable option and its cost.\n\nKind regards,\n${signoff(tone, signature).split('\n').slice(1).join('\n')}`
+        : `Hi ${greetingName},\n\nThanks for considering Arlotech Digital Solutions. It would be useful to arrange a short call to understand your goals for ${name}'s website and agree on the most practical next steps.${contextLine}\n\nWould you be available for a 15-minute conversation? Feel free to suggest a day and time that works for you.\n\nKind regards,\n${signoff(tone, signature).split('\n').slice(1).join('\n')}`
+    const replySubject = strategy === 'pricing_response' ? `Re: Website project pricing for ${name}` : strategy === 'meeting_request' ? `A quick call about ${name}'s website` : `Re: ${name} website enquiry`
+    return {
+      subjectSuggestions: [replySubject, `Next steps for ${name}`, `Arlotech Digital Solutions | ${name}`],
+      body: replyBody,
+      personalization: [`Business: ${name}`, ...(prospect.website ? [`Website: ${prospect.website}`] : []), ...(industry ? [`Industry: ${industry}`] : [])],
+      observationsUsed: [],
+      qualityChecks: ['Written as a response type selected by the operator; verify the conversation context before sending.', senderContext ? 'Additional context supplied by the operator.' : 'No price, delivery date, or project scope was invented.'],
+      includesReportReference: false,
+      wordCount: wordCount(replyBody),
+    }
+  }
   if (followUpStage !== 'none') {
     const stageOpening = followUpStage === 'first'
       ? `We wanted to check whether ${topic.toLowerCase()} is something you would be open to discussing.`
@@ -245,6 +278,10 @@ export function generateProfessionalEmailDraft(input: {
         ? `We wanted to briefly follow up about ${topic.toLowerCase()} in case it is useful to your team.`
         : `We will leave it here for now regarding ${topic.toLowerCase()}.`
     lines.push(stageOpening)
+  } else if (strategy === 'no_website') {
+    lines.push(`We came across ${name}${industry ? ` while looking at ${industry.toLowerCase()} businesses` : ''}. We couldn't find a website associated with your business in the information available to us, so we wanted to reach out in case building one is something you have been considering.`)
+  } else if (strategy === 'cold_outreach') {
+    lines.push(`We came across ${name}${industry ? ` while researching ${industry.toLowerCase()} businesses` : ''} and wanted to briefly introduce Arlotech Digital Solutions. We build and improve websites for businesses that want a clearer, more useful online presence.`)
   } else if (prospect.website && analysis) {
     lines.push(toneOpening(tone, name))
   } else {
@@ -255,8 +292,10 @@ export function generateProfessionalEmailDraft(input: {
     lines.push(`Our review found strong results in ${strengths.slice(0, 3).join(', ')}.`, '')
   }
 
-  const strategyObservation = strategy === 'technical_improvement'
-    ? observations.find((item) => /speed|performance|load|javascript|css|blocking|response|accessibility|contrast|seo|search/i.test(item.title))
+  const strategyObservation = ['no_website', 'cold_outreach'].includes(strategy)
+    ? undefined
+    : (strategy === 'technical_improvement' || strategy === 'seo_performance')
+      ? observations.find((item) => /speed|performance|load|javascript|css|blocking|response|accessibility|contrast|seo|search/i.test(item.title))
     : strategy === 'website_redesign'
       ? observations.find((item) => item.visual)
       : strategy === 'business_growth'
@@ -276,15 +315,19 @@ export function generateProfessionalEmailDraft(input: {
     lines.push('')
   } else if (strategy === 'website_redesign' && !observations.some((item) => item.visual)) {
     lines.push('We do not have a verified visual observation to support a redesign recommendation, so we would be glad to discuss your goals before suggesting changes.', '')
-  } else if (analysis && strengths.length) {
+  } else if (analysis && strengths.length && !['no_website', 'cold_outreach'].includes(strategy)) {
     lines.push('We did not identify a confirmed issue that warrants a problem-focused message, so we would be happy to discuss optional refinements if they are relevant to your plans.', '')
-  } else if (!analysis || !observations.length) {
+  } else if ((!analysis || !observations.length) && !['no_website', 'cold_outreach'].includes(strategy)) {
     lines.push('We do not have enough verified website review information to make a technical claim, so we will not guess at specific issues.', '')
   }
 
-  const valueLine = industryContext
-    ? `We help businesses consider practical website improvements, including ${industryContext}.`
-    : 'We help businesses plan and deliver practical website improvements, from refinements to new development.'
+  const valueLine = strategy === 'no_website'
+    ? 'We can help plan and build a responsive website that explains your services, showcases your work, and gives potential customers a straightforward way to contact you.'
+    : strategy === 'seo_performance'
+      ? analysis ? 'We help businesses improve the technical foundations and search visibility of their websites, with recommendations based on measured results rather than guesswork.' : 'We can review the technical foundations and search visibility of your website, then recommend practical improvements based on what the checks show.'
+      : industryContext
+        ? `We help businesses improve their websites, including ${industryContext}.`
+        : 'We design, build, and improve business websites, from focused landing pages to larger custom web experiences.'
   lines.push(valueLine)
 
   if (strategy === 'business_growth' && industryContext) {
@@ -296,6 +339,7 @@ export function generateProfessionalEmailDraft(input: {
   } else {
     lines.push('We would be happy to talk through the observation and whether any next step makes sense for your business.')
   }
+  if (senderContext) lines.push(`Additional project detail: ${senderContext}`)
   lines.push('')
 
   if (includeReport && analysis && prospect.website) {
@@ -304,7 +348,11 @@ export function generateProfessionalEmailDraft(input: {
 
   const cta = followUpStage === 'final'
     ? 'If this is not a priority right now, no problem. We will leave it there, and the door remains open if circumstances change.'
-    : tone === 'direct'
+    : strategy === 'no_website'
+      ? 'Would you be open to seeing a simple outline of what a website for your business could include?'
+      : strategy === 'cold_outreach'
+        ? 'Would it be useful if we sent over a couple of ideas for your online presence?'
+        : tone === 'direct'
       ? 'Would a short conversation be useful?'
       : tone === 'consultative'
         ? 'Would you be open to a brief conversation about your priorities?'
@@ -347,6 +395,7 @@ export function generateProfessionalEmailDraft(input: {
       `${item.title}: ${item.evidence}${item.estimated ? ' (estimated opportunity)' : ''}`,
     ),
     qualityChecks: [
+      ...(strategy === 'no_website' ? ['Confirm that the business truly has no website; the prospect record only shows that none was found.'] : []),
       prospect.business_name ? 'Business name taken from the prospect record.' : 'No business name recorded; generic greeting used.',
       selectedObservations.length || !analysis ? 'No unsupported website findings added.' : 'No confirmed finding available; message avoids a defect claim.',
       includeReport && analysis && prospect.website ? 'Website review reference included; the message does not claim that a file is attached.' : 'No report attachment is claimed.',

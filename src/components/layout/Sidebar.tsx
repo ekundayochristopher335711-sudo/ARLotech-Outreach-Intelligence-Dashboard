@@ -13,6 +13,7 @@ import {
   LogOut,
   Plane,
   Radio,
+  Sparkles,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuthState'
 import { useAccessibleDialog } from '@/hooks/useAccessibleDialog'
@@ -34,6 +35,7 @@ const navItems: NavItem[] = [
   { label: 'Replies', icon: MessageCircle, path: '/replies' },
   { label: 'Follow-ups', icon: Plane, path: '/follow-ups' },
   { label: 'Analytics', icon: BarChart3, path: '/analytics' },
+  { label: 'Growth Center', icon: Sparkles, path: '/growth-center' },
   { label: 'Settings', icon: Settings, path: '/settings' },
 ]
 
@@ -47,7 +49,7 @@ export function Sidebar({
   onNavigate: () => void
 }) {
   const blacksite = (() => { try { return localStorage.getItem('arlotech-login-mode') === 'blacksite' } catch { return false } })()
-  const displayLabels: Record<string, string> = blacksite ? { '/': 'Command Deck', '/activity': 'Operational Ledger', '/prospects': 'Target Registry', '/website-intelligence': 'Surface Recon', '/campaigns': 'Transmission Ops', '/email-drafts': 'Payload Lab', '/replies': 'Intercepts', '/follow-ups': 'Extraction Queue', '/analytics': 'Signal Analysis', '/settings': 'System Config' } : {}
+  const displayLabels: Record<string, string> = blacksite ? { '/': 'Command Deck', '/activity': 'Operational Ledger', '/prospects': 'Target Registry', '/website-intelligence': 'Surface Recon', '/campaigns': 'Transmission Ops', '/email-drafts': 'Payload Lab', '/replies': 'Intercepts', '/follow-ups': 'Extraction Queue', '/analytics': 'Signal Analysis', '/growth-center': 'Growth Ops', '/settings': 'System Config' } : {}
   const [signingOut, setSigningOut] = useState(false)
   const [signOutError, setSignOutError] = useState('')
   const { signOut } = useAuth()

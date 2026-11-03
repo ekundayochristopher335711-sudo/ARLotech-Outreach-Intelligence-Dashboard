@@ -80,9 +80,39 @@ export function WebsiteIntelligencePage() {
   const handleCopyReport = (analysis: any) => {
     navigator.clipboard.writeText(JSON.stringify(analysis, null, 2)).then(() => toast.success('Report copied'))
   }
-  const handleDownloadReport = (analysis: any) => {
-    exportWebsiteAnalysisPdf(analysis)
-    toast.success('Report downloaded as PDF')
+  const handleDownloadReport = async (analysis: any) => {
+    const visualPages = Array.isArray(analysis?.ai_analysis?.visual_audit?.pages)
+      ? analysis.ai_analysis.visual_audit.pages
+      : []
+    const screenshotImages: Record<string, string> = {}
+    await Promise.all(visualPages.filter((page: any) => typeof page.image_path === 'string').map(async (page: any) => {
+      try {
+        const { data, error } = await supabase.storage
+          .from('website-audit-screenshots')
+          .createSignedUrl(page.image_path, 300)
+        if (error || !data?.signedUrl) return
+        const response = await fetch(data.signedUrl)
+        if (!response.ok) return
+        const bitmap = await createImageBitmap(await response.blob())
+        try {
+          const canvas = document.createElement('canvas')
+          canvas.width = bitmap.width
+          canvas.height = bitmap.height
+          const context = canvas.getContext('2d')
+          if (!context) return
+          context.drawImage(bitmap, 0, 0)
+          screenshotImages[page.image_path] = canvas.toDataURL('image/jpeg', 0.86)
+        } finally {
+          bitmap.close()
+        }
+      } catch {
+        // Keep the text report available if an optional screenshot cannot be retrieved.
+      }
+    }))
+    exportWebsiteAnalysisPdf(analysis, screenshotImages)
+    toast.success(Object.keys(screenshotImages).length
+      ? 'Website report downloaded with saved screenshots'
+      : 'Website report downloaded')
   }
   const selectedFindings: any[] = Array.isArray(selected?.findings) ? selected.findings : []
   const selectedProblemFindings = selectedFindings.filter((finding) => rateLighthouseFinding(finding) !== 'Good')

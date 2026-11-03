@@ -12,13 +12,18 @@ Requirements: Node.js 20.19+ or 22.12+ and npm.
    npm ci --legacy-peer-deps
    ```
 
-2. Create a Supabase project. Apply `supabase/migrations/20240101_01_create_core_tables.sql` in the Supabase SQL Editor, or link the Supabase CLI to the project and run:
+2. Link the Supabase CLI to the project. The configured project reference is in `supabase/config.toml`; replace it if you are using a different project:
 
    ```sh
+   npx supabase login
+   npx supabase link --project-ref vfgaqyatzyrsdjdsejie
+   npx supabase migration list --linked
    npm run supabase:migrate
    ```
 
-3. Copy `.env.example` to `.env` and enter the project URL and public anon/publishable key on separate lines. Do not use or expose the `service_role` key in this browser app.
+   Review the linked project and migration list before applying migrations. Do not apply only the first migration in the SQL Editor; this app requires the full ordered migration set.
+
+3. Copy `.env.example` to `.env` and enter the project URL and public anon/publishable key from Supabase **Project Settings → API** on separate lines. Do not use or expose the `service_role` key in this browser app.
 
    ```env
    VITE_SUPABASE_URL=https://your-project-ref.supabase.co
@@ -31,6 +36,8 @@ Requirements: Node.js 20.19+ or 22.12+ and npm.
    ```sh
    npm run dev
    ```
+
+The shareable archive does not include `node_modules`. Run the install command above from the project directory after extracting it.
 
 The migrations enable row-level security and scope records to their owning Supabase user. After pulling schema changes, apply pending migrations before deploying frontend code:
 
@@ -88,6 +95,18 @@ npx supabase functions deploy gemini-analysis
 
 The frontend invokes them via `supabase.functions.invoke(...)` and stores the resulting report in Supabase.
 
+### Prospect extraction and AI outreach drafting
+
+Pasting business listings into the prospect importer and generating AI-assisted outreach drafts use the `extract-leads` and `gemini-outreach` Edge Functions. Configure the Gemini key as a server-side secret, then deploy both functions:
+
+```sh
+npx supabase secrets set GEMINI_API_KEY=your-gemini-key
+npx supabase functions deploy extract-leads
+npx supabase functions deploy gemini-outreach
+```
+
+The Gemini key is also used by `gemini-analysis`; set it once for the linked project. Never put it in a `VITE_` variable or browser code.
+
 ## Resend outreach
 
 Verify a sender domain in Resend, then configure these secrets for the linked Supabase project. Use a valid sender address from the verified domain and your business's postal address. Never put the Resend API key in `.env`, a `VITE_` variable, source control, or browser code.
@@ -130,3 +149,11 @@ npm run build
 npm run lint
 npm test
 ```
+
+## Conversion optimization update
+
+See [`docs/CONVERSION-OPTIMIZATION-UPDATE.md`](docs/CONVERSION-OPTIMIZATION-UPDATE.md) for the dashboard conversion snapshot, measurement definitions, outreach operating playbook, and deployment notes. The update is additive and introduces no database migration.
+
+## Growth Center and next-step implementation
+
+The additive Growth Center is available at `/growth-center`. See `docs/GROWTH-CENTER-UPDATE.md` for what is implemented and what remains provider/schema dependent. For GitHub Copilot, use the project-specific implementation brief in `docs/COPILOT-IMPLEMENTATION-BRIEF.md`; it instructs Copilot to inspect this exact codebase and preserve its existing architecture, UI, data and security boundaries.

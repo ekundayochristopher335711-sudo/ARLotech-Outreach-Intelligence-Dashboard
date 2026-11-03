@@ -375,6 +375,7 @@ function recommendationConcept(title: string) {
 function buildWebsiteAnalysisPdf(
   analysis: Record<string, any>,
   preparedFor?: { businessName: string; verified: boolean } | null,
+  screenshotImages: Record<string, string> = {},
 ) {
   const rec = analysis?.record || analysis || {}
   const url = rec.website_url ?? rec.url ?? 'Website not recorded'
@@ -475,6 +476,34 @@ function buildWebsiteAnalysisPdf(
     : null
   const visualPages = Array.isArray(visualAudit?.pages) ? visualAudit.pages : []
   const visualObservations = Array.isArray(visualAudit?.observations) ? visualAudit.observations : []
+
+  report.addSection('Executive summary')
+  report.addMetricCards([
+    ['Website health score', score === null ? 'Not available' : `${score} / 100`],
+    ['Confirmed review findings', primaryFindings.length],
+    ['Estimated opportunities', optimizationOpportunities.length],
+    ['Additional ideas to validate', additionalRecommendations.length + aiRecommendations.length],
+  ])
+  const executiveLead = score === null
+    ? 'This review did not produce a complete overall score. The observations below are presented individually so the business can assess them without relying on an incomplete rating.'
+    : score >= 90
+      ? 'The measured results are strong overall. The recommendations in this report focus on targeted refinements rather than suggesting that the website needs a complete rebuild.'
+      : score >= 70
+        ? 'The website has a reasonable measured foundation, with selected areas that may benefit from focused improvements.'
+        : 'The measured results indicate several areas worth prioritizing. A staged improvement plan can address the most important issues before considering broader changes.'
+  report.addParagraph(executiveLead, { size: 9, color: NAVY, bold: true })
+  report.addParagraph(
+    `Prepared for ${verifiedBusinessName || hostname}. This report separates measured findings from tool-assisted suggestions and estimated opportunities. Recommendations should be confirmed against the live website and the business goals before implementation.`,
+    { size: 8.2 },
+  )
+  if (primaryFindings.length > 0) {
+    report.addParagraph('Priority items to review first:', { size: 8.5, bold: true, color: NAVY })
+    primaryFindings.slice(0, 3).forEach((finding, index) => {
+      report.addParagraph(`${index + 1}. ${auditFindingTitle(finding)} — ${finding.assessment_rating || 'Review recommended'}`, { size: 8 })
+    })
+  } else {
+    report.addParagraph('No confirmed non-Good findings were recorded in this assessment. The report still includes measured strengths and any separately classified suggestions.', { size: 8.2 })
+  }
 
   report.addSection('Assessment at a glance')
   report.addMetricCards([
@@ -642,6 +671,20 @@ function buildWebsiteAnalysisPdf(
           `${page.page_label || 'Page'} (${page.viewport || 'unknown screen size'}): ${page.page_url || 'URL unavailable'}`,
           { size: 7.5, color: MUTED },
         )
+        const screenshotData = screenshotImages[page.image_path || '']
+        if (screenshotData) {
+          try {
+            const properties = report.doc.getImageProperties(screenshotData)
+            const imageHeight = Math.min(92, CONTENT_WIDTH * properties.height / properties.width)
+            report.ensureSpace(imageHeight + 8)
+            report.doc.addImage(screenshotData, 'JPEG', LEFT, report.y, CONTENT_WIDTH, imageHeight, undefined, 'FAST')
+            report.y += imageHeight + 5
+          } catch {
+            report.addParagraph('The saved screenshot could not be embedded in this PDF; its visual observations are listed below.', { size: 7.5, color: MUTED })
+          }
+        } else if (page.image_path) {
+          report.addParagraph('A screenshot is saved for this page, but it could not be retrieved for embedding in this PDF.', { size: 7.5, color: MUTED })
+        }
         if (page.error) report.addParagraph(`Capture note: ${page.error}`, { size: 7.5, color: MUTED })
       })
     }
@@ -717,6 +760,12 @@ function buildWebsiteAnalysisPdf(
     { size: 7.5, color: MUTED },
   )
 
+  report.addSection('A practical improvement plan')
+  report.addParagraph('1. Confirm the findings: review the affected pages, files, and screen sizes on the live website before changing anything.', { size: 8.5, bold: true })
+  report.addParagraph('2. Prioritize by business impact: address the clearest usability, accessibility, search, or performance issues first, rather than treating every suggestion as equally urgent.', { size: 8.5, bold: true })
+  report.addParagraph('3. Validate after implementation: rerun the relevant checks and compare the results using the same testing conditions where possible.', { size: 8.5, bold: true })
+  report.addParagraph('The right scope depends on the website, the available evidence, and the business objectives. This report is an assessment, not a fixed quotation or a promise of a particular result.', { size: 7.5, color: MUTED })
+
   report.addSection('Next steps')
   report.addParagraph(
     'We recommend prioritizing the findings above marked Poor, then reviewing items marked Needs Improvement. Confirm the affected page or files before making changes.',
@@ -746,6 +795,11 @@ function buildWebsiteAnalysisPdf(
   )
 
   report.addParagraph(
+    'Need help putting the recommendations into action? Arlotech Digital Solutions can help scope and implement suitable website improvements, from focused fixes and performance work to redesign and custom development. Reply to the email accompanying this report to discuss the findings and request a project-specific quote.',
+    { size: 9, color: NAVY, bold: true },
+  )
+
+  report.addParagraph(
     'How we assessed the site: We used Lighthouse/PageSpeed measurements and inspected the page HTML at the time shown above. Results can vary by device, network, location, and page state. We recommend confirming the affected files or pages before making changes.',
     { size: 7, color: MUTED },
   )
@@ -756,14 +810,15 @@ function buildWebsiteAnalysisPdf(
   }
 }
 
-export function exportWebsiteAnalysisPdf(analysis: Record<string, any>) {
-  const { report, filename } = buildWebsiteAnalysisPdf(analysis)
+export function exportWebsiteAnalysisPdf(analysis: Record<string, any>, screenshotImages: Record<string, string> = {}) {
+  const { report, filename } = buildWebsiteAnalysisPdf(analysis, null, screenshotImages)
   report.finish(filename)
 }
 
 export function createWebsiteAnalysisPdfBase64(
   analysis: Record<string, any>,
   preparedFor?: { businessName: string; verified: boolean } | null,
+  screenshotImages: Record<string, string> = {},
 ) {
-  return buildWebsiteAnalysisPdf(analysis, preparedFor).report.toBase64()
+  return buildWebsiteAnalysisPdf(analysis, preparedFor, screenshotImages).report.toBase64()
 }

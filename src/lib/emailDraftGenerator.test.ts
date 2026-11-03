@@ -176,3 +176,45 @@ describe('professional email draft generation', () => {
     expect(result.subjectSuggestions.every((subject) => subject.length < 90)).toBe(true)
   })
 })
+
+
+describe('specialized outreach message types', () => {
+  it('creates a cautious website offer for a prospect with no recorded website', () => {
+    const result = generateProfessionalEmailDraft({
+      prospect: { ...prospect, website: '' },
+      strategy: 'no_website',
+    })
+    expect(result.body).toContain("couldn't find a website associated with your business")
+    expect(result.body).toContain('responsive website')
+    expect(result.body).not.toMatch(/PageSpeed|Lighthouse|broken|defect/i)
+    expect(result.observationsUsed).toEqual([])
+  })
+
+  it('creates a short first-contact introduction without inventing audit findings', () => {
+    const result = generateProfessionalEmailDraft({ prospect, strategy: 'cold_outreach' })
+    expect(result.body).toContain('briefly introduce Arlotech Digital Solutions')
+    expect(result.body).toContain('couple of ideas for your online presence')
+    expect(result.observationsUsed).toEqual([])
+  })
+
+  it('does not invent a price when responding to a pricing question', () => {
+    const result = generateProfessionalEmailDraft({ prospect, strategy: 'pricing_response' })
+    expect(result.body).toContain('cost depends on the scope of work')
+    expect(result.body).not.toMatch(/£\s?\d+|₦\s?\d+|\$\s?\d+/)
+  })
+
+  it('includes operator-supplied confirmed details in a pricing response', () => {
+    const result = generateProfessionalEmailDraft({
+      prospect,
+      strategy: 'pricing_response',
+      senderContext: 'Our starter website package is £75 and includes up to five pages.',
+    })
+    expect(result.body).toContain('Our starter website package is £75')
+  })
+
+  it('creates a discovery-call reply without inventing availability', () => {
+    const result = generateProfessionalEmailDraft({ prospect, strategy: 'meeting_request' })
+    expect(result.body).toContain('Would you be available for a 15-minute conversation?')
+    expect(result.body).not.toMatch(/Tuesday at|tomorrow at|2:00 PM/i)
+  })
+})

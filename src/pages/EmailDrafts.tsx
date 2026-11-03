@@ -29,6 +29,7 @@ import {
   type RewriteAction,
 } from '@/lib/emailDraftGenerator'
 import type { Campaign, EmailDraft, Prospect, WebsiteAnalysis } from '@/types'
+import { assessEmailQuality } from '@/lib/growthIntelligence'
 
 const MAX_OUTREACH_BATCH_SIZE = 10
 const SIGNATURE_STORAGE_KEY = 'arlotech-email-signature'
@@ -39,6 +40,26 @@ const strategyLabels: Record<OutreachStrategy, string> = {
   website_redesign: 'Website redesign',
   business_growth: 'Business growth',
   personal_consultancy: 'Personal consultancy',
+  cold_outreach: 'Cold introduction',
+  no_website: 'Business without a website',
+  seo_performance: 'SEO & performance improvement',
+  interested_response: 'Reply to an interested prospect',
+  pricing_response: 'Respond to a pricing question',
+  meeting_request: 'Arrange a discovery call',
+}
+
+const strategyDescriptions: Record<OutreachStrategy, string> = {
+  general_review: 'A balanced first email based on the prospect record and any saved website review.',
+  technical_improvement: 'Lead with one verified technical finding and explain why it matters.',
+  website_redesign: 'Use recorded visual observations; do not recommend a redesign without supporting evidence.',
+  business_growth: 'Connect website usability to the customer journey without promising sales or lead increases.',
+  personal_consultancy: 'A softer, discovery-led message focused on understanding the business first.',
+  cold_outreach: 'A brief introduction for a business you have not contacted before.',
+  no_website: 'For businesses with no website recorded. The wording stays cautious because a listing may be incomplete.',
+  seo_performance: 'Discuss measured search and performance results, or offer a review when no audit exists.',
+  interested_response: 'Reply after a prospect has expressed interest. Confirm the actual conversation before sending.',
+  pricing_response: 'Answer a pricing question without inventing a price. Add your confirmed offer details below.',
+  meeting_request: 'Turn an interested conversation into a short discovery call without inventing availability.',
 }
 
 function readSignature(): OutreachSignature {
@@ -127,6 +148,47 @@ function isManualSendResponse(data: unknown): data is ManualSendResponse {
   )
 }
 
+async function imageBlobToDataUrl(blob: Blob): Promise<string> {
+  const bitmap = await createImageBitmap(blob)
+  try {
+    const canvas = document.createElement('canvas')
+    canvas.width = bitmap.width
+    canvas.height = bitmap.height
+    const context = canvas.getContext('2d')
+    if (!context) throw new Error('Could not prepare screenshot for the PDF.')
+    context.drawImage(bitmap, 0, 0)
+    return canvas.toDataURL('image/jpeg', 0.86)
+  } finally {
+    bitmap.close()
+  }
+}
+
+async function createAuditPdfAttachment(
+  analysis: WebsiteAnalysis,
+  prospect: OutreachProspect,
+) {
+  const visualAudit = (analysis.ai_analysis as Record<string, any> | null)?.visual_audit
+  const pages = Array.isArray(visualAudit?.pages) ? visualAudit.pages : []
+  const screenshotImages: Record<string, string> = {}
+  await Promise.all(pages.filter((page: any) => typeof page.image_path === 'string').map(async (page: any) => {
+    try {
+      const { data, error } = await supabase.storage
+        .from('website-audit-screenshots')
+        .createSignedUrl(page.image_path, 300)
+      if (error || !data?.signedUrl) return
+      const response = await fetch(data.signedUrl)
+      if (!response.ok) return
+      screenshotImages[page.image_path] = await imageBlobToDataUrl(await response.blob())
+    } catch {
+      // The PDF remains useful without a screenshot if storage access is unavailable.
+    }
+  }))
+  return createWebsiteAnalysisPdfBase64(analysis, {
+    businessName: prospect.business_name,
+    verified: prospect.business_name_verified,
+  }, screenshotImages)
+}
+
 function isSendOutreachResponse(data: unknown): data is SendOutreachResponse {
   if (!data || typeof data !== 'object' || !('results' in data) || !Array.isArray(data.results)) return false
   return data.results.every(
@@ -176,6 +238,7 @@ export function EmailDraftsPage() {
   const [generatorStrategy, setGeneratorStrategy] = useState<OutreachStrategy>('general_review')
   const [generatorTone, setGeneratorTone] = useState<OutreachTone>('professional')
   const [generatorLength, setGeneratorLength] = useState<OutreachLength>('standard')
+  const [senderContext, setSenderContext] = useState('')
   const [includeReportReference, setIncludeReportReference] = useState(false)
   const [followUpStage, setFollowUpStage] = useState<FollowUpStage>('none')
   const [followUpMessageId, setFollowUpMessageId] = useState('')
@@ -218,13 +281,14 @@ export function EmailDraftsPage() {
       const userId = await getCurrentUserId()
       const { data, error } = await supabase
         .from('prospects')
-        .select('id, business_name')
+        .select('id, business_name, email, do_not_contact')
         .eq('user_id', userId)
         .order('business_name')
       if (error) throw error
-      return data as Pick<Prospect, 'id' | 'business_name'>[]
+      return data as Pick<Prospect, 'id' | 'business_name' | 'email' | 'do_not_contact'>[]
     },
   })
+  const prospectOptions = prospects as Pick<Prospect, 'id' | 'business_name' | 'email' | 'do_not_contact'>[]
 
   const { data: emailProfile, error: emailProfileError } = useQuery({
     queryKey: ['/profile', 'email-signature'],
@@ -366,6 +430,15 @@ export function EmailDraftsPage() {
         generatedSubject,
       )
     : null
+  const selectedManualProspect = prospectOptions.find((prospect) => prospect.id === prospectId)
+  const draftQuality = assessEmailQuality({
+    subject,
+    body,
+    businessName: selectedManualProspect?.business_name,
+    recipient: selectedManualProspect?.email || manualRecipient,
+    doNotContact: selectedManualProspect?.do_not_contact || manualRecipientDoNotContact,
+    duplicateRecently: Boolean((selectedManualProspect?.email || manualRecipient) && sentRecipientRows.some(row => row.recipient_email?.toLowerCase() === (selectedManualProspect?.email || manualRecipient).toLowerCase())),
+  })
 
   const getOutreachBlockReason = (prospect: OutreachProspect) => {
     if (!prospect.email?.trim()) return 'No email address'
@@ -424,7 +497,7 @@ export function EmailDraftsPage() {
 
   const sendOutreachMutation = useMutation({
     mutationFn: async () => {
-      const emailPayload = outreachPreviews.map((preview: OutreachPreview) => {
+      const emailPayload = await Promise.all(outreachPreviews.map(async (preview: OutreachPreview) => {
         const prospect = outreachProspectRows.find((item: OutreachProspect) => item.id === preview.prospect_id)
         if (!prospect) throw new Error('A selected prospect is no longer available.')
         const analysis = analysisByProspect.get(prospect.id)
@@ -434,23 +507,23 @@ export function EmailDraftsPage() {
           .replace(/^-+|-+$/g, '')
           .slice(0, 60)
           .toLowerCase() || 'prospect'
+        const attachmentContent = preview.has_website_report && analysis
+          ? await createAuditPdfAttachment(analysis, prospect)
+          : null
         return {
           prospect_id: prospect.id,
           subject: preview.subject,
           body: preview.body,
-          ...(preview.has_website_report && analysis
+          ...(attachmentContent
             ? {
                 attachment: {
                   filename: `website-review-${safeFilename}.pdf`,
-                  content: createWebsiteAnalysisPdfBase64(analysis, {
-                    businessName: prospect.business_name,
-                    verified: prospect.business_name_verified,
-                  }),
+                  content: attachmentContent,
                 },
               }
             : {}),
         }
-      })
+      }))
       const functionClient = supabase as typeof supabase & {
         functions: {
           invoke: (
@@ -650,6 +723,7 @@ export function EmailDraftsPage() {
             length: generatorLength,
             includeReport: includeReportReference,
             signature: effectiveSignature,
+            senderContext,
           })
       setGeneratedDraft(result)
       setGeneratedSubject(result.subjectSuggestions[0] || '')
@@ -699,7 +773,6 @@ export function EmailDraftsPage() {
   }
 
   const campaignOptions = (campaigns || []) as Pick<Campaign, 'id' | 'name'>[]
-  const prospectOptions = (prospects || []) as Pick<Prospect, 'id' | 'business_name'>[]
   const draftRows = (drafts || []) as EmailDraft[]
 
   return (
@@ -741,7 +814,7 @@ export function EmailDraftsPage() {
             </select>
           </label>
           <label className="block space-y-1">
-            <span className="text-sm font-medium text-slate-700">Outreach strategy</span>
+            <span className="text-sm font-medium text-slate-700">Message type</span>
             <select
               value={generatorStrategy}
               onChange={(event) => setGeneratorStrategy(event.target.value as OutreachStrategy)}
@@ -751,6 +824,7 @@ export function EmailDraftsPage() {
                 <option key={strategy} value={strategy}>{strategyLabels[strategy]}</option>
               ))}
             </select>
+            <span className="block text-xs leading-5 text-slate-500">{strategyDescriptions[generatorStrategy]}</span>
           </label>
           <label className="block space-y-1">
             <span className="text-sm font-medium text-slate-700">Tone</span>
@@ -826,6 +900,19 @@ export function EmailDraftsPage() {
             </label>
           )}
         </div>
+
+        <label className="block space-y-1">
+          <span className="text-sm font-medium text-slate-700">Extra context or offer details (optional)</span>
+          <textarea
+            value={senderContext}
+            onChange={(event) => setSenderContext(event.target.value)}
+            rows={2}
+            maxLength={600}
+            placeholder="Add a confirmed price, offer, project detail, reply context, or meeting availability. Leave blank if not applicable."
+            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+          />
+          <span className="text-xs text-slate-500">Only include details you can stand behind. The drafter will not invent prices, timelines, or guarantees.</span>
+        </label>
 
         <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
           <label className="flex items-start gap-2 text-sm text-slate-700">
@@ -1373,6 +1460,7 @@ export function EmailDraftsPage() {
             <input id="draft-subject" value={subject} onChange={(event) => setSubject(event.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-arlotech focus:outline-none focus:ring-2 focus:ring-arlotech/20" />
           </div>
           <Textarea label="Body" value={body} onChange={setBody} rows={6} />
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-3"><div className="flex items-center justify-between"><p className="text-sm font-semibold text-slate-800">Email quality check</p><span className="text-sm font-bold text-slate-700">{draftQuality.score}/100</span></div><div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-200"><div className="h-full rounded-full bg-arlotech" style={{ width: `${draftQuality.score}%` }} /></div><div className="mt-2 grid gap-1 sm:grid-cols-2">{draftQuality.checks.map(check => <p key={check.label} className={`text-xs ${check.pass ? 'text-emerald-700' : check.severity === 'error' ? 'text-red-700' : 'text-amber-700'}`}>{check.pass ? '✓' : '•'} {check.label === 'No recent duplicate' ? 'No previous send to this address' : check.label}</p>)}</div><p className="mt-2 text-[11px] text-slate-500">Advisory checks only. Review the recipient, conversation history, consent and claims before sending.</p></div>
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-1">
               <label htmlFor="draft-campaign" className="block text-sm font-medium text-slate-700">Campaign (optional)</label>
