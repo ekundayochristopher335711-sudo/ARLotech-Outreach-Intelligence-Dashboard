@@ -205,10 +205,11 @@ export function createOutreachPreview(
 ): OutreachPreview {
   const name = prospect.business_name.trim() || 'your business'
   const greetingName = firstName(prospect.contact_name)
+  const category = prospect.business_category?.trim()
+  const offering = category ? `${category.toLowerCase()} products or services` : 'product or service'
   const signOff = 'Kind regards,\nArlotech Digital Solutions'
 
   if (!prospect.website) {
-    const category = prospect.business_category?.trim()
     return {
       prospect_id: prospect.id,
       analysis_id: null,
@@ -216,7 +217,7 @@ export function createOutreachPreview(
       body: [
         `Hi ${greetingName},`,
         '',
-        `We came across ${name}${category ? ` while researching local ${category.toLowerCase()} businesses` : ''}. We did not find a website linked to the business information available to us, so we wanted to ask whether you are considering a simple site to help prospective customers learn about your services and get in touch.`,
+        `We came across ${name}${category ? ` while researching local ${category.toLowerCase()} businesses` : ''}. We did not find a website linked to the business information available to us, so we wanted to ask whether you are considering a simple site to help prospective customers learn about your ${offering} and get in touch.`,
         '',
         'Our team at Arlotech Digital Solutions works on websites and online services. If a website is something you are exploring, we would be glad to share a few practical ideas. If it is not relevant, let us know and we will not follow up.',
         '',
@@ -253,7 +254,7 @@ export function createOutreachPreview(
     '',
     `Our website review of ${name}'s site highlighted a possible point of friction for visitors: ${title.toLowerCase()}. ${impact}`,
     '',
-    'We are not pitching a costly, full website redesign. Small, targeted changes may make it easier for customers to understand your services and get in touch.',
+    `We are not pitching a costly, full website redesign. Small, targeted changes may make it easier for visitors to understand your ${offering} and get in touch.`,
     '',
     'We have attached a short website review with a little more detail about these points. Please feel free to take a look if it would be useful.',
     '',
@@ -278,7 +279,7 @@ export function createOutreachPreview(
 
 export function validateOutreachPreview(
   preview: OutreachPreview,
-  prospect: Pick<Prospect, 'business_name' | 'website'>,
+  prospect: Pick<Prospect, 'business_name' | 'website' | 'business_category'>,
   analysis?: OutreachAnalysis | null,
 ) {
   if (!preview.subject.trim() || !preview.body.trim()) throw new Error('Every message needs a subject and body.')
@@ -313,7 +314,7 @@ export function validateOutreachPreview(
     business_name: prospect.business_name,
     contact_name: '',
     website: prospect.website,
-    business_category: null,
+    business_category: prospect.business_category,
   }, analysis)
   if (currentPreview.selected_finding?.id !== preview.selected_finding?.id) {
     throw new Error('The selected audit finding changed. Refresh the email preview before sending.')

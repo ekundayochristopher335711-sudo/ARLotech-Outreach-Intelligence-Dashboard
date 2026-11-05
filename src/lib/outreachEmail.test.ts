@@ -253,6 +253,30 @@ describe('outreach eligibility and previews', () => {
     expect(() => validateOutreachPreview(preview, lead)).not.toThrow()
   })
 
+  it('uses generic product or service wording when the prospect has no category', () => {
+    const uncategorizedLead = { ...prospect(null), business_category: null }
+    const noWebsitePreview = createOutreachPreview(uncategorizedLead)
+    const websiteLead = { ...uncategorizedLead, website: 'https://www.amigodev.com.ng' }
+    const websitePreview = createOutreachPreview(
+      websiteLead,
+      analysis(),
+    )
+
+    expect(noWebsitePreview.body).toContain('your product or service')
+    expect(noWebsitePreview.body).not.toMatch(/technology|software|developer/i)
+    expect(websitePreview.body).toContain('your product or service')
+    expect(websitePreview.body).not.toMatch(/technology|software|developer/i)
+    expect(() => validateOutreachPreview(websitePreview, websiteLead, analysis())).not.toThrow()
+  })
+
+  it('uses the supplied category instead of generic product or service wording', () => {
+    const categorizedLead = { ...prospect(null), business_category: 'Plumbing and Heating' }
+    const preview = createOutreachPreview(categorizedLead)
+
+    expect(preview.body).toContain('your plumbing and heating products or services')
+    expect(preview.body).not.toContain('product or service')
+  })
+
   it('rejects stale previews and edits that remove the evidence or company signature', () => {
     const audit = analysis()
     const preview = createOutreachPreview(prospect(), audit)

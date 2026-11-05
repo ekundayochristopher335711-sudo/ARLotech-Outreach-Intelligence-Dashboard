@@ -239,6 +239,7 @@ export function generateProfessionalEmailDraft(input: {
   const observations = candidateObservations(analysis)
   const industry = prospect.business_category?.trim() || ''
   const industryContext = industryContexts.find(([pattern]) => pattern.test(industry))?.[1]
+  const offering = industry ? `${industry.toLowerCase()} products or services` : 'product or service'
 
   const lines = [`Hi ${greetingName},`, '']
   const topic = observations[0]?.title || 'website experience'
@@ -270,9 +271,9 @@ export function generateProfessionalEmailDraft(input: {
         : `We will leave it here for now regarding ${topic.toLowerCase()}.`
     lines.push(stageOpening)
   } else if (strategy === 'no_website') {
-    lines.push(`We came across ${name}${industry ? ` while looking at ${industry.toLowerCase()} businesses` : ''}. We couldn't find a website associated with your business in the information available to us, so we wanted to reach out in case building one is something you have been considering.`)
+    lines.push(`We came across ${name}${industry ? ` while looking at ${industry.toLowerCase()} businesses` : ''}. We couldn't find a website associated with your business in the information available to us, so we wanted to reach out in case building one to explain your ${offering} is something you have been considering.`)
   } else if (strategy === 'cold_outreach') {
-    lines.push(`We came across ${name}${industry ? ` while researching ${industry.toLowerCase()} businesses` : ''} and wanted to briefly introduce Arlotech Digital Solutions. We build and improve websites for businesses that want a clearer, more useful online presence.`)
+    lines.push(`We came across ${name}${industry ? ` while researching ${industry.toLowerCase()} businesses` : ''} and wanted to briefly introduce Arlotech Digital Solutions. We build and improve websites to help businesses present their ${offering} clearly online.`)
   } else if (prospect.website && analysis) {
     lines.push(toneOpening(tone, name))
   } else {
@@ -303,12 +304,14 @@ export function generateProfessionalEmailDraft(input: {
   }
 
   const valueLine = strategy === 'no_website'
-    ? 'We can help plan and build a website that works well on phones, explains your services, showcases your work, and gives potential customers a straightforward way to contact you.'
+    ? `We can help plan and build a website that works well on phones, explains your ${offering}, and gives interested people a straightforward way to get in touch.`
     : prospect.website
-      ? `We are not pitching a costly, full website redesign. We focus on small, targeted changes to help make ${industryContext || 'your services clear and getting in touch easy'}.`
+      ? `We are not pitching a costly, full website redesign. ${industryContext
+        ? `We focus on small, targeted changes to help make ${industryContext}.`
+        : `We focus on small, targeted changes to help visitors understand your ${offering} and get in touch.`}`
       : industryContext
         ? `We help businesses make ${industryContext}.`
-        : 'We design, build, and improve business websites, from focused landing pages to larger custom web experiences.'
+        : `We design, build, and improve business websites that present a business's ${offering} clearly.`
   lines.push(valueLine)
 
   if (strategy === 'business_growth' && industryContext) {
@@ -498,6 +501,8 @@ export function generateFollowUpDraft(
 ) {
   const topic = original.subject.replace(/^(Re:\s*)+/i, '').trim() || 'our earlier website email'
   const name = prospect.business_name.trim() || 'your business'
+  const industry = prospect.business_category?.trim()
+  const offering = industry ? `${industry.toLowerCase()} products or services` : 'product or service'
   const tone: OutreachTone = stage === 'second' ? 'direct' : 'professional'
   const signatureDetails: OutreachSignature = {
     businessName: 'Arlotech Digital Solutions',
@@ -510,9 +515,9 @@ export function generateFollowUpDraft(
     ...signature,
   }
   const followUpText = stage === 'first'
-    ? 'We wanted to follow up on our earlier note. If useful, we can talk through a few small, targeted website changes that may make it easier for customers to get in touch.'
+    ? `We wanted to follow up on our earlier note. If useful, we can talk through a few small, targeted website changes that may make it easier for visitors to understand your ${offering} and get in touch.`
     : stage === 'second'
-      ? 'We are checking once more in case a few small, targeted website changes may be useful. If you would like to explore them, simply reply and we can arrange a brief conversation.'
+      ? `We are checking once more in case a few small, targeted website changes may help visitors understand your ${offering}. If you would like to explore them, simply reply and we can arrange a brief conversation.`
       : 'We will leave it here for now. If small website improvements become a priority later, we would be happy to reconnect.'
   const reassurance = prospect.website
     ? 'We are not pitching a costly, full website redesign.'

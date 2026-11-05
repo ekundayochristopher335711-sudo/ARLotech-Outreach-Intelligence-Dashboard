@@ -191,6 +191,34 @@ describe('professional email draft generation', () => {
     expect(result.observationsUsed).toEqual([])
   })
 
+  it('uses only generic product or service wording when no business category is provided', () => {
+    const uncategorizedProspect = {
+      ...prospect,
+      business_name: 'Acme Group',
+      business_category: null,
+    }
+    const noWebsiteDraft = generateProfessionalEmailDraft({
+      prospect: { ...uncategorizedProspect, website: null },
+      strategy: 'no_website',
+    })
+    const websiteDraft = generateProfessionalEmailDraft({
+      prospect: uncategorizedProspect,
+      analysis: analysis({
+        findings: [{
+          source: 'lighthouse',
+          classification: 'verified_issue',
+          title: 'Low contrast text',
+          evidence: 'Some text has low contrast.',
+        }],
+      }),
+    })
+
+    expect(noWebsiteDraft.body).toContain('your product or service')
+    expect(noWebsiteDraft.body).not.toMatch(/plumbing|heating|electrician|contractor/i)
+    expect(websiteDraft.body).toContain('your product or service')
+    expect(websiteDraft.body).not.toMatch(/plumbing|heating|electrician|contractor/i)
+  })
+
   it('prioritizes a small number of confirmed findings rather than listing every issue', () => {
     const result = generateProfessionalEmailDraft({
       prospect,
