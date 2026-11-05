@@ -17,11 +17,21 @@ interface WebsiteAnalysis {
   } | null
 }
 
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
 export function resolveReplyToAddress(configuredAddress: string | null, fromAddress: string) {
   const configuredMailbox = configuredAddress?.trim()
   const senderMailbox = fromAddress.match(/<\s*([^<>]+)\s*>/)?.[1]?.trim() || fromAddress.trim()
   const replyTo = configuredMailbox || senderMailbox
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(replyTo) ? replyTo : null
+  return EMAIL_PATTERN.test(replyTo) ? replyTo : null
+}
+
+export function formatSenderAddress(senderName: string, fromAddress: string) {
+  const mailbox = fromAddress.match(/<\s*([^<>]+)\s*>/)?.[1]?.trim() || fromAddress.trim()
+  if (!EMAIL_PATTERN.test(mailbox)) throw new Error('The configured sender email address is invalid.')
+  if (!senderName) return fromAddress
+  const quotedName = senderName.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+  return `"${quotedName}" <${mailbox}>`
 }
 
 function hasUsefulEvidence(finding: WebsiteFinding) {

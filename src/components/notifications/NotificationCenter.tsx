@@ -5,7 +5,7 @@ import { Bell, Check, Mail, Trash2 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { getCurrentUserId, supabase } from '@/lib/supabase'
-import { useUnreadReplyCount } from '@/hooks/useUnreadReplyCount'
+import { useUnreadNotificationCount } from '@/hooks/useUnreadNotificationCount'
 
 type NotificationEvent = {
   id: string
@@ -21,7 +21,7 @@ export function NotificationCenter({ className = '' }: { className?: string }) {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const [isOpen, setIsOpen] = useState(false)
-  const { data: unreadReplyCount = 0, error: unreadCountError } = useUnreadReplyCount()
+  const { data: unreadNotificationCount = 0, error: unreadCountError } = useUnreadNotificationCount()
   const { data: notifications = [], isLoading, error } = useQuery<NotificationEvent[]>({
     queryKey: ['/notification-events', 'latest'],
     queryFn: async () => {
@@ -97,15 +97,15 @@ export function NotificationCenter({ className = '' }: { className?: string }) {
       <button
         type="button"
         onClick={() => setIsOpen((open) => !open)}
-        aria-label={unreadReplyCount > 0 ? `Notifications, ${unreadReplyCount} unread replies` : 'Notifications'}
+        aria-label={unreadNotificationCount > 0 ? `Notifications, ${unreadNotificationCount} unread` : 'Notifications'}
         aria-expanded={isOpen}
         aria-haspopup="dialog"
         className="relative inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-arlotech"
       >
         <Bell className="h-5 w-5" />
-        {unreadReplyCount > 0 && (
+        {unreadNotificationCount > 0 && (
           <span className="absolute -right-1 -top-1 inline-flex min-h-5 min-w-5 items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-bold text-white">
-            {unreadReplyCount > 99 ? '99+' : unreadReplyCount}
+            {unreadNotificationCount > 99 ? '99+' : unreadNotificationCount}
           </span>
         )}
       </button>
@@ -118,7 +118,7 @@ export function NotificationCenter({ className = '' }: { className?: string }) {
           <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
             <div>
               <h2 className="text-sm font-semibold">Notifications</h2>
-              <p className="text-xs text-slate-500">{unreadReplyCount} unread replies</p>
+              <p className="text-xs text-slate-500">{unreadNotificationCount} unread notifications</p>
             </div>
             <button type="button" onClick={() => setIsOpen(false)} className="rounded px-2 py-1 text-xs text-slate-500 hover:bg-slate-100">
               Close

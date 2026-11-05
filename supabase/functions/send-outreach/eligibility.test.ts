@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { hasActionableWebsiteFinding, resolveReplyToAddress } from './eligibility'
+import { formatSenderAddress, hasActionableWebsiteFinding, resolveReplyToAddress } from './eligibility'
 
 describe('website outreach eligibility', () => {
   it('uses the configured reply address and falls back to the sender mailbox', () => {
@@ -8,6 +8,24 @@ describe('website outreach eligibility', () => {
     expect(resolveReplyToAddress(null, 'Arlotech <outreach@example.com>'))
       .toBe('outreach@example.com')
     expect(resolveReplyToAddress('not-an-email', 'Arlotech <outreach@example.com>')).toBeNull()
+  })
+
+  describe('formatSenderAddress', () => {
+    it('uses the profile name with the configured mailbox', () => {
+      expect(formatSenderAddress('Chris Example', 'Arlotech <outreach@example.com>'))
+        .toBe('"Chris Example" <outreach@example.com>')
+    })
+
+    it('preserves the configured sender when no profile name is available', () => {
+      expect(formatSenderAddress('', 'Arlotech <outreach@example.com>'))
+        .toBe('Arlotech <outreach@example.com>')
+    })
+
+    it('quotes sender names safely and rejects an invalid configured mailbox', () => {
+      expect(formatSenderAddress('Chris "Ace"', 'outreach@example.com'))
+        .toBe('"Chris \\"Ace\\"" <outreach@example.com>')
+      expect(() => formatSenderAddress('Chris', 'invalid')).toThrow('configured sender email address is invalid')
+    })
   })
 
   it('withholds sending when an audit has no confirmed findings', () => {

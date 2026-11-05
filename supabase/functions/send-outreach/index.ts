@@ -1,7 +1,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { outreachEmailHtml, sentEmailBody } from '../_shared/outreachEmailTemplate.ts'
-import { hasActionableWebsiteFinding, resolveReplyToAddress } from './eligibility.ts'
+import { formatSenderAddress, hasActionableWebsiteFinding, resolveReplyToAddress } from './eligibility.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -91,6 +91,15 @@ serve(async (req) => {
     const userId = userData.user.id
 
     const body = await req.json()
+    const senderName = typeof body?.senderName === 'string' ? body.senderName.trim() : ''
+    if (
+      body?.senderName != null &&
+      (typeof body.senderName !== 'string' ||
+        body.senderName.length > 100 ||
+        /[\r\n]/.test(body.senderName))
+    ) {
+      return jsonResponse({ error: 'The sender name is invalid.' }, 400)
+    }
     const inlineLogo: InlineLogo | null = body?.inlineLogo == null
       ? null
       : body.inlineLogo &&
@@ -364,12 +373,12 @@ serve(async (req) => {
           'Idempotency-Key': await createIdempotencyKey(userId, batchId, prospect?.id ?? recipient),
         },
         body: JSON.stringify({
-          from: fromEmail,
+          from: formatSenderAddress(senderName, fromEmail),
           reply_to: replyTo,
           to: [recipient],
           subject: email.subject.trim(),
           text: sentBody,
-          html: outreachEmailHtml(email.body, postalAddress, !!inlineLogo),
+          html: outreachEmailHtml(email.body, postalAddress, !!inlineLogo, senderName),
           ...((inlineLogo || email.attachment)
             ? {
                 attachments: [

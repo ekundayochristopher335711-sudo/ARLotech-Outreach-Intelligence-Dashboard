@@ -12,7 +12,12 @@ export function sentEmailBody(message: string, postalAddress: string) {
   return `${message.trim()}\n\n---\nIf you do not want further outreach, reply to this email and let us know.\n\n${postalAddress.trim()}`
 }
 
-export function outreachEmailHtml(message: string, postalAddress: string, includeInlineLogo = false) {
+export function outreachEmailHtml(
+  message: string,
+  postalAddress: string,
+  includeInlineLogo = false,
+  senderName = '',
+) {
   const paragraphs = message.trim().split(/\n\s*\n/).map((paragraph) => {
     const text = paragraph.trim()
     if (/attached (?:a short|the short) website review/i.test(text)) {
@@ -38,11 +43,14 @@ export function outreachEmailHtml(message: string, postalAddress: string, includ
             <table role="presentation" cellpadding="0" cellspacing="0" border="0">
               <tr>
             ${includeInlineLogo
-              ? '<td valign="middle" style="padding-right:13px"><img src="cid:arlotech-logo" width="44" height="44" alt="Arlotech" style="display:block;width:44px;height:44px;border:0;border-radius:10px"></td>'
+              ? '<td valign="middle" style="padding-right:10px"><img src="cid:arlotech-logo" width="26" height="26" alt="" style="display:block;width:26px!important;height:26px!important;max-width:26px;max-height:26px;object-fit:contain;border:0;border-radius:6px"></td>'
               : ''}
                 <td valign="middle">
                   <div style="color:#ffffff;font:700 17px/1.3 Arial,Helvetica,sans-serif;letter-spacing:1.4px">ARLOTECH</div>
                   <div style="margin-top:4px;color:#b9c9d5;font:10px/1.4 Arial,Helvetica,sans-serif;letter-spacing:1.7px">DIGITAL SOLUTIONS</div>
+                  ${senderName.trim()
+                    ? `<div style="margin-top:7px;color:#ffffff;font:12px/1.4 Arial,Helvetica,sans-serif">Sent by ${escapeHtml(senderName.trim())}</div>`
+                    : ''}
                 </td>
               </tr>
             </table>

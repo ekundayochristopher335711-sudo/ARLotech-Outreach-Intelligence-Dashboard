@@ -12,14 +12,17 @@ describe('outreach email template', () => {
     expect(html).toContain('Business address')
   })
 
-  it('embeds the logo and highlights the attached PDF in the middle of the message', () => {
+  it('shows the sender name beside a compact logo and highlights the attached PDF', () => {
     const html = outreachEmailHtml(
       'Hi Alex,\n\nA useful website observation.\n\nWe have attached a short website review with more detail. Please take a look.\n\nWould a conversation help?',
       'Business address',
       true,
+      'Chris Example',
     )
 
-    expect(html).toContain('<img src="cid:arlotech-logo" width="44" height="44"')
+    expect(html).toContain('<img src="cid:arlotech-logo" width="26" height="26"')
+    expect(html).toContain('Sent by Chris Example')
+    expect(html).not.toContain('width="44" height="44"')
     expect(html).not.toContain('width="190"')
     expect(html).toContain('DIGITAL SOLUTIONS')
     expect(html).toContain('background:#f5bf24')
@@ -27,6 +30,13 @@ describe('outreach email template', () => {
     expect(html).toContain('PDF attachment to this email')
     expect(html.indexOf('Your website review is attached')).toBeGreaterThan(html.indexOf('A useful website observation.'))
     expect(html.indexOf('Your website review is attached')).toBeLessThan(html.indexOf('Would a conversation help?'))
+  })
+
+  it('escapes the sender name in the branded header', () => {
+    const html = outreachEmailHtml('Hello', 'Business address', false, '<Chris>')
+
+    expect(html).toContain('Sent by &lt;Chris&gt;')
+    expect(html).not.toContain('Sent by <Chris>')
   })
 
   it('escapes message markup and keeps the opt-out and address in both formats', () => {
