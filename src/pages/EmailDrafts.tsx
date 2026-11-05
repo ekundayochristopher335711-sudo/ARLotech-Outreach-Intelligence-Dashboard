@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Check, Copy, Mail, Pencil, Plus, Send, Sparkles, Trash2, X } from 'lucide-react'
+import { Check, Copy, Mail, Paperclip, Pencil, Plus, Send, Sparkles, Trash2, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
@@ -1313,11 +1313,17 @@ export function EmailDraftsPage() {
                 <h3 className="text-sm font-semibold text-slate-800">Send this email</h3>
                 <p className="mt-1 text-sm text-slate-600">
                   To: {selectedGeneratorProspect?.email || 'No email address on this prospect'}
-                  {selectedGeneratorProspect?.website && matchingGeneratorAnalysis
-                    ? ' — the matching website audit PDF will be attached.'
-                    : ''}
                 </p>
               </div>
+              {selectedGeneratorProspect?.website && matchingGeneratorAnalysis && (
+                <div className="flex items-start gap-2 rounded-lg border border-sky-200 bg-sky-50 p-3 text-sm text-sky-900">
+                  <Paperclip className="mt-0.5 h-4 w-4 shrink-0" />
+                  <span>
+                    <strong>Attachment: personalized website review (PDF).</strong>{' '}
+                    It will be created from the matching review and attached automatically when you send.
+                  </span>
+                </div>
+              )}
               {(outreachProspectsError || outreachAnalysesError || suppressionError || sentHistoryError) && (
                 <p className="text-sm text-red-700" role="alert">
                   Sending is disabled until recipient eligibility and send history can be checked.

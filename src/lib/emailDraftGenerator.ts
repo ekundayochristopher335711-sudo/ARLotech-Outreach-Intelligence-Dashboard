@@ -372,7 +372,9 @@ export function generateProfessionalEmailDraft(input: {
       ...(strategy === 'no_website' ? ['Confirm that the business truly has no website; the prospect record only shows that none was found.'] : []),
       prospect.business_name ? 'Business name taken from the prospect record.' : 'No business name recorded; generic greeting used.',
       selectedObservations.length || !analysis ? 'No unsupported website findings added.' : 'No clear finding available; message avoids an unsupported claim.',
-      includeReport && analysis && prospect.website ? 'Website review reference included; the message does not claim that a file is attached.' : 'No report attachment is claimed.',
+      includeReport && analysis && prospect.website
+        ? 'The matching website review PDF will be attached when the email is sent.'
+        : 'No report attachment is claimed.',
     ],
     includesReportReference: includeReport && !!analysis && !!prospect.website,
     wordCount: wordCount(body),
@@ -423,8 +425,9 @@ export function validateProfessionalEmailDraft(
       errors.push('Reassure the recipient that this is not a costly, full website redesign.')
     }
   }
-  if (/we have attached|please see the attached/i.test(draft.body)) {
-    errors.push('The message claims a file is attached, but this draft has no saved attachment.')
+  const hasReportToAttach = draft.includesReportReference && hasMatchingAnalysis && !!prospect.website
+  if (/we have attached|please see the attached/i.test(draft.body) && !hasReportToAttach) {
+    errors.push('The email says a website report is attached, but no matching review is available to include.')
   }
   if (draft.includesReportReference && !hasMatchingAnalysis) {
     errors.push('The message refers to a website review that is not available for this prospect.')

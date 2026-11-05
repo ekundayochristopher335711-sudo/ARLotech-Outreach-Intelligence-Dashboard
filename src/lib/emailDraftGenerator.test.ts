@@ -286,6 +286,42 @@ describe('specialized outreach message types', () => {
     )
   })
 
+  it('allows an attached-review message when the matching PDF is created at send time', () => {
+    const generated = generateProfessionalEmailDraft({
+      prospect,
+      includeReport: true,
+      analysis: analysis({
+        findings: [{
+          id: 'color-contrast',
+          audit_id: 'color-contrast',
+          classification: 'verified_issue',
+          title: 'Low contrast text',
+          evidence: 'Text is difficult to read.',
+        }],
+      }),
+    })
+
+    expect(generated.qualityChecks).toContain(
+      'The matching website review PDF will be attached when the email is sent.',
+    )
+    expect(validateProfessionalEmailDraft(
+      generated,
+      prospect,
+      true,
+      generated.subjectSuggestions[0],
+    ).errors).not.toContain(
+      'The email says a website report is attached, but no matching review is available to include.',
+    )
+    expect(validateProfessionalEmailDraft(
+      generated,
+      prospect,
+      false,
+      generated.subjectSuggestions[0],
+    ).errors).toContain(
+      'The email says a website report is attached, but no matching review is available to include.',
+    )
+  })
+
   it('does not invent a price when responding to a pricing question', () => {
     const result = generateProfessionalEmailDraft({ prospect, strategy: 'pricing_response' })
     expect(result.body).toContain('cost depends on the scope of work')
