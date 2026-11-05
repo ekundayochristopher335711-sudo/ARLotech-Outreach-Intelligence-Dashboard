@@ -103,6 +103,27 @@ describe('professional email draft generation', () => {
     expect(result.body).not.toMatch(/<li>|<script>|<template>|screen reader|dequeuniversity|axe\/4\.14|invalid markup/i)
   })
 
+  it('rewrites link-name findings without exposing external accessibility references', () => {
+    const result = generateProfessionalEmailDraft({
+      prospect,
+      analysis: analysis({
+        findings: [{
+          id: 'link-name',
+          category: 'accessibility',
+          classification: 'verified_issue',
+          title: 'Links do not have a discernible name',
+          evidence: 'Some links have no accessible name.',
+          explanation: 'Link text that is discernible improves navigation. https://dequeuniversity.com/rules/axe/4.14/link-name',
+          priority: 'medium',
+        }],
+      }),
+    })
+
+    expect(result.body.toLowerCase()).toContain('some links may be unclear to visitors')
+    expect(result.body).toContain('Clear link wording can make it easier to find services or contact information.')
+    expect(result.body).not.toMatch(/dequeuniversity|axe\/4\.14|Learn how to make links accessible|discernible name|screen reader/i)
+  })
+
   it('uses the saved visual observation without pitching a redesign', () => {
     const result = generateProfessionalEmailDraft({
       prospect,

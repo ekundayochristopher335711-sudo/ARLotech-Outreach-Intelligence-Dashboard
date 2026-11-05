@@ -42,6 +42,10 @@ const findingCopies: Array<[RegExp, FindingCopy]> = [
     title: 'Some visitors may miss details shown in important images',
     impact: 'Visitors who cannot see an image rely on its written description to understand what it shows. Without one, they may miss important service or trust information and feel less sure about contacting you.',
   }],
+  [/link-name|link.*name|discernible.*link/i, {
+    title: 'Some links may be unclear to visitors',
+    impact: 'When a link does not clearly explain where it leads, visitors may be unsure what to expect. Clear link wording can make it easier to find services or contact information.',
+  }],
   [/color-contrast|low contrast|\bcontrast\b/i, {
     title: 'Some text may be difficult for visitors to read',
     impact: 'Text that blends into its background is harder to read on a phone or in bright light. Visitors can miss service details, opening information, or the next step for getting in touch.',
