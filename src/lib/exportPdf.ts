@@ -272,13 +272,17 @@ function createReport(
     y += cardHeight + 5
   }
 
-  const addWebsiteContactCard = (impact: string, emailOption: string, callOption: string) => {
+  const addWebsiteContactCard = (impact: string, invitation: string, contactDetails: string[]) => {
     doc.setFont('helvetica', 'normal')
     doc.setFontSize(8.5)
     const impactLines = doc.splitTextToSize(impact, CONTENT_WIDTH - 14)
-    const emailLines = doc.splitTextToSize(emailOption, CONTENT_WIDTH - 14)
-    const callLines = doc.splitTextToSize(callOption, CONTENT_WIDTH - 14)
-    const cardHeight = 27 + impactLines.length * 4.2 + emailLines.length * 4.2 + callLines.length * 4.2
+    const invitationLines = doc.splitTextToSize(invitation, CONTENT_WIDTH - 14)
+    const contactLineGroups = contactDetails.map((detail) => doc.splitTextToSize(detail, CONTENT_WIDTH - 14))
+    const cardHeight = 31 + [
+      impactLines,
+      invitationLines,
+      ...contactLineGroups,
+    ].reduce((total, lines) => total + lines.length * 4.2 + 3, 0)
     if (!ensureSpace(cardHeight + 4)) return
 
     const top = y
@@ -287,12 +291,12 @@ function createReport(
     doc.setTextColor(148, 220, 211)
     doc.setFont('helvetica', 'bold')
     doc.setFontSize(10)
-    doc.text('A smoother website experience starts with a conversation', LEFT + 7, top + 9)
+    doc.text('Need help with these improvements?', LEFT + 7, top + 9)
     doc.setTextColor(...WHITE)
     doc.setFont('helvetica', 'normal')
     doc.setFontSize(8.5)
     let textY = top + 17
-    for (const lines of [impactLines, emailLines, callLines]) {
+    for (const lines of [impactLines, invitationLines, ...contactLineGroups]) {
       doc.text(lines, LEFT + 7, textY)
       textY += lines.length * 4.2 + 3
     }
@@ -486,29 +490,10 @@ function normalizePdfFindings(findings: PdfFinding[]) {
 
 function buildConsultantWebsiteAnalysisPdf(
   analysis: Record<string, any>,
-  preparedFor?: { businessName: string; verified: boolean } | null,
+  _preparedFor?: { businessName: string; verified: boolean } | null,
   logo?: PdfBrandLogo,
 ) {
   const rec = analysis?.record || analysis || {}
-  const rawUrl = typeof rec.website_url === 'string'
-    ? rec.website_url
-    : typeof rec.url === 'string'
-      ? rec.url
-      : ''
-  let hostname = 'Website not recorded'
-  let targetUrl = 'Not recorded'
-  try {
-    const parsedUrl = new URL(/^https?:\/\//i.test(rawUrl) ? rawUrl : `https://${rawUrl}`)
-    hostname = parsedUrl.hostname.replace(/^www\./i, '')
-    targetUrl = `${parsedUrl.origin}${parsedUrl.pathname}`.replace(/\/$/, '') || parsedUrl.origin
-    if (targetUrl.length > 110) targetUrl = `${targetUrl.slice(0, 107)}...`
-  } catch {
-    hostname = 'Website URL unavailable'
-  }
-  const verifiedBusinessName = (preparedFor?.verified ? preparedFor.businessName.trim() : null) || (
-    rec.prospect?.business_name_verified === true ? rec.prospect.business_name?.trim() : null
-  )
-  const preparedName = (verifiedBusinessName || hostname).slice(0, 70)
   const scoreInputs = Object.fromEntries(
     Object.keys(LIGHTHOUSE_CATEGORY_WEIGHTS).map((category) => [
       category,
@@ -585,7 +570,7 @@ function buildConsultantWebsiteAnalysisPdf(
     .slice(0, 3)
   const report = createReport(
     'Website review',
-    `${targetUrl}  |  Reviewed ${displayDate(rec.analyzed_at)}  |  Arlotech Digital Solutions`,
+    `Reviewed ${displayDate(rec.analyzed_at)}  |  Arlotech Digital Solutions`,
     'WEBSITE REVIEW',
     3,
     logo,
@@ -616,8 +601,6 @@ function buildConsultantWebsiteAnalysisPdf(
     .filter(Boolean)
 
   report.addSection('Your website at a glance')
-  report.addParagraph(preparedName, { size: 9, bold: true, color: NAVY })
-  report.addParagraph(`Website reviewed: ${targetUrl}`, { size: 8 })
   report.addWebsiteHealthCard(score, scoreSummary, experienceSummary)
   report.addParagraph(
     reviewedAreas.length
@@ -644,10 +627,13 @@ function buildConsultantWebsiteAnalysisPdf(
   const businessImpactParagraph = topFindings.length
     ? 'A clear, dependable website helps protect your reputation and gives potential customers a simpler path from finding your business to getting in touch. The points above show where a small, focused improvement may help.'
     : 'The available review did not confirm a customer issue that needs fixing. Keeping the website clear and dependable can still help protect your reputation and make it easy for customers to get in touch.'
-  const emailContact = 'Prefer email? Reply directly to the email that included this report if you would like to discuss it.'
-  const callContact =
-    'Prefer to talk it through? Reply with a day and time that suits you to arrange a 10-minute review call with Arlotech Digital Solutions.'
-  report.addWebsiteContactCard(businessImpactParagraph, emailContact, callContact)
+  const contactInvitation =
+    'Reply to the email that included this report if you would like to discuss a practical next step.'
+  report.addWebsiteContactCard(businessImpactParagraph, contactInvitation, [
+    'Email: outreach@arlotech.com.ng',
+    'Website: arlotech.com.ng',
+    'Phone: +234 812 937 4001',
+  ])
 
   return {
     report,

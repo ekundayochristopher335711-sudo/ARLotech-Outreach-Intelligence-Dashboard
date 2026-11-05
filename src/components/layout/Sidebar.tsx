@@ -17,6 +17,7 @@ import {
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuthState'
 import { useAccessibleDialog } from '@/hooks/useAccessibleDialog'
+import { useUnreadReplyCount } from '@/hooks/useUnreadReplyCount'
 import { ARLOTECH_LOGO_FILE, getBrandAssetUrl } from '@/lib/brandAssets'
 
 interface NavItem {
@@ -54,6 +55,7 @@ export function Sidebar({
   const [signingOut, setSigningOut] = useState(false)
   const [signOutError, setSignOutError] = useState('')
   const { signOut } = useAuth()
+  const { data: unreadReplyCount = 0 } = useUnreadReplyCount()
   const sidebarRef = useAccessibleDialog<HTMLElement>(mobileOpen, () => setMobileOpen(false), true)
 
   const handleSignOut = async () => {
@@ -120,7 +122,12 @@ export function Sidebar({
                 }}
               >
                 <item.icon className="h-4 w-4" />
-                <span className="truncate">{displayLabels[item.path] || item.label}</span>
+                <span className="min-w-0 flex-1 truncate">{displayLabels[item.path] || item.label}</span>
+                {item.path === '/replies' && unreadReplyCount > 0 && (
+                  <span className="inline-flex min-h-5 min-w-5 items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-bold text-white" aria-label={`${unreadReplyCount} unread replies`}>
+                    {unreadReplyCount > 99 ? '99+' : unreadReplyCount}
+                  </span>
+                )}
               </NavLink>
             </div>
           ))}

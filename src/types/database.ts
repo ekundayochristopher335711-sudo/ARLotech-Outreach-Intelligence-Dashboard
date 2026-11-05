@@ -323,6 +323,7 @@ export type Database = {
           event_type: string
           id: string
           push_sent_at: string | null
+          read_at: string | null
           source_key: string
           title: string
           user_id: string
@@ -335,6 +336,7 @@ export type Database = {
           event_type: string
           id?: string
           push_sent_at?: string | null
+          read_at?: string | null
           source_key: string
           title: string
           user_id: string
@@ -347,6 +349,7 @@ export type Database = {
           event_type?: string
           id?: string
           push_sent_at?: string | null
+          read_at?: string | null
           source_key?: string
           title?: string
           user_id?: string

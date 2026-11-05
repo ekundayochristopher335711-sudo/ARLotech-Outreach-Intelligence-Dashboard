@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Check, Copy, Mail, Paperclip, Pencil, Plus, Send, Sparkles, Trash2, X } from 'lucide-react'
 import { toast } from 'sonner'
@@ -6,6 +7,7 @@ import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { Textarea } from '@/components/ui/Textarea'
 import { getCurrentUserId, supabase } from '@/lib/supabase'
+import { loadArlotechLogoDataUrl } from '@/lib/brandAssets'
 import { createWebsiteAnalysisPdfBase64 } from '@/lib/exportPdf'
 import {
   createOutreachPreview,
@@ -170,6 +172,13 @@ async function imageBlobToDataUrl(blob: Blob): Promise<string> {
   }
 }
 
+async function createInlineLogoPayload() {
+  const logoDataUrl = await loadArlotechLogoDataUrl()
+  const match = /^data:image\/png;base64,([A-Za-z0-9+/]+={0,2})$/.exec(logoDataUrl)
+  if (!match) throw new Error('The Arlotech logo could not be prepared for the email.')
+  return { filename: 'arlotech-logo.png', content: match[1] }
+}
+
 async function createAuditPdfAttachment(
   analysis: WebsiteAnalysis,
   prospect: OutreachProspect,
@@ -224,6 +233,11 @@ async function getOutreachFunctionError(error: unknown) {
 
 export function EmailDraftsPage() {
   const queryClient = useQueryClient()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const [selectedOutreachIds, setSelectedOutreachIds] = useState<string[]>(() => {
+    const requestedProspectId = searchParams.get('prospectId')
+    return requestedProspectId ? [requestedProspectId] : []
+  })
   const [showForm, setShowForm] = useState(false)
   const [editingDraft, setEditingDraft] = useState<EmailDraft | null>(null)
   const [subject, setSubject] = useState('')
@@ -235,12 +249,11 @@ export function EmailDraftsPage() {
   const [manualSendResult, setManualSendResult] = useState<OutreachSendResult | null>(null)
   const [campaignId, setCampaignId] = useState('')
   const [prospectId, setProspectId] = useState('')
-  const [selectedOutreachIds, setSelectedOutreachIds] = useState<string[]>([])
   const [outreachPreviews, setOutreachPreviews] = useState<GeneratedOutreachPreview[]>([])
   const [outreachBatchId, setOutreachBatchId] = useState('')
   const [complianceConfirmed, setComplianceConfirmed] = useState(false)
   const [outreachResults, setOutreachResults] = useState<OutreachSendResult[]>([])
-  const [generatorProspectId, setGeneratorProspectId] = useState('')
+  const [generatorProspectId, setGeneratorProspectId] = useState(() => searchParams.get('prospectId') || '')
   const [generatorCampaignId, setGeneratorCampaignId] = useState('')
   const [generatorStrategy, setGeneratorStrategy] = useState<OutreachStrategy>('general_review')
   const [generatorTone, setGeneratorTone] = useState<OutreachTone>('professional')
@@ -296,7 +309,8 @@ export function EmailDraftsPage() {
       return data as Pick<Prospect, 'id' | 'business_name' | 'email' | 'do_not_contact'>[]
     },
   })
-  const prospectOptions = prospects as Pick<Prospect, 'id' | 'business_name' | 'email' | 'do_not_contact'>[]
+  const prospectOptions = (prospects as Pick<Prospect, 'id' | 'business_name' | 'email' | 'do_not_contact'>[])
+    .filter((prospect) => !!prospect.email?.trim())
 
   const { data: emailProfile, error: emailProfileError } = useQuery({
     queryKey: ['/profile', 'email-signature'],
@@ -390,6 +404,7 @@ export function EmailDraftsPage() {
   }
 
   const outreachProspectRows = outreachProspects as OutreachProspect[]
+  const emailOutreachProspectRows = outreachProspectRows.filter((prospect) => !!prospect.email?.trim())
   const outreachAnalysisRows = outreachAnalyses as WebsiteAnalysis[]
   const suppressedEmailRows = suppressedRows as Array<{ normalized_email: string }>
   const sentEmailRows = previouslySentRows as SentOutreachContext[]
@@ -417,7 +432,7 @@ export function EmailDraftsPage() {
       prospect.do_not_contact &&
       prospect.email?.trim().toLowerCase() === manualRecipient.trim().toLowerCase(),
   )
-  const selectedGeneratorProspect = outreachProspectRows.find((prospect) => prospect.id === generatorProspectId)
+  const selectedGeneratorProspect = emailOutreachProspectRows.find((prospect) => prospect.id === generatorProspectId)
   const selectedGeneratorAnalysis = selectedGeneratorProspect
     ? analysisByProspect.get(selectedGeneratorProspect.id)
     : undefined
@@ -476,9 +491,34 @@ export function EmailDraftsPage() {
     ? getOutreachBlockReason(selectedGeneratorProspect)
     : null
 
+  const requestedProspectId = searchParams.get('prospectId')
+  const requestedProspect = emailOutreachProspectRows.find((item) => item.id === requestedProspectId)
+  const requestedProspectBlockReason = requestedProspectId &&
+    !outreachProspectsLoading &&
+    !outreachAnalysesLoading &&
+    !suppressionLoading &&
+    !sentHistoryLoading
+    ? requestedProspect
+      ? getOutreachBlockReason(requestedProspect)
+      : 'Prospect is not available or has no email address'
+    : null
+  const outreachProspectById = new Map(emailOutreachProspectRows.map((prospect) => [prospect.id, prospect]))
+  const validSelectedOutreachIds = selectedOutreachIds.filter((id) => {
+    const prospect = outreachProspectById.get(id)
+    return !!prospect && !getOutreachBlockReason(prospect)
+  })
+
+  const clearProspectPrefill = () => {
+    if (!searchParams.has('prospectId')) return
+    const nextSearchParams = new URLSearchParams(searchParams)
+    nextSearchParams.delete('prospectId')
+    setSearchParams(nextSearchParams, { replace: true })
+  }
+
   const prepareOutreachPreviews = async () => {
-    const selectedProspects = outreachProspectRows.filter((prospect: OutreachProspect) =>
-      selectedOutreachIds.includes(prospect.id),
+    clearProspectPrefill()
+    const selectedProspects = emailOutreachProspectRows.filter((prospect: OutreachProspect) =>
+      validSelectedOutreachIds.includes(prospect.id),
     )
     if (selectedProspects.length === 0) {
       toast.error('Select at least one eligible prospect.')
@@ -680,9 +720,10 @@ export function EmailDraftsPage() {
       }
       if (currentBatch.length) batches.push(currentBatch)
 
+      const inlineLogo = await createInlineLogoPayload()
       for (const batch of batches) {
         const { data, error } = await functionClient.functions.invoke('send-outreach', {
-          body: { batchId: outreachBatchId, emails: batch, complianceConfirmed },
+          body: { batchId: outreachBatchId, emails: batch, complianceConfirmed, inlineLogo },
         })
         if (error) throw new Error(await getOutreachFunctionError(error))
         if (!isSendOutreachResponse(data)) {
@@ -773,6 +814,7 @@ export function EmailDraftsPage() {
           ) => Promise<{ data: unknown; error: Error | null }>
         }
       }
+      const inlineLogo = await createInlineLogoPayload()
       const { data, error } = await functionClient.functions.invoke('send-outreach', {
         body: {
           batchId: crypto.randomUUID(),
@@ -782,6 +824,7 @@ export function EmailDraftsPage() {
             body: manualBody.trim(),
           },
           complianceConfirmed: true,
+          inlineLogo,
         },
       })
       if (error) throw new Error(await getOutreachFunctionError(error))
@@ -843,10 +886,12 @@ export function EmailDraftsPage() {
           ) => Promise<{ data: unknown; error: Error | null }>
         }
       }
+      const inlineLogo = await createInlineLogoPayload()
       const { data, error } = await functionClient.functions.invoke('send-outreach', {
         body: {
           batchId: crypto.randomUUID(),
           complianceConfirmed: generatedComplianceConfirmed,
+          inlineLogo,
           emails: [{
             prospect_id: selectedGeneratorProspect.id,
             subject: generatedSubject.trim(),
@@ -1089,7 +1134,7 @@ export function EmailDraftsPage() {
               className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
             >
               <option value="">Select a prospect</option>
-              {outreachProspectRows.map((prospect) => (
+              {emailOutreachProspectRows.map((prospect) => (
                 <option key={prospect.id} value={prospect.id}>{prospect.business_name}</option>
               ))}
             </select>
@@ -1698,9 +1743,9 @@ export function EmailDraftsPage() {
           <div className="h-24 animate-pulse rounded-lg bg-slate-100" />
         ) : (
           <div className="max-h-80 space-y-2 overflow-y-auto rounded-lg border border-slate-200 p-2">
-            {outreachProspectRows.map((prospect: OutreachProspect) => {
+            {emailOutreachProspectRows.map((prospect: OutreachProspect) => {
               const blockReason = getOutreachBlockReason(prospect)
-              const selected = selectedOutreachIds.includes(prospect.id)
+              const selected = validSelectedOutreachIds.includes(prospect.id)
               return (
                 <label
                   key={prospect.id}
@@ -1714,15 +1759,20 @@ export function EmailDraftsPage() {
                     checked={selected}
                     disabled={!!blockReason || !!suppressionError || !!sentHistoryError}
                     onChange={() => {
+                      clearProspectPrefill()
                       setOutreachPreviews([])
                       setOutreachResults([])
                       setSelectedOutreachIds((current) => {
-                        if (current.includes(prospect.id)) return current.filter((id) => id !== prospect.id)
-                        if (current.length >= MAX_OUTREACH_BATCH_SIZE) {
+                        const eligibleCurrent = current.filter((id) => {
+                          const currentProspect = outreachProspectById.get(id)
+                          return !!currentProspect && !getOutreachBlockReason(currentProspect)
+                        })
+                        if (eligibleCurrent.includes(prospect.id)) return eligibleCurrent.filter((id) => id !== prospect.id)
+                        if (eligibleCurrent.length >= MAX_OUTREACH_BATCH_SIZE) {
                           toast.error(`Select up to ${MAX_OUTREACH_BATCH_SIZE} prospects per batch.`)
-                          return current
+                          return eligibleCurrent
                         }
-                        return [...current, prospect.id]
+                        return [...eligibleCurrent, prospect.id]
                       })
                     }}
                     aria-label={`Select ${prospect.business_name} for outreach`}
@@ -1750,19 +1800,24 @@ export function EmailDraftsPage() {
                 </label>
               )
             })}
-            {outreachProspects.length === 0 && (
-              <p className="p-4 text-center text-sm text-slate-500">Add prospects to prepare an outreach batch.</p>
+            {requestedProspectBlockReason && (
+              <p role="alert" className="p-3 text-sm text-amber-700">
+                Suggested prospect was not selected: {requestedProspectBlockReason}.
+              </p>
+            )}
+            {emailOutreachProspectRows.length === 0 && (
+              <p className="p-4 text-center text-sm text-slate-500">Add prospects with email addresses to prepare an outreach batch.</p>
             )}
           </div>
         )}
 
         <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-xs text-slate-500">{selectedOutreachIds.length} / {MAX_OUTREACH_BATCH_SIZE} selected</p>
+          <p className="text-xs text-slate-500">{validSelectedOutreachIds.length} / {MAX_OUTREACH_BATCH_SIZE} selected</p>
           <Button
             variant="secondary"
             onClick={prepareOutreachPreviews}
             disabled={
-              selectedOutreachIds.length === 0 ||
+              validSelectedOutreachIds.length === 0 ||
               outreachProspectsLoading ||
               outreachAnalysesLoading ||
               !!outreachProspectsError ||

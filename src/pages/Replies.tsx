@@ -1,8 +1,11 @@
-import { useQuery } from '@tanstack/react-query'
+import { useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
-import { CheckCircle, Clock, Mail, RefreshCw } from 'lucide-react'
+import { CheckCircle, Clock, Mail, RefreshCw, Send, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/Badge'
+import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { exportRepliesPdf } from '@/lib/exportPdf'
 import { splitReplyText } from '@/lib/replyText'
@@ -15,6 +18,11 @@ type ReplyMessage = Pick<
 >
 
 export function RepliesPage() {
+  const queryClient = useQueryClient()
+  const [searchParams] = useSearchParams()
+  const focusedMessageId = searchParams.get('messageId')
+  const [replyingToId, setReplyingToId] = useState<string | null>(null)
+  const [replyBody, setReplyBody] = useState('')
   const {
     data: messages,
     isLoading,
@@ -22,17 +30,30 @@ export function RepliesPage() {
     refetch,
     error,
   } = useQuery({
-    queryKey: ['/email-messages'],
+    queryKey: ['/email-messages', focusedMessageId],
     queryFn: async () => {
       const userId = await getCurrentUserId()
+      const projection = 'id, direction, status, received_at, sent_at, created_at, subject, body, prospect_id, recipient_email, sender_email, opened_at'
       const { data, error } = await supabase
         .from('email_messages')
-        .select('id, direction, status, received_at, sent_at, created_at, subject, body, prospect_id, recipient_email, sender_email, opened_at')
+        .select(projection)
         .eq('user_id', userId)
         .order('created_at', { ascending: false })
         .limit(100)
       if (error) throw error
-      return data as ReplyMessage[]
+      const recentMessages = data as ReplyMessage[]
+      if (!focusedMessageId || recentMessages.some((message) => message.id === focusedMessageId)) {
+        return recentMessages
+      }
+
+      const { data: focusedMessage, error: focusedMessageError } = await supabase
+        .from('email_messages')
+        .select(projection)
+        .eq('user_id', userId)
+        .eq('id', focusedMessageId)
+        .maybeSingle()
+      if (focusedMessageError) throw focusedMessageError
+      return focusedMessage ? [focusedMessage as ReplyMessage, ...recentMessages] : recentMessages
     },
   })
 
@@ -49,6 +70,49 @@ export function RepliesPage() {
     },
   })
 
+  useEffect(() => {
+    if (!focusedMessageId || !messages) return
+    document.getElementById(`message-${focusedMessageId}`)?.scrollIntoView({
+      behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+      block: 'center',
+    })
+  }, [focusedMessageId, messages])
+
+  const sendReplyMutation = useMutation({
+    mutationFn: async (input: { messageId: string; body: string }) => {
+      const functionClient = supabase as typeof supabase & {
+        functions: {
+          invoke: (name: string, options: { body: unknown }) => Promise<{ data: unknown; error: Error | null }>
+        }
+      }
+      const { data, error } = await functionClient.functions.invoke('send-reply', {
+        body: { messageId: input.messageId, body: input.body },
+      })
+      if (error) {
+        const detail = data && typeof data === 'object' && 'error' in data && typeof data.error === 'string'
+          ? data.error
+          : error.message
+        throw new Error(detail || 'Could not send this reply.')
+      }
+      if (!data || typeof data !== 'object' || !('sent' in data) || data.sent !== true) {
+        const detail = data && typeof data === 'object' && 'error' in data && typeof data.error === 'string'
+          ? data.error
+          : 'The reply service returned an invalid response.'
+        throw new Error(detail)
+      }
+      return data as { sent: true; tracking_error?: string }
+    },
+    onSuccess: (result: { sent: true; tracking_error?: string }) => {
+      setReplyingToId(null)
+      setReplyBody('')
+      void queryClient.invalidateQueries({ queryKey: ['/email-messages'] })
+      toast.success(result.tracking_error
+        ? `Reply sent. Message history warning: ${result.tracking_error}`
+        : 'Reply sent.')
+    },
+    onError: (sendError: Error) => toast.error(sendError.message || 'Could not send reply.'),
+  })
+
   if (isLoading) {
     return <Card className="p-6"><div className="h-40 animate-pulse rounded bg-slate-200" /></Card>
   }
@@ -60,12 +124,20 @@ export function RepliesPage() {
   const allMessages = (messages || []) as ReplyMessage[]
   const repliedMessages = allMessages.filter((message) => message.direction === 'inbound' || message.status === 'replied')
   const sentMessages = allMessages.filter((message) => message.direction === 'outbound' && message.status === 'sent')
-  const recentSentMessages = sentMessages
+  const sortedSentMessages = sentMessages
     .slice()
     .sort((left, right) =>
       Date.parse(right.sent_at || right.created_at) - Date.parse(left.sent_at || left.created_at),
     )
-    .slice(0, 25)
+  const focusedSentMessage = focusedMessageId
+    ? sortedSentMessages.find((message) => message.id === focusedMessageId)
+    : undefined
+  const recentSentMessages = [
+    ...(focusedSentMessage && !sortedSentMessages.slice(0, 25).some((message) => message.id === focusedSentMessage.id)
+      ? [focusedSentMessage]
+      : []),
+    ...sortedSentMessages.slice(0, 25),
+  ]
   const prospectNames = new Map<string, string>(
     ((prospects || []) as Pick<Prospect, 'id' | 'business_name'>[]).map((prospect) => [prospect.id, prospect.business_name]),
   )
@@ -166,7 +238,7 @@ export function RepliesPage() {
             {repliedMessages.map((message) => {
               const reply = splitReplyText(message.body || '')
               return (
-                <article key={message.id} className="rounded-lg border border-slate-200 p-4">
+                <article id={`message-${message.id}`} key={message.id} className={`rounded-lg border p-4 ${focusedMessageId === message.id ? 'border-arlotech bg-emerald-50/40 ring-2 ring-arlotech/20' : 'border-slate-200'}`}>
                 <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
                     <Badge variant="success">{message.direction === 'inbound' ? 'Received' : 'Replied'}</Badge>
@@ -193,6 +265,60 @@ export function RepliesPage() {
                     <p className="mt-2 whitespace-pre-wrap border-l-2 border-slate-200 pl-3">{reply.quotedText}</p>
                   </details>
                 )}
+                {message.direction === 'inbound' && (
+                  <div className="mt-4 border-t border-slate-100 pt-3">
+                    {replyingToId === message.id ? (
+                      <div className="space-y-3">
+                        <p className="break-all text-xs text-slate-500">
+                          To: {message.sender_email || 'Sender address unavailable'} · Subject: {/^re:/i.test(message.subject || '') ? message.subject : `Re: ${message.subject || 'your message'}`}
+                        </p>
+                        <label className="block">
+                          <span className="sr-only">Your reply</span>
+                          <textarea
+                            value={replyBody}
+                            onChange={(event) => setReplyBody(event.target.value)}
+                            rows={5}
+                            maxLength={12000}
+                            placeholder="Write your reply..."
+                            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-arlotech focus:outline-none focus:ring-2 focus:ring-arlotech/20"
+                          />
+                        </label>
+                        <div className="flex flex-wrap justify-end gap-2">
+                          <Button
+                            variant="secondary"
+                            onClick={() => {
+                              setReplyingToId(null)
+                              setReplyBody('')
+                            }}
+                            disabled={sendReplyMutation.isPending}
+                          >
+                            <X className="h-4 w-4" /> Cancel
+                          </Button>
+                          <Button
+                            onClick={() => sendReplyMutation.mutate({ messageId: message.id, body: replyBody.trim() })}
+                            disabled={sendReplyMutation.isPending || !message.sender_email || !replyBody.trim()}
+                          >
+                            <Send className="h-4 w-4" />
+                            {sendReplyMutation.isPending ? 'Sending...' : 'Send reply'}
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => {
+                          setReplyingToId(message.id)
+                          setReplyBody('')
+                        }}
+                        disabled={!message.sender_email}
+                      >
+                        <Send className="h-4 w-4" />
+                        {message.sender_email ? 'Reply' : 'Cannot reply: sender address missing'}
+                      </Button>
+                    )}
+                  </div>
+                )}
                 </article>
               )
             })}
@@ -207,7 +333,7 @@ export function RepliesPage() {
         ) : (
           <div className="space-y-3">
             {recentSentMessages.map((message) => (
-              <article key={message.id} className="rounded-lg border border-slate-200 p-4">
+              <article id={`message-${message.id}`} key={message.id} className={`rounded-lg border p-4 ${focusedMessageId === message.id ? 'border-arlotech bg-emerald-50/40 ring-2 ring-arlotech/20' : 'border-slate-200'}`}>
                 <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
                     <Badge variant="success">Sent</Badge>

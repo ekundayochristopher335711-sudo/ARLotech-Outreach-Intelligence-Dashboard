@@ -19,6 +19,11 @@ interface OutreachAttachment {
   content: string
 }
 
+interface InlineLogo {
+  filename: 'arlotech-logo.png'
+  content: string
+}
+
 interface OutreachEmail {
   prospect_id?: string
   recipient_email?: string
@@ -86,6 +91,19 @@ serve(async (req) => {
     const userId = userData.user.id
 
     const body = await req.json()
+    const inlineLogo: InlineLogo | null = body?.inlineLogo == null
+      ? null
+      : body.inlineLogo &&
+          typeof body.inlineLogo === 'object' &&
+          body.inlineLogo.filename === 'arlotech-logo.png' &&
+          typeof body.inlineLogo.content === 'string' &&
+          body.inlineLogo.content.length <= 100_000 &&
+          /^[A-Za-z0-9+/]+={0,2}$/.test(body.inlineLogo.content)
+        ? body.inlineLogo as InlineLogo
+        : null
+    if (body?.inlineLogo != null && !inlineLogo) {
+      return jsonResponse({ error: 'The Arlotech logo attachment is invalid.' }, 400)
+    }
     const manualMode = body?.manualEmail !== undefined
     const batchId = body?.batchId
     if (body?.complianceConfirmed !== true) {
@@ -332,14 +350,23 @@ serve(async (req) => {
           to: [recipient],
           subject: email.subject.trim(),
           text: sentBody,
-          html: outreachEmailHtml(email.body, postalAddress),
-          ...(email.attachment
+          html: outreachEmailHtml(email.body, postalAddress, !!inlineLogo),
+          ...((inlineLogo || email.attachment)
             ? {
                 attachments: [
-                  {
-                    filename: email.attachment.filename,
-                    content: email.attachment.content,
-                  },
+                  ...(inlineLogo
+                    ? [{
+                        filename: inlineLogo.filename,
+                        content: inlineLogo.content,
+                        content_id: 'arlotech-logo',
+                      }]
+                    : []),
+                  ...(email.attachment
+                    ? [{
+                        filename: email.attachment.filename,
+                        content: email.attachment.content,
+                      }]
+                    : []),
                 ],
               }
             : {}),

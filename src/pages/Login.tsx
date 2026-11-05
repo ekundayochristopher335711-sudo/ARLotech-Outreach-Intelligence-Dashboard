@@ -15,7 +15,11 @@ export function LoginPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [fingerprintHeld, setFingerprintHeld] = useState(false)
-  const [matrixStreams, setMatrixStreams] = useState<string[]>(() => Array.from({ length: 34 }, () => Array.from({ length: 34 }, () => Math.random() > .5 ? '1' : '0').join(' ')))
+  const [matrixStreams] = useState<string[]>(() =>
+    Array.from({ length: 26 }, () =>
+      Array.from({ length: 22 }, () => Math.random() > .5 ? '1' : '0').join(' '),
+    ),
+  )
   const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const holdStarted = useRef(false)
   const [mode, setMode] = useState<LoginMode>(() => {
@@ -48,12 +52,6 @@ export function LoginPage() {
     holdTimer.current = null
     setFingerprintHeld(false)
   }
-
-  useEffect(() => {
-    if (mode !== 'blacksite') return
-    const timer = window.setInterval(() => setMatrixStreams((columns) => columns.map((column) => column.split(' ').map((bit) => Math.random() > .58 ? (Math.random() > .5 ? '1' : '0') : bit).join(' '))), 280)
-    return () => window.clearInterval(timer)
-  }, [mode])
 
   useEffect(() => () => {
     if (holdTimer.current) clearTimeout(holdTimer.current)

@@ -27,14 +27,21 @@ export function WebsiteIntelligencePage() {
     queryKey: ['/website-analyses'],
     queryFn: async () => {
       const userId = await getCurrentUserId()
-      const { data, error } = await supabase
-        .from('website_analyses')
-        .select('*, prospect:prospects(business_name, business_name_verified)')
-        .eq('user_id', userId)
-        .order('analyzed_at', { ascending: false })
-        .limit(20)
-      if (error) throw error
-      return data
+      const pageSize = 500
+      const allAnalyses = []
+      for (let from = 0; ; from += pageSize) {
+        const { data, error } = await supabase
+          .from('website_analyses')
+          .select('*, prospect:prospects(business_name, business_name_verified)')
+          .eq('user_id', userId)
+          .order('analyzed_at', { ascending: false, nullsFirst: false })
+          .order('id', { ascending: false })
+          .range(from, from + pageSize - 1)
+        if (error) throw error
+        allAnalyses.push(...data)
+        if (data.length < pageSize) break
+      }
+      return allAnalyses
     },
   })
 

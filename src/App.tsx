@@ -12,6 +12,7 @@ import { useAuth } from '@/hooks/useAuthState'
 import { useLocation } from 'react-router-dom'
 import { Sidebar } from '@/components/layout/Sidebar'
 import { NotificationListener } from '@/components/notifications/NotificationListener'
+import { NotificationCenter } from '@/components/notifications/NotificationCenter'
 import { ARLOTECH_FAVICON_FILE, ARLOTECH_LOGO_FILE, getBrandAssetUrl } from '@/lib/brandAssets'
 
 const LoginPage = lazy(() => import('@/pages/Login').then((module) => ({ default: module.LoginPage })))
@@ -80,13 +81,11 @@ function PrivateRoute({ children }: { children: React.ReactNode }) {
 }
 
 function MatrixBackdrop() {
-  const [streams, setStreams] = useState<string[]>(() => Array.from({ length: 64 }, () => Array.from({ length: 42 }, () => '01ABCDEF'[Math.floor(Math.random() * 8)]).join('\n')))
-  useEffect(() => {
-    const timer = window.setInterval(() => {
-      setStreams((current) => current.map((stream) => stream.split('\n').map((bit) => Math.random() > .58 ? '01ABCDEF'[Math.floor(Math.random() * 8)] : bit).join('\n')))
-    }, 190)
-    return () => window.clearInterval(timer)
-  }, [])
+  const [streams] = useState<string[]>(() =>
+    Array.from({ length: 40 }, () =>
+      Array.from({ length: 28 }, () => '01ABCDEF'[Math.floor(Math.random() * 8)]).join('\n'),
+    ),
+  )
   return <div className="blacksite-matrix-field" aria-hidden="true">{streams.map((stream, index) => <span key={index} style={{ animationDelay: `${-(index % 13) * 1.7}s`, animationDuration: `${12 + (index % 9) * 2}s` }}>{stream}</span>)}</div>
 }
 
@@ -168,6 +167,7 @@ function AppShell() {
             <img src={getBrandAssetUrl(ARLOTECH_LOGO_FILE)} alt="Arlotech Digital Solutions" className="topbar-logo-image" />
           </span>
           <div className="topbar-system-status"><span className="status-live-dot" /> <span>{blacksite ? 'UPLINK ESTABLISHED' : 'WORKSPACE ONLINE'}</span><span className="topbar-divider">/</span><span className="topbar-clock">{blacksite ? 'TRACE NULL // UPLINK LIVE' : 'OUTREACH CONSOLE'}</span></div>
+          <NotificationCenter />
           <div className="topbar-mark" aria-hidden="true">{blacksite ? <RadioTower size={18} /> : <Activity size={18} />}<span>{blacksite ? 'NODE 09' : 'AOI'}</span></div>
         </header>
         <div className="min-w-0 flex-1 overflow-auto">

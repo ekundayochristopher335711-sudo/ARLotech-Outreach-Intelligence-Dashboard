@@ -12,6 +12,20 @@ describe('outreach email template', () => {
     expect(html).toContain('Business address')
   })
 
+  it('embeds the logo and highlights the attached PDF in the middle of the message', () => {
+    const html = outreachEmailHtml(
+      'Hi Alex,\n\nA useful website observation.\n\nWe have attached a short website review with more detail. Please take a look.\n\nWould a conversation help?',
+      'Business address',
+      true,
+    )
+
+    expect(html).toContain('<img src="cid:arlotech-logo"')
+    expect(html).toContain('Your website review PDF is attached')
+    expect(html).toContain('website-review PDF attached to this email')
+    expect(html.indexOf('Your website review PDF is attached')).toBeGreaterThan(html.indexOf('A useful website observation.'))
+    expect(html.indexOf('Your website review PDF is attached')).toBeLessThan(html.indexOf('Would a conversation help?'))
+  })
+
   it('escapes message markup and keeps the opt-out and address in both formats', () => {
     const message = 'Hello <script>alert("x")</script>'
     const html = outreachEmailHtml(message, '1 Main & Second Street')
