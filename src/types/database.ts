@@ -249,6 +249,7 @@ export type Database = {
           created_at: string | null
           direction: string
           id: string
+          opened_at: string | null
           prospect_id: string | null
           provider: string | null
           provider_message_id: string | null
@@ -266,6 +267,7 @@ export type Database = {
           created_at?: string | null
           direction?: string
           id?: string
+          opened_at?: string | null
           prospect_id?: string | null
           provider?: string | null
           provider_message_id?: string | null
@@ -283,6 +285,7 @@ export type Database = {
           created_at?: string | null
           direction?: string
           id?: string
+          opened_at?: string | null
           prospect_id?: string | null
           provider?: string | null
           provider_message_id?: string | null
@@ -310,6 +313,80 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      notification_events: {
+        Row: {
+          body: string
+          created_at: string
+          data: Json
+          email_message_id: string | null
+          event_type: string
+          id: string
+          push_sent_at: string | null
+          source_key: string
+          title: string
+          user_id: string
+        }
+        Insert: {
+          body: string
+          created_at?: string
+          data?: Json
+          email_message_id?: string | null
+          event_type: string
+          id?: string
+          push_sent_at?: string | null
+          source_key: string
+          title: string
+          user_id: string
+        }
+        Update: {
+          body?: string
+          created_at?: string
+          data?: Json
+          email_message_id?: string | null
+          event_type?: string
+          id?: string
+          push_sent_at?: string | null
+          source_key?: string
+          title?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notification_events_email_message_id_fkey"
+            columns: ["email_message_id"]
+            isOneToOne: false
+            referencedRelation: "email_messages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      push_subscriptions: {
+        Row: {
+          auth: string
+          created_at: string
+          endpoint: string
+          p256dh: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          auth: string
+          created_at?: string
+          endpoint: string
+          p256dh: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          auth?: string
+          created_at?: string
+          endpoint?: string
+          p256dh?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
       }
       email_templates: {
         Row: {

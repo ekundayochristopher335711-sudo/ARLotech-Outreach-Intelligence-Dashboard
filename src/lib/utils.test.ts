@@ -12,6 +12,12 @@ describe('getErrorMessage', () => {
   })
 
   it('uses the fallback when the error has no message', () => {
-    expect(getErrorMessage({ code: 'unknown' }, 'Save failed')).toBe('Save failed')
+    expect(getErrorMessage({}, 'Save failed')).toBe('Save failed')
+  })
+
+  it('preserves string errors and shows an error code when the message is missing', () => {
+    expect(getErrorMessage('Request timed out')).toBe('Request timed out')
+    expect(getErrorMessage({ code: 'ETIMEDOUT' }, 'Could not save status'))
+      .toBe('Request failed (ETIMEDOUT). Could not save status')
   })
 })

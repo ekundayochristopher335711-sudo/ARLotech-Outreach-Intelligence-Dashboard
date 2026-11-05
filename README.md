@@ -143,6 +143,37 @@ npx supabase functions deploy resend-inbound
 
 The receiver verifies Resend's signature, retrieves the message body from Resend, and links it to the most recent sent message from the same sender address. Replies without a matching recorded outbound recipient are acknowledged but not stored. After setup, send a new test email and reply to it; confirm that the webhook delivery succeeds in Resend and that the message appears on the Replies page. Replies to older messages continue to go to the address shown in those messages. Keep the signing secret server-side; never add it to Vite environment variables or frontend code.
 
+### Possible email-open tracking and browser notifications
+
+Resend open events are estimates: privacy tools and image proxies may trigger an open without a person reading the email. To enable them, turn on open tracking for the sending domain in Resend and add `email.opened` to the existing `resend-inbound` webhook's subscribed event types. Keep `email.received` enabled for replies.
+
+Persistent browser notifications use Web Push and do not send notification emails or consume Resend sending quota. Generate one VAPID key pair with a trusted Web Push key generator:
+
+```sh
+npx web-push generate-vapid-keys
+```
+
+Save the output securely and configure the **same pair** in both places:
+
+- Set `VITE_VAPID_PUBLIC_KEY` in the local `.env` and Vercel project environment.
+- Set `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, and `VAPID_SUBJECT` as Supabase Edge Function secrets. `VAPID_SUBJECT` should be a contact URI such as `mailto:outreach@arlotech.com.ng`. Never put the private key in Vite variables or source control.
+
+Set the server-side values using the key pair you generated:
+
+```sh
+npx supabase secrets set VAPID_PUBLIC_KEY=your_public_key VAPID_PRIVATE_KEY=your_private_key VAPID_SUBJECT="mailto:outreach@arlotech.com.ng"
+```
+
+Apply the migrations, deploy the updated receiver, and rebuild the frontend after configuring the public key:
+
+```sh
+npm run supabase:migrate
+npx supabase functions deploy resend-inbound
+npm run build
+```
+
+In the signed-in dashboard, open **Settings** and enable browser notifications. The browser must support notifications and the site must be served over HTTPS. The Replies page labels opens as possible, not confirmed. Notifications also appear in the dashboard while it is open. If push keys are not configured, the dashboard will explain that notifications cannot be enabled.
+
 In **Email Drafts**, generate a draft for a prospect and send it after review and lawful-basis confirmation, write a one-off message to any recipient address, or select up to 10 eligible prospects, preview and edit each individual email, confirm you have a lawful basis to contact the recipients, then send. Website-specific messages include a matching review PDF and tell the recipient it is attached for more detail. Website prospects without a confirmed, evidence-backed customer issue are withheld from automated outreach in both the page and the sending function; having an audit alone is not enough. Prospects without a website can receive a separate introduction. Previously contacted recipients are clearly labeled and require an explicit confirmation before resending. Suppressed addresses and prospects marked Do Not Contact remain blocked. The configured postal address and an opt-out instruction are appended automatically. The server caps sending at 50 messages per rolling 24 hours.
 
 

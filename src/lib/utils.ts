@@ -7,6 +7,7 @@ export function cn(...inputs: ClassValue[]) {
 
 export function getErrorMessage(error: unknown, fallback = 'An unexpected error occurred.'): string {
   if (error instanceof Error) return error.message
+  if (typeof error === 'string') return error.trim() || fallback
   if (
     error &&
     typeof error === 'object' &&
@@ -14,6 +15,9 @@ export function getErrorMessage(error: unknown, fallback = 'An unexpected error 
     typeof error.message === 'string'
   ) {
     return error.message
+  }
+  if (error && typeof error === 'object' && 'code' in error && typeof error.code === 'string') {
+    return `Request failed (${error.code}). ${fallback}`
   }
   return fallback
 }

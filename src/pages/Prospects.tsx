@@ -389,7 +389,10 @@ export function ProspectsPage() {
               try {
                 await recordFailedWebsiteAnalysis(prospect, enrichmentResult.error)
               } catch (recordError) {
-                enrichmentResult.error += `; Could not save failure status: ${getErrorMessage(recordError, 'Unknown error')}`
+                enrichmentResult.error += `; Could not save failure status: ${getErrorMessage(
+                  recordError,
+                  'Check your connection and account permissions, then retry the analysis.',
+                )}`
               }
             }
           } finally {
@@ -661,15 +664,17 @@ export function ProspectsPage() {
 
   const handleCloseAnalysisProgress = () => {
     const userId = session?.user.id
-    if (userId && hasPersistedAnalysisQueue) {
-      try {
-        clearPersistedAnalysisProgress(userId)
-      } catch (error) {
-        toast.error(error instanceof Error
-          ? `Could not close the saved website analysis progress: ${error.message}`
-          : 'Could not close the saved website analysis progress.')
-        return
-      }
+    if (!userId) {
+      toast.error('Could not identify your account to close saved analysis progress.')
+      return
+    }
+    try {
+      clearPersistedAnalysisProgress(userId)
+    } catch (error) {
+      toast.error(error instanceof Error
+        ? `Could not close the saved website analysis progress: ${error.message}`
+        : 'Could not close the saved website analysis progress.')
+      return
     }
     setEnrichmentResults([])
     setHasPersistedAnalysisQueue(false)

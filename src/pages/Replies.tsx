@@ -11,7 +11,7 @@ import type { EmailMessage, Prospect } from '@/types'
 
 type ReplyMessage = Pick<
   EmailMessage,
-  'id' | 'direction' | 'status' | 'received_at' | 'sent_at' | 'created_at' | 'subject' | 'body' | 'prospect_id' | 'recipient_email' | 'sender_email'
+  'id' | 'direction' | 'status' | 'received_at' | 'sent_at' | 'created_at' | 'subject' | 'body' | 'prospect_id' | 'recipient_email' | 'sender_email' | 'opened_at'
 >
 
 export function RepliesPage() {
@@ -27,7 +27,7 @@ export function RepliesPage() {
       const userId = await getCurrentUserId()
       const { data, error } = await supabase
         .from('email_messages')
-        .select('id, direction, status, received_at, sent_at, created_at, subject, body, prospect_id, recipient_email, sender_email')
+        .select('id, direction, status, received_at, sent_at, created_at, subject, body, prospect_id, recipient_email, sender_email, opened_at')
         .eq('user_id', userId)
         .order('created_at', { ascending: false })
         .limit(100)
@@ -211,6 +211,7 @@ export function RepliesPage() {
                 <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
                     <Badge variant="success">Sent</Badge>
+                    {message.opened_at && <Badge variant="warning">Possible open</Badge>}
                     <span className="text-xs text-slate-400">
                       {message.sent_at
                         ? format(new Date(message.sent_at), 'MMM d, yyyy HH:mm')
@@ -223,6 +224,11 @@ export function RepliesPage() {
                     {message.recipient_email || (message.prospect_id ? prospectNames.get(message.prospect_id) : null) || 'Unknown recipient'}
                   </span>
                 </div>
+                {message.opened_at && (
+                  <p className="mb-2 text-xs text-slate-500">
+                    Resend reported a possible open on {format(new Date(message.opened_at), 'MMM d, yyyy HH:mm')}. Email privacy tools may trigger this automatically.
+                  </p>
+                )}
                 <h3 className="font-medium text-slate-800">{message.subject || '(No subject)'}</h3>
                 <details className="mt-2">
                   <summary className="cursor-pointer select-none text-sm font-medium text-arlotech">

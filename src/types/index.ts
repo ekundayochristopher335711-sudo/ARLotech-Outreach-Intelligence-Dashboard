@@ -103,6 +103,7 @@ export interface EmailMessage {
   subject: string
   body: string
   status: string
+  opened_at: string | null
   sent_at: string | null
   received_at: string | null
   created_at: string

@@ -20,6 +20,8 @@ declare module '@supabase/supabase-js' {
         options: { body?: unknown },
       ): Promise<{ data: T | null; error: Error | null }>
     }
+    channel(name: string): RealtimeChannel
+    removeChannel(channel: RealtimeChannel): Promise<string>
     storage: {
       from(bucket: string): {
         upload(path: string, file: Blob, options?: { contentType?: string; upsert?: boolean }): Promise<{ error: Error | null }>
@@ -29,6 +31,20 @@ declare module '@supabase/supabase-js' {
         }>
       }
     }
+  }
+
+  export interface RealtimeChannel {
+    on(
+      event: 'postgres_changes',
+      filter: {
+        event: 'INSERT' | 'UPDATE' | 'DELETE' | '*'
+        schema: string
+        table: string
+        filter?: string
+      },
+      callback: (payload: { new: Record<string, unknown> }) => void,
+    ): RealtimeChannel
+    subscribe(): RealtimeChannel
   }
 
   export function createClient<DatabaseSchema = unknown>(url: string, key: string): SupabaseClient<DatabaseSchema>

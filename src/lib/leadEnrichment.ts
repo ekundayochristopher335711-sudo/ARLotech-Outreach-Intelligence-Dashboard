@@ -1,6 +1,7 @@
 import { supabase, getCurrentUserId } from '@/lib/supabase'
 import { analyzeWebsite, extractContent, type ExtractedContent } from '@/lib/websiteAnalysis'
 import { createOutreachPreview, getOutreachSuitability } from '@/lib/outreachEmail'
+import { getErrorMessage } from '@/lib/utils'
 import { type Prospect } from '@/types'
 
 export interface EnrichmentResult {
@@ -84,14 +85,14 @@ export async function enrichAndAnalyzeProspect(
     result.analysis_completed = true
     result.analysis_score = analysis.overallScore
     if (analysis.contentExtractionError) {
-      result.error = `Contact lookup failed: ${analysis.contentExtractionError}; Website content extraction failed: ${analysis.contentExtractionError}`
+      result.error = `Website content extraction failed: ${analysis.contentExtractionError}`
     } else {
       try {
         const contacts = await enrichProspectContacts(prospect, analysis.content)
         result.contact_email = contacts.email
         result.contact_phone = contacts.phone
       } catch (err) {
-        result.error = `Contact lookup failed: ${err instanceof Error ? err.message : 'Unknown error'}`
+        result.error = `Contact lookup failed: ${getErrorMessage(err, 'Could not save contact details.')}`
       }
     }
 

@@ -11,6 +11,7 @@ import { AuthProvider } from '@/hooks/useAuth'
 import { useAuth } from '@/hooks/useAuthState'
 import { useLocation } from 'react-router-dom'
 import { Sidebar } from '@/components/layout/Sidebar'
+import { NotificationListener } from '@/components/notifications/NotificationListener'
 import { ARLOTECH_FAVICON_FILE, ARLOTECH_LOGO_FILE, getBrandAssetUrl } from '@/lib/brandAssets'
 
 const LoginPage = lazy(() => import('@/pages/Login').then((module) => ({ default: module.LoginPage })))
@@ -136,6 +137,7 @@ function AppShell() {
 
   return (
     <div className={`app-shell flex h-dvh overflow-hidden ${blacksite ? 'theme-blacksite' : 'theme-standard'}`} data-theme={blacksite ? 'blacksite' : 'standard'} data-route={location.pathname}>
+      <NotificationListener />
       {blacksite && <MatrixBackdrop />}
       {mobileOpen && (
         <button
