@@ -19,11 +19,14 @@ describe('outreach email template', () => {
       true,
     )
 
-    expect(html).toContain('<img src="cid:arlotech-logo"')
-    expect(html).toContain('Your website review PDF is attached')
-    expect(html).toContain('website-review PDF attached to this email')
-    expect(html.indexOf('Your website review PDF is attached')).toBeGreaterThan(html.indexOf('A useful website observation.'))
-    expect(html.indexOf('Your website review PDF is attached')).toBeLessThan(html.indexOf('Would a conversation help?'))
+    expect(html).toContain('<img src="cid:arlotech-logo" width="44" height="44"')
+    expect(html).not.toContain('width="190"')
+    expect(html).toContain('DIGITAL SOLUTIONS')
+    expect(html).toContain('background:#f5bf24')
+    expect(html).toContain('Your website review is attached')
+    expect(html).toContain('PDF attachment to this email')
+    expect(html.indexOf('Your website review is attached')).toBeGreaterThan(html.indexOf('A useful website observation.'))
+    expect(html.indexOf('Your website review is attached')).toBeLessThan(html.indexOf('Would a conversation help?'))
   })
 
   it('escapes message markup and keeps the opt-out and address in both formats', () => {
