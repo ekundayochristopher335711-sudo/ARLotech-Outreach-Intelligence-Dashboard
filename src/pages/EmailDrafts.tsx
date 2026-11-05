@@ -30,7 +30,10 @@ import {
 import type { Campaign, EmailDraft, Prospect, WebsiteAnalysis } from '@/types'
 import { assessEmailQuality } from '@/lib/growthIntelligence'
 
-const MAX_OUTREACH_BATCH_SIZE = 10
+const MAX_OUTREACH_BATCH_SIZE = 50
+const MAX_SEND_REQUEST_SIZE = 10
+const MAX_ATTACHMENT_BASE64_LENGTH = 700_000
+const MAX_BATCH_ATTACHMENT_LENGTH = 4_500_000
 const SIGNATURE_STORAGE_KEY = 'arlotech-email-signature'
 
 const strategyLabels: Record<OutreachStrategy, string> = {
@@ -579,7 +582,14 @@ export function EmailDraftsPage() {
 
   const sendOutreachMutation = useMutation({
     mutationFn: async () => {
-      const emailPayload = await Promise.all(outreachPreviews.map(async (preview) => {
+      const alreadySentIds = new Set(
+        outreachResults.filter((result) => result.status === 'sent' && result.prospect_id)
+          .flatMap((result) => result.prospect_id ? [result.prospect_id] : []),
+      )
+      const pendingPreviews = outreachPreviews.filter((preview) => !alreadySentIds.has(preview.prospect_id))
+      if (!pendingPreviews.length) throw new Error('There are no unsent drafts remaining in this batch.')
+
+      const emailPayload = await Promise.all(pendingPreviews.map(async (preview) => {
         const prospect = outreachProspectRows.find((item: OutreachProspect) => item.id === preview.prospect_id)
         if (!prospect) throw new Error('A selected prospect is no longer available.')
         const analysis = analysisByProspect.get(prospect.id)
@@ -617,6 +627,9 @@ export function EmailDraftsPage() {
         const attachmentContent = preview.has_website_report && analysis
           ? await createAuditPdfAttachment(analysis, prospect)
           : null
+        if (attachmentContent && attachmentContent.length > MAX_ATTACHMENT_BASE64_LENGTH) {
+          throw new Error(`${prospect.business_name}'s PDF exceeds the sending attachment limit.`)
+        }
         return {
           prospect_id: prospect.id,
           subject: preview.subject,
@@ -648,17 +661,58 @@ export function EmailDraftsPage() {
           ) => Promise<{ data: unknown; error: Error | null }>
         }
       }
-      const { data, error } = await functionClient.functions.invoke('send-outreach', {
-        body: { batchId: outreachBatchId, emails: emailPayload, complianceConfirmed },
-      })
-      if (error) throw new Error(await getOutreachFunctionError(error))
-      if (!isSendOutreachResponse(data)) {
-        const message = data && typeof data === 'object' && 'error' in data && typeof data.error === 'string'
-          ? data.error
-          : 'The send function returned an invalid response.'
-        throw new Error(message)
+      const resultById = new Map(outreachResults.map((result) => [result.prospect_id, result]))
+      const batches: typeof emailPayload[] = []
+      let currentBatch: typeof emailPayload = []
+      let currentAttachmentLength = 0
+      for (const email of emailPayload) {
+        const attachmentLength = email.attachment?.content.length ?? 0
+        if (
+          currentBatch.length >= MAX_SEND_REQUEST_SIZE ||
+          currentAttachmentLength + attachmentLength > MAX_BATCH_ATTACHMENT_LENGTH
+        ) {
+          batches.push(currentBatch)
+          currentBatch = []
+          currentAttachmentLength = 0
+        }
+        currentBatch.push(email)
+        currentAttachmentLength += attachmentLength
       }
-      return data
+      if (currentBatch.length) batches.push(currentBatch)
+
+      for (const batch of batches) {
+        const { data, error } = await functionClient.functions.invoke('send-outreach', {
+          body: { batchId: outreachBatchId, emails: batch, complianceConfirmed },
+        })
+        if (error) throw new Error(await getOutreachFunctionError(error))
+        if (!isSendOutreachResponse(data)) {
+          const message = data && typeof data === 'object' && 'error' in data && typeof data.error === 'string'
+            ? data.error
+            : 'The send function returned an invalid response.'
+          throw new Error(message)
+        }
+        for (const result of data.results) resultById.set(result.prospect_id, result)
+        const currentResults = Array.from(resultById.values())
+        setOutreachResults(currentResults)
+        const userId = await getCurrentUserId()
+        await Promise.all(data.results.flatMap((result) => {
+          if (result.status !== 'sent') return []
+          const preview = pendingPreviews.find((item) => item.prospect_id === result.prospect_id)
+          if (!preview) return []
+          return [supabase
+            .from('email_drafts')
+            .update({ status: 'sent' })
+            .eq('id', preview.savedDraftId)
+            .eq('user_id', userId)
+            .then(({ error: updateError }: { error: { message: string } | null }) => {
+              if (updateError) toast.error(`Email sent to ${result.recipient_email || result.business_name}, but its saved draft could not be marked sent: ${updateError.message}`)
+            })]
+        }))
+        if (data.results.length !== batch.length) {
+          throw new Error('The send function did not return a result for every recipient in this batch. Review the results before retrying.')
+        }
+      }
+      return { results: Array.from(resultById.values()) }
     },
     onSuccess: async (data: SendOutreachResponse) => {
       setOutreachResults(data.results)
@@ -690,9 +744,12 @@ export function EmailDraftsPage() {
         queryClient.invalidateQueries({ queryKey: ['/prospects'] }),
         queryClient.invalidateQueries({ queryKey: ['/dashboard/metrics'] }),
       ])
-      setSelectedOutreachIds([])
-      setOutreachPreviews([])
-      setOutreachBatchId('')
+      const unsentPreviews = outreachPreviews.filter((preview) =>
+        !data.results.some((result) => result.prospect_id === preview.prospect_id && result.status === 'sent'),
+      )
+      setSelectedOutreachIds(unsentPreviews.map(({ prospect_id }) => prospect_id))
+      setOutreachPreviews(unsentPreviews)
+      setOutreachBatchId(unsentPreviews.length ? crypto.randomUUID() : '')
       setComplianceConfirmed(false)
     },
     onError: (error: Error) => toast.error(error.message || 'Could not send outreach batch.'),
@@ -1010,7 +1067,7 @@ export function EmailDraftsPage() {
         </Button>
       </div>
 
-      <Card className="space-y-5 p-4 sm:p-6">
+      <Card className="hidden space-y-5 p-4 sm:p-6">
         <div>
           <h2 className="text-lg font-semibold text-slate-800">Personalized email workspace</h2>
           <p className="mt-1 text-sm text-slate-500">
@@ -1516,10 +1573,116 @@ export function EmailDraftsPage() {
         <div>
           <h2 className="text-lg font-semibold text-slate-800">{localStorage.getItem('arlotech-login-mode') === 'blacksite' ? 'BATCH TRANSMISSION ASSEMBLY' : 'Personalized outreach batch'}</h2>
           <p className="mt-1 text-sm text-slate-500">
-            Select up to {MAX_OUTREACH_BATCH_SIZE} eligible prospects to generate a separate, editable email for each using the generator settings above. Generated messages are saved to Drafts before review; sending remains a separate confirmed action.
+            Choose the writing style, select up to {MAX_OUTREACH_BATCH_SIZE} eligible prospects, then review each personalized draft before sending. Messages are saved to Drafts first. Sends are processed in safe batches of {MAX_SEND_REQUEST_SIZE}, up to the account limit of 50 per rolling 24 hours.
             Website prospects must have a completed audit; its report is attached. Prospects without a website get a separate introduction.
           </p>
         </div>
+
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <label className="block space-y-1">
+            <span className="text-sm font-medium text-slate-700">Message type</span>
+            <select
+              value={generatorStrategy}
+              onChange={(event) => setGeneratorStrategy(event.target.value as OutreachStrategy)}
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+            >
+              {OUTREACH_STRATEGIES.map((strategy) => (
+                <option key={strategy} value={strategy}>{strategyLabels[strategy]}</option>
+              ))}
+            </select>
+            <span className="block text-xs leading-5 text-slate-500">{strategyDescriptions[generatorStrategy]}</span>
+          </label>
+          <label className="block space-y-1">
+            <span className="text-sm font-medium text-slate-700">Tone</span>
+            <select
+              value={generatorTone}
+              onChange={(event) => setGeneratorTone(event.target.value as OutreachTone)}
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+            >
+              <option value="professional">Professional</option>
+              <option value="friendly">Friendly</option>
+              <option value="conversational">Conversational</option>
+              <option value="consultative">Consultative</option>
+              <option value="direct">Direct</option>
+              <option value="premium">Premium corporate</option>
+            </select>
+          </label>
+          <label className="block space-y-1">
+            <span className="text-sm font-medium text-slate-700">Length</span>
+            <select
+              value={generatorLength}
+              onChange={(event) => setGeneratorLength(event.target.value as OutreachLength)}
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+            >
+              <option value="short">Short</option>
+              <option value="standard">Standard</option>
+              <option value="detailed">Detailed</option>
+            </select>
+          </label>
+          <label className="block space-y-1">
+            <span className="text-sm font-medium text-slate-700">Campaign (optional)</span>
+            <select
+              value={generatorCampaignId}
+              onChange={(event) => setGeneratorCampaignId(event.target.value)}
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+            >
+              <option value="">No campaign</option>
+              {campaignOptions.map((campaign) => <option key={campaign.id} value={campaign.id}>{campaign.name}</option>)}
+            </select>
+          </label>
+          <label className="block space-y-1">
+            <span className="text-sm font-medium text-slate-700">Follow-up</span>
+            <select
+              value={followUpStage}
+              onChange={(event) => setFollowUpStage(event.target.value as FollowUpStage)}
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+            >
+              <option value="none">New outreach</option>
+              <option value="first">First follow-up</option>
+              <option value="second">Second follow-up</option>
+              <option value="final">Final follow-up</option>
+            </select>
+            <span className="block text-xs text-slate-500">Follow-ups use the most recently sent email for each selected prospect.</span>
+          </label>
+        </div>
+        <label className="block space-y-1">
+          <span className="text-sm font-medium text-slate-700">Extra context or offer details (optional)</span>
+          <textarea
+            value={senderContext}
+            onChange={(event) => setSenderContext(event.target.value)}
+            rows={2}
+            maxLength={600}
+            placeholder="Add confirmed prices, offer details, or other relevant context."
+            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+          />
+          <span className="text-xs text-slate-500">Only include details you can verify. The generator will not invent prices, timelines, or guarantees.</span>
+        </label>
+        <details className="rounded-lg border border-slate-200 p-3">
+          <summary className="cursor-pointer text-sm font-medium text-slate-700">Email signature</summary>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {([
+              ['businessName', 'Business name'],
+              ['senderName', 'Sender name'],
+              ['jobTitle', 'Job title'],
+              ['website', 'Website'],
+              ['email', 'Business email'],
+              ['phone', 'Telephone'],
+              ['socialLinks', 'Social links (optional)'],
+            ] as const).map(([key, label]) => (
+              <label key={key} className="block space-y-1">
+                <span className="text-xs font-medium text-slate-600">{label}</span>
+                <input
+                  value={effectiveSignature[key]}
+                  onChange={(event) => updateSignature(key, event.target.value)}
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                />
+              </label>
+            ))}
+            <div className="sm:col-span-2 lg:col-span-3">
+              <Button variant="secondary" size="sm" onClick={saveSignature}>Save signature on this device</Button>
+            </div>
+          </div>
+        </details>
 
         {(outreachProspectsError || outreachAnalysesError || suppressionError || sentHistoryError) && (
           <p className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700" role="alert">
@@ -1655,7 +1818,8 @@ export function EmailDraftsPage() {
                     <input
                       value={preview.subject}
                       maxLength={200}
-                      onChange={(event) =>
+                      onChange={(event) => {
+                        setComplianceConfirmed(false)
                         setOutreachPreviews((current) =>
                           current.map((item) =>
                             item.prospect_id === preview.prospect_id
@@ -1663,7 +1827,7 @@ export function EmailDraftsPage() {
                               : item,
                           ),
                         )
-                      }
+                      }}
                       className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-arlotech focus:outline-none focus:ring-2 focus:ring-arlotech/20"
                     />
                   </label>
@@ -1672,7 +1836,8 @@ export function EmailDraftsPage() {
                     <textarea
                       value={preview.body}
                       maxLength={12000}
-                      onChange={(event) =>
+                      onChange={(event) => {
+                        setComplianceConfirmed(false)
                         setOutreachPreviews((current) =>
                           current.map((item) =>
                             item.prospect_id === preview.prospect_id
@@ -1680,7 +1845,7 @@ export function EmailDraftsPage() {
                               : item,
                           ),
                         )
-                      }
+                      }}
                       rows={8}
                       className="w-full resize-y rounded-lg border border-slate-300 px-3 py-2 text-sm leading-6 focus:border-arlotech focus:outline-none focus:ring-2 focus:ring-arlotech/20"
                     />
