@@ -336,6 +336,25 @@ serve(async (req) => {
         }
       }
 
+      let threadId: string | null = null
+      if (prospect) {
+        const { data: previousMessage, error: previousMessageError } = await supabase
+          .from('email_messages')
+          .select('id, thread_id')
+          .eq('user_id', userId)
+          .eq('prospect_id', prospect.id)
+          .eq('direction', 'outbound')
+          .eq('status', 'sent')
+          .order('sent_at', { ascending: true, nullsFirst: false })
+          .limit(1)
+          .maybeSingle()
+        if (previousMessageError) {
+          results.push({ ...result, error: `Could not load this prospect's email thread: ${previousMessageError.message}` })
+          continue
+        }
+        threadId = previousMessage?.thread_id ?? previousMessage?.id ?? null
+      }
+
       const sentBody = sentEmailBody(email.body, postalAddress)
       const resendResponse = await fetch('https://api.resend.com/emails', {
         method: 'POST',
@@ -382,7 +401,10 @@ serve(async (req) => {
         continue
       }
       const sentAt = new Date().toISOString()
+      const messageId = crypto.randomUUID()
       const { error: messageError } = await supabase.from('email_messages').insert({
+        id: messageId,
+        thread_id: threadId ?? messageId,
         user_id: userId,
         prospect_id: prospect?.id ?? null,
         recipient_email: recipient,

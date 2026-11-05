@@ -151,7 +151,7 @@ describe('website audit PDF', () => {
     expect(report).not.toContain('user-id/analysis-id')
     expect(report).toContain('outreach@arlotech.com.ng')
     expect(report).toContain('arlotech.com.ng')
-    expect(report).toContain('+234 812 937 4001')
+    expect(report).toContain('+2348166419332')
   })
 
   it('uses the verified recipient name and official Arlotech logo in the PDF header', async () => {
@@ -355,7 +355,7 @@ describe('website audit PDF', () => {
     expect(pages.at(-1)).toContain('Reply to the email that included this report')
     expect(pages.at(-1)).toContain('outreach@arlotech.com.ng')
     expect(pages.at(-1)).toContain('arlotech.com.ng')
-    expect(pages.at(-1)).toContain('+234 812 937 4001')
+    expect(pages.at(-1)).toContain('+2348166419332')
     expect(fullReport).not.toMatch(/\bLighthouse\b|\bPageSpeed\b|\bLargest Contentful Paint\b|\bTotal Blocking Time\b/)
     expect(fullReport).not.toContain('A practical improvement plan')
   })
@@ -378,7 +378,7 @@ describe('website audit PDF', () => {
     expect(report).not.toContain('100 / 100')
     expect(report).toContain('Reply to the email that included this report')
     expect(report).toContain('outreach@arlotech.com.ng')
-    expect(report).toContain('+234 812 937 4001')
+    expect(report).toContain('+2348166419332')
     expect(pages).toHaveLength(1)
   })
 

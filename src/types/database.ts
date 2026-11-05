@@ -254,11 +254,13 @@ export type Database = {
           provider: string | null
           provider_message_id: string | null
           received_at: string | null
+          read_at: string | null
           recipient_email: string | null
           sender_email: string | null
           sent_at: string | null
           status: string
           subject: string
+          thread_id: string | null
           user_id: string
         }
         Insert: {
@@ -272,11 +274,13 @@ export type Database = {
           provider?: string | null
           provider_message_id?: string | null
           received_at?: string | null
+          read_at?: string | null
           recipient_email?: string | null
           sender_email?: string | null
           sent_at?: string | null
           status?: string
           subject?: string
+          thread_id?: string | null
           user_id: string
         }
         Update: {
@@ -290,11 +294,13 @@ export type Database = {
           provider?: string | null
           provider_message_id?: string | null
           received_at?: string | null
+          read_at?: string | null
           recipient_email?: string | null
           sender_email?: string | null
           sent_at?: string | null
           status?: string
           subject?: string
+          thread_id?: string | null
           user_id?: string
         }
         Relationships: [
@@ -310,6 +316,13 @@ export type Database = {
             columns: ["prospect_id"]
             isOneToOne: false
             referencedRelation: "prospects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "email_messages_thread_id_fkey"
+            columns: ["thread_id"]
+            isOneToOne: false
+            referencedRelation: "email_messages"
             referencedColumns: ["id"]
           },
         ]

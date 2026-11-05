@@ -557,3 +557,7 @@ html {
 @media(max-width:480px){
   .app-shell .app-mode-toggle{font-size:11px!important;line-height:1.35;min-height:40px}
 }
+@media(max-width:767px){
+  .app-shell .topbar-notification-center{margin-left:auto;position:relative;z-index:20}
+  .app-shell .topbar-notification-center>[aria-haspopup="dialog"]{width:40px;min-width:40px;height:40px}
+}

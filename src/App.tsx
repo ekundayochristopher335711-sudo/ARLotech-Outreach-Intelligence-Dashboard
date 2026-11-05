@@ -167,7 +167,7 @@ function AppShell() {
             <img src={getBrandAssetUrl(ARLOTECH_LOGO_FILE)} alt="Arlotech Digital Solutions" className="topbar-logo-image" />
           </span>
           <div className="topbar-system-status"><span className="status-live-dot" /> <span>{blacksite ? 'UPLINK ESTABLISHED' : 'WORKSPACE ONLINE'}</span><span className="topbar-divider">/</span><span className="topbar-clock">{blacksite ? 'TRACE NULL // UPLINK LIVE' : 'OUTREACH CONSOLE'}</span></div>
-          <NotificationCenter />
+          <NotificationCenter className="topbar-notification-center" />
           <div className="topbar-mark" aria-hidden="true">{blacksite ? <RadioTower size={18} /> : <Activity size={18} />}<span>{blacksite ? 'NODE 09' : 'AOI'}</span></div>
         </header>
         <div className="min-w-0 flex-1 overflow-auto">

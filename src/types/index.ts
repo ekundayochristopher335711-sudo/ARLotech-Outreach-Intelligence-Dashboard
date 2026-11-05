@@ -92,6 +92,7 @@ export interface EmailDraft {
 
 export interface EmailMessage {
   id: string
+  thread_id: string | null
   user_id: string
   prospect_id: string | null
   campaign_id: string | null
@@ -104,6 +105,7 @@ export interface EmailMessage {
   body: string
   status: string
   opened_at: string | null
+  read_at: string | null
   sent_at: string | null
   received_at: string | null
   created_at: string

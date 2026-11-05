@@ -2,12 +2,13 @@ import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
-import { CheckCircle, Clock, Mail, RefreshCw, Send, X } from 'lucide-react'
+import { CheckCircle, Clock, ChevronDown, ChevronUp, Mail, RefreshCw, Send, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { exportRepliesPdf } from '@/lib/exportPdf'
+import { groupEmailThreads } from '@/lib/emailThreads'
 import { splitReplyText } from '@/lib/replyText'
 import { getCurrentUserId, supabase } from '@/lib/supabase'
 import type { EmailMessage, Prospect } from '@/types'
@@ -15,6 +16,7 @@ import type { EmailMessage, Prospect } from '@/types'
 type ReplyMessage = Pick<
   EmailMessage,
   'id' | 'direction' | 'status' | 'received_at' | 'sent_at' | 'created_at' | 'subject' | 'body' | 'prospect_id' | 'recipient_email' | 'sender_email' | 'opened_at'
+  | 'thread_id' | 'read_at'
 >
 
 export function RepliesPage() {
@@ -23,6 +25,7 @@ export function RepliesPage() {
   const focusedMessageId = searchParams.get('messageId')
   const [replyingToId, setReplyingToId] = useState<string | null>(null)
   const [replyBody, setReplyBody] = useState('')
+  const [openThreadId, setOpenThreadId] = useState<string | null | undefined>(undefined)
   const {
     data: messages,
     isLoading,
@@ -33,7 +36,7 @@ export function RepliesPage() {
     queryKey: ['/email-messages', focusedMessageId],
     queryFn: async () => {
       const userId = await getCurrentUserId()
-      const projection = 'id, direction, status, received_at, sent_at, created_at, subject, body, prospect_id, recipient_email, sender_email, opened_at'
+      const projection = 'id, direction, status, received_at, sent_at, created_at, subject, body, prospect_id, recipient_email, sender_email, opened_at, thread_id, read_at'
       const { data, error } = await supabase
         .from('email_messages')
         .select(projection)
@@ -41,10 +44,20 @@ export function RepliesPage() {
         .order('created_at', { ascending: false })
         .limit(100)
       if (error) throw error
-      const recentMessages = data as ReplyMessage[]
-      if (!focusedMessageId || recentMessages.some((message) => message.id === focusedMessageId)) {
-        return recentMessages
+      let recentMessages = data as ReplyMessage[]
+      const knownIds = new Set(recentMessages.map((message) => message.id))
+      const rootIds = [...new Set(recentMessages.map((message) => message.thread_id).filter((id): id is string => !!id))]
+        .filter((id) => !knownIds.has(id))
+      if (rootIds.length) {
+        const { data: rootMessages, error: rootMessagesError } = await supabase
+          .from('email_messages')
+          .select(projection)
+          .eq('user_id', userId)
+          .in('id', rootIds)
+        if (rootMessagesError) throw rootMessagesError
+        recentMessages = [...(rootMessages as ReplyMessage[]), ...recentMessages]
       }
+      if (!focusedMessageId || recentMessages.some((message) => message.id === focusedMessageId)) return recentMessages
 
       const { data: focusedMessage, error: focusedMessageError } = await supabase
         .from('email_messages')
@@ -70,13 +83,52 @@ export function RepliesPage() {
     },
   })
 
+  const markThreadReadMutation = useMutation({
+    mutationFn: async (messageIds: string[]) => {
+      if (!messageIds.length) return
+      const userId = await getCurrentUserId()
+      const { error } = await supabase
+        .from('email_messages')
+        .update({ read_at: new Date().toISOString() })
+        .eq('user_id', userId)
+        .eq('direction', 'inbound')
+        .is('read_at', null)
+        .in('id', messageIds)
+      if (error) throw error
+    },
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['/email-messages'] }),
+    onError: (markError: Error) => toast.error(markError.message || 'Could not mark this thread as read.'),
+  })
+
+  const allMessages = (messages || []) as ReplyMessage[]
+  const threads = groupEmailThreads(allMessages)
+  const focusedMessage = allMessages.find((message) => message.id === focusedMessageId)
+  const focusedThreadId = focusedMessage
+    ? focusedMessage.thread_id || focusedMessage.prospect_id || focusedMessage.id
+    : null
+  const activeOpenThreadId = openThreadId === undefined ? focusedThreadId : openThreadId
+  const repliedMessages = allMessages.filter((message) => message.direction === 'inbound' || message.status === 'replied')
+  const sentMessages = allMessages.filter((message) => message.direction === 'outbound' && message.status === 'sent')
+  const prospectNames = new Map<string, string>(
+    ((prospects || []) as Pick<Prospect, 'id' | 'business_name'>[]).map((prospect) => [prospect.id, prospect.business_name]),
+  )
+
+  const markThreadRead = markThreadReadMutation.mutate
   useEffect(() => {
-    if (!focusedMessageId || !messages) return
+    if (!focusedThreadId || !messages) return
+    const unreadIds = allMessages
+      .filter((message) => message.thread_id === focusedThreadId && message.direction === 'inbound' && !message.read_at)
+      .map((message) => message.id)
+    if (unreadIds.length) markThreadRead(unreadIds)
+  }, [focusedThreadId, allMessages, messages, markThreadRead])
+
+  useEffect(() => {
+    if (!focusedMessageId || !activeOpenThreadId || !messages) return
     document.getElementById(`message-${focusedMessageId}`)?.scrollIntoView({
       behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
       block: 'center',
     })
-  }, [focusedMessageId, messages])
+  }, [focusedMessageId, messages, activeOpenThreadId])
 
   const sendReplyMutation = useMutation({
     mutationFn: async (input: { messageId: string; body: string }) => {
@@ -120,27 +172,6 @@ export function RepliesPage() {
   if (error) {
     return <p className="py-12 text-center text-sm text-red-600">Could not load replies: {error.message}</p>
   }
-
-  const allMessages = (messages || []) as ReplyMessage[]
-  const repliedMessages = allMessages.filter((message) => message.direction === 'inbound' || message.status === 'replied')
-  const sentMessages = allMessages.filter((message) => message.direction === 'outbound' && message.status === 'sent')
-  const sortedSentMessages = sentMessages
-    .slice()
-    .sort((left, right) =>
-      Date.parse(right.sent_at || right.created_at) - Date.parse(left.sent_at || left.created_at),
-    )
-  const focusedSentMessage = focusedMessageId
-    ? sortedSentMessages.find((message) => message.id === focusedMessageId)
-    : undefined
-  const recentSentMessages = [
-    ...(focusedSentMessage && !sortedSentMessages.slice(0, 25).some((message) => message.id === focusedSentMessage.id)
-      ? [focusedSentMessage]
-      : []),
-    ...sortedSentMessages.slice(0, 25),
-  ]
-  const prospectNames = new Map<string, string>(
-    ((prospects || []) as Pick<Prospect, 'id' | 'business_name'>[]).map((prospect) => [prospect.id, prospect.business_name]),
-  )
 
   return (
     <div className="space-y-6">
@@ -222,150 +253,166 @@ export function RepliesPage() {
       )}
 
       <Card className="p-5">
-        <h2 className="mb-4 text-lg font-semibold text-slate-800">{localStorage.getItem('arlotech-login-mode') === 'blacksite' ? 'LATEST INTERCEPTS' : 'Latest Replies'}</h2>
+        <h2 className="mb-4 text-lg font-semibold text-slate-800">{localStorage.getItem('arlotech-login-mode') === 'blacksite' ? 'EMAIL THREADS' : 'Email conversations'}</h2>
         {prospectsError && (
           <p className="mb-3 text-sm text-red-600">
             Could not load prospect names: {prospectsError instanceof Error ? prospectsError.message : 'Unknown error'}
           </p>
         )}
-        {repliedMessages.length === 0 ? (
+        {threads.length === 0 ? (
           <div className="py-8 text-center">
-            <p className="text-sm text-slate-500">No replies have been recorded yet.</p>
-            <p className="mt-1 text-xs text-slate-400">Replies will appear here when inbound messages are added to your email activity.</p>
+            <p className="text-sm text-slate-500">No email conversations have been recorded yet.</p>
+            <p className="mt-1 text-xs text-slate-400">Sent emails and replies will appear together here.</p>
           </div>
         ) : (
           <div className="space-y-3">
-            {repliedMessages.map((message) => {
-              const reply = splitReplyText(message.body || '')
+            {threads.map((thread) => {
+              const isOpen = activeOpenThreadId === thread.id
+              const initialMessage = thread.messages.find((message) => message.direction === 'outbound') || thread.messages[0]
+              const prospectName = initialMessage.prospect_id
+                ? prospectNames.get(initialMessage.prospect_id) || 'Prospect'
+                : 'Unlinked message'
+              const threadDate = thread.latestMessage.received_at || thread.latestMessage.sent_at || thread.latestMessage.created_at
               return (
-                <article id={`message-${message.id}`} key={message.id} className={`rounded-lg border p-4 ${focusedMessageId === message.id ? 'border-arlotech bg-emerald-50/40 ring-2 ring-arlotech/20' : 'border-slate-200'}`}>
-                <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <Badge variant="success">{message.direction === 'inbound' ? 'Received' : 'Replied'}</Badge>
-                    <span className="text-xs text-slate-400">
-                      {message.received_at
-                        ? format(new Date(message.received_at), 'MMM d, yyyy HH:mm')
-                        : message.created_at
-                          ? format(new Date(message.created_at), 'MMM d, yyyy HH:mm')
-                          : 'Date unavailable'}
+                <article id={`thread-${thread.id}`} key={thread.id} className={`overflow-hidden rounded-lg border ${thread.unreadCount ? 'border-amber-300' : 'border-slate-200'}`}>
+                  <button
+                    type="button"
+                    aria-expanded={isOpen}
+                    onClick={() => {
+                      if (isOpen) {
+                        setOpenThreadId(null)
+                        return
+                      }
+                      setOpenThreadId(thread.id)
+                      const unreadIds = thread.messages
+                        .filter((message) => message.direction === 'inbound' && !message.read_at)
+                        .map((message) => message.id)
+                      if (unreadIds.length) markThreadReadMutation.mutate(unreadIds)
+                    }}
+                    className="flex w-full items-center justify-between gap-3 p-4 text-left hover:bg-slate-50"
+                  >
+                    <span className="min-w-0 flex-1">
+                      <span className="flex flex-wrap items-center gap-2">
+                        <span className="truncate font-semibold text-slate-800">{prospectName}</span>
+                        {thread.unreadCount > 0 && <Badge variant="warning">{thread.unreadCount} unread</Badge>}
+                        <span className="text-xs text-slate-400">{thread.messages.length} messages</span>
+                      </span>
+                      <span className="mt-1 block truncate text-sm font-medium text-slate-700">
+                        {initialMessage.subject || '(No subject)'}
+                      </span>
+                      <span className="mt-1 block truncate text-xs text-slate-500">
+                        {thread.latestMessage.direction === 'inbound' ? 'Received: ' : 'Sent: '}
+                        {thread.latestMessage.body || '(No message content)'}
+                      </span>
                     </span>
-                  </div>
-                  <span className="text-right text-sm font-medium text-slate-700">
-                    {message.sender_email || (message.prospect_id ? prospectNames.get(message.prospect_id) || 'Prospect' : 'Unlinked message')}
-                    {message.prospect_id && (
-                      <span className="block text-xs font-normal text-slate-500">{prospectNames.get(message.prospect_id) || 'Prospect'}</span>
-                    )}
-                  </span>
-                </div>
-                <h3 className="font-medium text-slate-800">{message.subject || '(No subject)'}</h3>
-                <p className="mt-2 whitespace-pre-wrap text-sm text-slate-600">{reply.readableText || '(No message content)'}</p>
-                {reply.quotedText && (
-                  <details className="mt-3 text-xs text-slate-500">
-                    <summary className="cursor-pointer select-none">Show quoted message</summary>
-                    <p className="mt-2 whitespace-pre-wrap border-l-2 border-slate-200 pl-3">{reply.quotedText}</p>
-                  </details>
-                )}
-                {message.direction === 'inbound' && (
-                  <div className="mt-4 border-t border-slate-100 pt-3">
-                    {replyingToId === message.id ? (
-                      <div className="space-y-3">
-                        <p className="break-all text-xs text-slate-500">
-                          To: {message.sender_email || 'Sender address unavailable'} · Subject: {/^re:/i.test(message.subject || '') ? message.subject : `Re: ${message.subject || 'your message'}`}
-                        </p>
-                        <label className="block">
-                          <span className="sr-only">Your reply</span>
-                          <textarea
-                            value={replyBody}
-                            onChange={(event) => setReplyBody(event.target.value)}
-                            rows={5}
-                            maxLength={12000}
-                            placeholder="Write your reply..."
-                            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-arlotech focus:outline-none focus:ring-2 focus:ring-arlotech/20"
-                          />
-                        </label>
-                        <div className="flex flex-wrap justify-end gap-2">
-                          <Button
-                            variant="secondary"
-                            onClick={() => {
-                              setReplyingToId(null)
-                              setReplyBody('')
-                            }}
-                            disabled={sendReplyMutation.isPending}
+                    <span className="flex shrink-0 flex-col items-end gap-2">
+                      <span className="text-xs text-slate-400">
+                        {threadDate ? format(new Date(threadDate), 'MMM d, yyyy HH:mm') : 'Date unavailable'}
+                      </span>
+                      {isOpen ? <ChevronUp className="h-4 w-4 text-slate-500" /> : <ChevronDown className="h-4 w-4 text-slate-500" />}
+                    </span>
+                  </button>
+                  {isOpen && (
+                    <div className="space-y-3 border-t border-slate-100 bg-slate-50/60 p-4">
+                      {thread.messages.map((message) => {
+                        const reply = message.direction === 'inbound' ? splitReplyText(message.body || '') : null
+                        const messageDate = message.received_at || message.sent_at || message.created_at
+                        const sender = message.direction === 'inbound'
+                          ? message.sender_email || prospectName
+                          : 'You'
+                        return (
+                          <article
+                            id={`message-${message.id}`}
+                            key={message.id}
+                            className={`rounded-lg border bg-white p-4 ${focusedMessageId === message.id ? 'border-arlotech ring-2 ring-arlotech/20' : 'border-slate-200'}`}
                           >
-                            <X className="h-4 w-4" /> Cancel
-                          </Button>
-                          <Button
-                            onClick={() => sendReplyMutation.mutate({ messageId: message.id, body: replyBody.trim() })}
-                            disabled={sendReplyMutation.isPending || !message.sender_email || !replyBody.trim()}
-                          >
-                            <Send className="h-4 w-4" />
-                            {sendReplyMutation.isPending ? 'Sending...' : 'Send reply'}
-                          </Button>
-                        </div>
-                      </div>
-                    ) : (
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        onClick={() => {
-                          setReplyingToId(message.id)
-                          setReplyBody('')
-                        }}
-                        disabled={!message.sender_email}
-                      >
-                        <Send className="h-4 w-4" />
-                        {message.sender_email ? 'Reply' : 'Cannot reply: sender address missing'}
-                      </Button>
-                    )}
-                  </div>
-                )}
+                            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                              <div className="flex items-center gap-2">
+                                <Badge variant={message.direction === 'inbound' ? 'warning' : 'success'}>
+                                  {message.direction === 'inbound' ? 'Received' : 'Sent'}
+                                </Badge>
+                                {message.opened_at && <Badge variant="warning">Possible open</Badge>}
+                                {message.direction === 'inbound' && !message.read_at && (
+                                  <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">Unread</span>
+                                )}
+                                <span className="text-xs text-slate-400">
+                                  {messageDate ? format(new Date(messageDate), 'MMM d, yyyy HH:mm') : 'Date unavailable'}
+                                </span>
+                              </div>
+                              <span className="break-all text-right text-sm font-medium text-slate-700">{sender}</span>
+                            </div>
+                            <h3 className="font-medium text-slate-800">{message.subject || '(No subject)'}</h3>
+                            <p className="mt-2 whitespace-pre-wrap break-words text-sm text-slate-600">
+                              {reply?.readableText || message.body || '(No message content)'}
+                            </p>
+                            {reply?.quotedText && (
+                              <details className="mt-3 text-xs text-slate-500">
+                                <summary className="cursor-pointer select-none">Show quoted message</summary>
+                                <p className="mt-2 whitespace-pre-wrap border-l-2 border-slate-200 pl-3">{reply.quotedText}</p>
+                              </details>
+                            )}
+                            {message.direction === 'inbound' && (
+                              <div className="mt-4 border-t border-slate-100 pt-3">
+                                {replyingToId === message.id ? (
+                                  <div className="space-y-3">
+                                    <p className="break-all text-xs text-slate-500">
+                                      To: {message.sender_email || 'Sender address unavailable'} · Subject: {/^re:/i.test(message.subject || '') ? message.subject : `Re: ${message.subject || 'your message'}`}
+                                    </p>
+                                    <label className="block">
+                                      <span className="sr-only">Your reply</span>
+                                      <textarea
+                                        value={replyBody}
+                                        onChange={(event) => setReplyBody(event.target.value)}
+                                        rows={5}
+                                        maxLength={12000}
+                                        placeholder="Write your reply..."
+                                        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-arlotech focus:outline-none focus:ring-2 focus:ring-arlotech/20"
+                                      />
+                                    </label>
+                                    <div className="flex flex-wrap justify-end gap-2">
+                                      <Button
+                                        variant="secondary"
+                                        onClick={() => {
+                                          setReplyingToId(null)
+                                          setReplyBody('')
+                                        }}
+                                        disabled={sendReplyMutation.isPending}
+                                      >
+                                        <X className="h-4 w-4" /> Cancel
+                                      </Button>
+                                      <Button
+                                        onClick={() => sendReplyMutation.mutate({ messageId: message.id, body: replyBody.trim() })}
+                                        disabled={sendReplyMutation.isPending || !message.sender_email || !replyBody.trim()}
+                                      >
+                                        <Send className="h-4 w-4" />
+                                        {sendReplyMutation.isPending ? 'Sending...' : 'Send reply'}
+                                      </Button>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <Button
+                                    variant="secondary"
+                                    size="sm"
+                                    onClick={() => {
+                                      setReplyingToId(message.id)
+                                      setReplyBody('')
+                                    }}
+                                    disabled={!message.sender_email}
+                                  >
+                                    <Send className="h-4 w-4" />
+                                    {message.sender_email ? 'Reply' : 'Cannot reply: sender address missing'}
+                                  </Button>
+                                )}
+                              </div>
+                            )}
+                          </article>
+                        )
+                      })}
+                    </div>
+                  )}
                 </article>
               )
             })}
-          </div>
-        )}
-      </Card>
-
-      <Card className="p-5">
-        <h2 className="mb-4 text-lg font-semibold text-slate-800">{localStorage.getItem('arlotech-login-mode') === 'blacksite' ? 'OUTBOUND TRANSMISSIONS' : 'Recent Sent Emails'}</h2>
-        {recentSentMessages.length === 0 ? (
-          <p className="py-6 text-center text-sm text-slate-500">No sent emails have been recorded yet.</p>
-        ) : (
-          <div className="space-y-3">
-            {recentSentMessages.map((message) => (
-              <article id={`message-${message.id}`} key={message.id} className={`rounded-lg border p-4 ${focusedMessageId === message.id ? 'border-arlotech bg-emerald-50/40 ring-2 ring-arlotech/20' : 'border-slate-200'}`}>
-                <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <Badge variant="success">Sent</Badge>
-                    {message.opened_at && <Badge variant="warning">Possible open</Badge>}
-                    <span className="text-xs text-slate-400">
-                      {message.sent_at
-                        ? format(new Date(message.sent_at), 'MMM d, yyyy HH:mm')
-                        : message.created_at
-                          ? format(new Date(message.created_at), 'MMM d, yyyy HH:mm')
-                          : 'Date unavailable'}
-                    </span>
-                  </div>
-                  <span className="break-all text-sm font-medium text-slate-700">
-                    {message.recipient_email || (message.prospect_id ? prospectNames.get(message.prospect_id) : null) || 'Unknown recipient'}
-                  </span>
-                </div>
-                {message.opened_at && (
-                  <p className="mb-2 text-xs text-slate-500">
-                    Resend reported a possible open on {format(new Date(message.opened_at), 'MMM d, yyyy HH:mm')}. Email privacy tools may trigger this automatically.
-                  </p>
-                )}
-                <h3 className="font-medium text-slate-800">{message.subject || '(No subject)'}</h3>
-                <details className="mt-2">
-                  <summary className="cursor-pointer select-none text-sm font-medium text-arlotech">
-                    View full sent message
-                  </summary>
-                  <p className="mt-2 whitespace-pre-wrap break-words text-sm text-slate-600">
-                    {message.body || '(No message content)'}
-                  </p>
-                </details>
-              </article>
-            ))}
           </div>
         )}
       </Card>

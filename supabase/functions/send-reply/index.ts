@@ -1,5 +1,6 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { replyEmailHtml } from '../_shared/outreachEmailTemplate.ts'
 import { resolveReplyToAddress } from '../send-outreach/eligibility.ts'
 
 const corsHeaders = {
@@ -14,33 +15,6 @@ function jsonResponse(body: unknown, status = 200) {
     status,
     headers: { ...corsHeaders, 'Content-Type': 'application/json' },
   })
-}
-
-function escapeHtml(value: string) {
-  return value.replace(/[&<>"']/g, (character) => ({
-    '&': '&amp;',
-    '<': '&lt;',
-    '>': '&gt;',
-    '"': '&quot;',
-    "'": '&#39;',
-  })[character]!)
-}
-
-function replyHtml(body: string) {
-  const paragraphs = body.trim().split(/\n\s*\n/).map((paragraph) =>
-    `<p style="margin:0 0 16px;color:#334155;font:15px/1.7 Arial,Helvetica,sans-serif;white-space:pre-line">${escapeHtml(paragraph.trim())}</p>`,
-  ).join('')
-
-  return `<!doctype html>
-<html lang="en">
-  <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-  <body style="margin:0;padding:24px;background:#f1f5f9">
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;margin:0 auto;background:#fff;border-radius:10px">
-      <tr><td style="padding:28px">${paragraphs}</td></tr>
-      <tr><td style="padding:0 28px 20px;color:#64748b;font:12px/1.5 Arial,Helvetica,sans-serif">Arlotech Digital Solutions</td></tr>
-    </table>
-  </body>
-</html>`
 }
 
 serve(async (req) => {
@@ -90,7 +64,7 @@ serve(async (req) => {
 
     const { data: inboundMessage, error: messageLookupError } = await supabase
       .from('email_messages')
-      .select('id, prospect_id, sender_email, subject')
+      .select('id, prospect_id, sender_email, subject, thread_id')
       .eq('id', body.messageId)
       .eq('user_id', userId)
       .eq('direction', 'inbound')
@@ -123,7 +97,7 @@ serve(async (req) => {
         to: [recipient],
         subject: replySubject,
         text: replyBody,
-        html: replyHtml(replyBody),
+        html: replyEmailHtml(replyBody),
       }),
     })
     const resendBody = await resendResponse.json().catch(() => ({}))
@@ -137,6 +111,7 @@ serve(async (req) => {
     const sentAt = new Date().toISOString()
     const { error: saveError } = await supabase.from('email_messages').insert({
       user_id: userId,
+      thread_id: inboundMessage.thread_id || inboundMessage.id,
       prospect_id: inboundMessage.prospect_id,
       recipient_email: recipient,
       sender_email: fromEmail,

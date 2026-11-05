@@ -323,7 +323,7 @@ serve(async (request) => {
 
     const { data: sentMessage, error: matchError } = await supabase
       .from('email_messages')
-      .select('id, user_id, prospect_id')
+      .select('id, user_id, prospect_id, thread_id')
       .eq('direction', 'outbound')
       .eq('status', 'sent')
       .eq('recipient_email', senderEmail)
@@ -344,6 +344,7 @@ serve(async (request) => {
     const receivedAt = receivedEmail.created_at ?? event.data?.created_at ?? event.created_at ?? new Date().toISOString()
     const { error: insertError } = await supabase.from('email_messages').insert({
       user_id: sentMessage.user_id,
+      thread_id: sentMessage.thread_id ?? sentMessage.id,
       prospect_id: sentMessage.prospect_id,
       provider: 'resend',
       provider_message_id: emailId,

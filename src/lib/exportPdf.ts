@@ -632,7 +632,7 @@ function buildConsultantWebsiteAnalysisPdf(
   report.addWebsiteContactCard(businessImpactParagraph, contactInvitation, [
     'Email: outreach@arlotech.com.ng',
     'Website: arlotech.com.ng',
-    'Phone: +234 812 937 4001',
+    'Phone: +2348166419332',
   ])
 
   return {

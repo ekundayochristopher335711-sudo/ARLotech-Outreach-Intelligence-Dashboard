@@ -16,6 +16,7 @@ import {
 export function SettingsPage() {
   const queryClient = useQueryClient()
   const [editedProfile, setEditedProfile] = useState<{ id: string; fullName: string; companyName: string } | null>(null)
+  const [isEditingProfile, setIsEditingProfile] = useState(false)
   const [pushEnabled, setPushEnabled] = useState(false)
   const [pushChecking, setPushChecking] = useState(isBrowserPushSupported)
   const [pushSaving, setPushSaving] = useState(false)
@@ -90,6 +91,8 @@ export function SettingsPage() {
     },
     onSuccess: () => {
       toast.success('Profile settings saved')
+      setIsEditingProfile(false)
+      setEditedProfile(null)
       queryClient.invalidateQueries({ queryKey: ['/profile'] })
     },
     onError: (err: Error) => toast.error(err.message || 'Could not save settings'),
@@ -143,29 +146,63 @@ export function SettingsPage() {
       </div>
 
       <Card className="space-y-4 p-6">
-        <div>
+        <div className="flex items-start justify-between gap-4">
           <h2 className="text-lg font-semibold text-slate-800">{localStorage.getItem('arlotech-login-mode') === 'blacksite' ? 'OPERATOR PROFILE' : 'Account profile'}</h2>
-          <p className="mt-1 text-sm text-slate-500">These details are saved to your account profile.</p>
+          {!isEditingProfile && (
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setEditedProfile({
+                  id: profile?.id || '',
+                  fullName: profile?.fullName || '',
+                  companyName: profile?.companyName || '',
+                })
+                setIsEditingProfile(true)
+              }}
+            >
+              Edit profile
+            </Button>
+          )}
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-1">
-            <label htmlFor="profile-name" className="block text-sm font-medium text-slate-700">Full name</label>
-            <input id="profile-name" value={fullName} onChange={(event) => setEditedProfile({ id: profile?.profile?.id || '', fullName: event.target.value, companyName })} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-arlotech focus:outline-none focus:ring-2 focus:ring-arlotech/20" />
+            <span className="block text-sm font-medium text-slate-700">Full name</span>
+            {isEditingProfile ? (
+              <input id="profile-name" aria-label="Full name" value={fullName} onChange={(event) => setEditedProfile({ id: profile?.id || '', fullName: event.target.value, companyName })} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-arlotech focus:outline-none focus:ring-2 focus:ring-arlotech/20" />
+            ) : (
+              <p className="min-h-10 rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-800">{fullName || 'Not provided'}</p>
+            )}
           </div>
           <div className="space-y-1">
-            <label htmlFor="profile-email" className="block text-sm font-medium text-slate-700">Account email</label>
-            <input id="profile-email" value={profile?.email || ''} disabled className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-500" />
+            <span className="block text-sm font-medium text-slate-700">Account email</span>
+            <p className="min-h-10 rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-800">{profile?.email || 'Not provided'}</p>
           </div>
           <div className="space-y-1 sm:col-span-2">
-            <label htmlFor="profile-company" className="block text-sm font-medium text-slate-700">Company name</label>
-            <input id="profile-company" value={companyName} onChange={(event) => setEditedProfile({ id: profile?.profile?.id || '', fullName, companyName: event.target.value })} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-arlotech focus:outline-none focus:ring-2 focus:ring-arlotech/20" />
+            <span className="block text-sm font-medium text-slate-700">Company name</span>
+            {isEditingProfile ? (
+              <input id="profile-company" aria-label="Company name" value={companyName} onChange={(event) => setEditedProfile({ id: profile?.id || '', fullName, companyName: event.target.value })} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-arlotech focus:outline-none focus:ring-2 focus:ring-arlotech/20" />
+            ) : (
+              <p className="min-h-10 rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-800">{companyName || 'Not provided'}</p>
+            )}
           </div>
         </div>
-        <div className="flex justify-end">
-          <Button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}>
-            {saveMutation.isPending ? 'Saving...' : 'Save Profile'}
-          </Button>
-        </div>
+        {isEditingProfile && (
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setEditedProfile(null)
+                setIsEditingProfile(false)
+              }}
+              disabled={saveMutation.isPending}
+            >
+              Cancel
+            </Button>
+            <Button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}>
+              {saveMutation.isPending ? 'Saving...' : 'Save Profile'}
+            </Button>
+          </div>
+        )}
       </Card>
 
       <Card className="space-y-2 p-6">

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { outreachEmailHtml, sentEmailBody } from './outreachEmailTemplate'
+import { outreachEmailHtml, replyEmailHtml, sentEmailBody } from './outreachEmailTemplate'
 
 describe('outreach email template', () => {
   it('formats the message in a responsive Arlotech-branded layout', () => {
@@ -37,5 +37,15 @@ describe('outreach email template', () => {
     expect(html).toContain('reply to this email and let us know')
     expect(text).toContain('reply to this email and let us know')
     expect(text).toContain('1 Main & Second Street')
+  })
+
+  it('uses the Arlotech outreach design for replies and escapes reply content', () => {
+    const html = replyEmailHtml('Thanks for getting back to us.\n\n<script>alert("unsafe")</script>')
+
+    expect(html).toContain('ARLOTECH')
+    expect(html).toContain('max-width:600px')
+    expect(html).toContain('Thanks for getting back to us.')
+    expect(html).toContain('&lt;script&gt;')
+    expect(html).not.toContain('<script>')
   })
 })

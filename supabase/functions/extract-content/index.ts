@@ -1,6 +1,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { assertSafeExternalUrl, isPublicIpAddress } from './safety.ts'
 import { extractNavigationPages } from './navigation.ts'
+import { extractPhoneNumbers } from './phoneNumbers.ts'
 
 const MAX_HTML_BYTES = 2_000_000
 const MAX_REDIRECTS = 5
@@ -322,7 +323,6 @@ serve(async (req) => {
     const favicon = linkRel(html, 'icon') || linkRel(html, 'shortcut icon')
 
     const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g
-    const phoneRegex = /(?:\+?\d{1,3}[\s.-]?)?(?:\(?\d{3}\)?[\s.-]?)?\d{3}[\s.-]?\d{4}/g
     const emails = new Set<string>()
     for (const source of contactSources) {
       for (const m of source.matchAll(emailRegex)) emails.add(m[0].toLowerCase())
@@ -330,17 +330,7 @@ serve(async (req) => {
         try { emails.add(decodeURIComponent(m[1].split('?')[0]).toLowerCase()) } catch { emails.add(m[1].split('?')[0].toLowerCase()) }
       }
     }
-    const phones = new Set<string>()
-    for (const m of html.matchAll(phoneRegex)) phones.add(m[0].trim())
-    for (const source of contactSources) {
-      for (const m of source.matchAll(/tel:([^"'>\s]+)/gi)) {
-        let phone: string
-        try { phone = decodeURIComponent(m[1]) } catch { phone = m[1] }
-        if (/^\+?[\d\s().-]{7,20}$/.test(phone) && (phone.match(/\d/g)?.length ?? 0) >= 7) {
-          phones.add(phone)
-        }
-      }
-    }
+    const phones = extractPhoneNumbers(contactSources, finalUrl, lang)
 
     const result = {
       url,
@@ -373,7 +363,7 @@ serve(async (req) => {
       schema: schemaScripts,
       schemaInspection,
       h1Count: headings.h1.length,
-      contacts: { emails: [...emails], phones: [...phones] },
+      contacts: { emails: [...emails], phones },
     }
 
     return new Response(JSON.stringify(result), {

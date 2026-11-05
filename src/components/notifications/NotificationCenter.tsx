@@ -17,7 +17,7 @@ type NotificationEvent = {
   read_at: string | null
 }
 
-export function NotificationCenter() {
+export function NotificationCenter({ className = '' }: { className?: string }) {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const [isOpen, setIsOpen] = useState(false)
@@ -93,14 +93,14 @@ export function NotificationCenter() {
   }
 
   return (
-    <div className="relative">
+    <div className={`relative shrink-0 ${className}`}>
       <button
         type="button"
         onClick={() => setIsOpen((open) => !open)}
         aria-label={unreadReplyCount > 0 ? `Notifications, ${unreadReplyCount} unread replies` : 'Notifications'}
         aria-expanded={isOpen}
         aria-haspopup="dialog"
-        className="relative inline-flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-arlotech"
+        className="relative inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-arlotech"
       >
         <Bell className="h-5 w-5" />
         {unreadReplyCount > 0 && (
