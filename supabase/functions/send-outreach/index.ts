@@ -1,5 +1,6 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { hasActionableWebsiteFinding, resolveReplyToAddress } from './eligibility.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -62,6 +63,7 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_ANON_KEY') ?? Deno.env.get('SUPABASE_PUBLISHABLE_KEY')
     const resendApiKey = Deno.env.get('RESEND_API_KEY')
     const fromEmail = Deno.env.get('RESEND_FROM_EMAIL')
+    const configuredReplyTo = Deno.env.get('OUTREACH_REPLY_TO_EMAIL')?.trim()
     const postalAddress = Deno.env.get('OUTREACH_POSTAL_ADDRESS')
     if (!supabaseUrl || !supabaseKey) throw new Error('Supabase function authentication is not configured.')
     if (!resendApiKey || !fromEmail) {
@@ -69,6 +71,10 @@ serve(async (req) => {
     }
     if (!postalAddress?.trim()) {
       throw new Error('Set OUTREACH_POSTAL_ADDRESS as a Supabase function secret before sending commercial outreach.')
+    }
+    const replyTo = resolveReplyToAddress(configuredReplyTo, fromEmail)
+    if (!replyTo) {
+      throw new Error('Set OUTREACH_REPLY_TO_EMAIL to a valid reply address before sending outreach.')
     }
 
     const supabase = createClient(supabaseUrl, supabaseKey, {
@@ -203,17 +209,22 @@ serve(async (req) => {
     const { data: analyses, error: analysisError } = websiteProspectIds.length
       ? await supabase
           .from('website_analyses')
-          .select('prospect_id, website_url')
+          .select('prospect_id, website_url, findings, ai_analysis')
           .eq('user_id', userId)
           .eq('analysis_status', 'completed')
           .in('prospect_id', websiteProspectIds)
+          .order('analyzed_at', { ascending: false, nullsFirst: false })
       : { data: [], error: null }
     if (analysisError) throw analysisError
-    const analysesByProspect = new Map<string, string[]>()
+    const analysesByProspect = new Map<string, Array<{
+      website_url: string
+      findings: unknown
+      ai_analysis: { optimization_opportunities?: unknown } | null
+    }>>()
     for (const analysis of analyses ?? []) {
       if (analysis.prospect_id && analysis.website_url) {
         const websites = analysesByProspect.get(analysis.prospect_id) ?? []
-        websites.push(analysis.website_url)
+        websites.push(analysis)
         analysesByProspect.set(analysis.prospect_id, websites)
       }
     }
@@ -275,17 +286,24 @@ serve(async (req) => {
       }
       if (prospect) {
         const websiteAudits = analysesByProspect.get(prospect.id) ?? []
-        const hasCurrentWebsiteAudit = prospect.website
-          ? websiteAudits.some((auditedWebsite) => {
+        const currentWebsiteAudit = prospect.website
+          ? websiteAudits.find((audit) => {
               try {
-                return websiteHost(prospect.website) === websiteHost(auditedWebsite)
+                return websiteHost(prospect.website) === websiteHost(audit.website_url)
               } catch {
                 return false
               }
             })
-          : false
-        if (prospect.website && !hasCurrentWebsiteAudit) {
+          : undefined
+        if (prospect.website && !currentWebsiteAudit) {
           results.push({ ...result, error: 'Complete a website audit before sending this website-specific email.' })
+          continue
+        }
+        if (prospect.website && !hasActionableWebsiteFinding(currentWebsiteAudit)) {
+          results.push({
+            ...result,
+            error: 'The website review found no confirmed customer issue worth discussing, so this email was not sent.',
+          })
           continue
         }
         if ((!!prospect.website) !== (!!email.attachment)) {
@@ -308,6 +326,7 @@ serve(async (req) => {
         },
         body: JSON.stringify({
           from: fromEmail,
+          reply_to: replyTo,
           to: [recipient],
           subject: email.subject.trim(),
           text: `${email.body.trim()}\n\n---\nIf you do not want further outreach, reply to this email and let me know.\n\n${postalAddress.trim()}`,

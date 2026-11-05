@@ -70,7 +70,7 @@ The Website Intelligence page orchestrates three Supabase Edge Functions:
 
 The combined report is stored in the `website_analyses` Supabase table.
 
-Customer-facing PDFs use the official Arlotech Digital Solutions logo; the same supplied favicon is used throughout the app and browser tabs. Website audit PDFs are limited to three pages: an executive summary with the health score and up to three distinct customer friction points, plain-English explanations of those same issues, and a business-impact close with a direct Arlotech call to action. Repeated findings and duplicate explanations are omitted. Reports also omit raw file paths, developer-only terms, do-it-yourself instructions, and estimated savings that could be mistaken for guaranteed results. Verified prospect names are used only when explicitly confirmed.
+Customer-facing PDFs use the official Arlotech Digital Solutions logo without an added frame. Website audit reports adapt to the confirmed findings, use one to three readable pages, and include a clear health overview, customer-focused explanations of the priority issues, and a low-pressure contact invitation. They avoid repeating findings, raw file paths, developer-only wording, do-it-yourself instructions, and estimated savings that could be mistaken for guaranteed results. Verified prospect names are used only when explicitly confirmed.
 
 The displayed ArloTech composite score is the rounded arithmetic mean of available Lighthouse category scores; it is not an official Lighthouse score. Prospect business names default to unverified and appear as the report recipient only after an account user verifies them in the prospect record.
 
@@ -109,12 +109,14 @@ The Gemini key is also used by `gemini-analysis`; set it once for the linked pro
 
 ## Resend outreach
 
-Verify a sender domain in Resend, then configure these secrets for the linked Supabase project. Use a valid sender address from the verified domain and your business's postal address. Never put the Resend API key in `.env`, a `VITE_` variable, source control, or browser code.
+Verify a sender domain in Resend, then configure these secrets for the linked Supabase project. Use a valid sender address from the verified domain, a reply address configured for Resend Receiving, and your business's postal address. Never put the Resend API key in `.env`, a `VITE_` variable, source control, or browser code.
 
 ```sh
-npx supabase secrets set RESEND_API_KEY=re_your_key RESEND_FROM_EMAIL="ArloTech <outreach@yourdomain.com>" OUTREACH_POSTAL_ADDRESS="Your business postal address"
+npx supabase secrets set RESEND_API_KEY=re_your_key RESEND_FROM_EMAIL="ArloTech <outreach@yourdomain.com>" OUTREACH_REPLY_TO_EMAIL="replies@your-inbound-domain.com" OUTREACH_POSTAL_ADDRESS="Your business postal address"
 npx supabase functions deploy send-outreach
 ```
+
+`OUTREACH_REPLY_TO_EMAIL` is added to new messages as their reply address. If it is not set, replies go to the email address in `RESEND_FROM_EMAIL`.
 
 Apply the email recipient tracking migration before deploying the updated function:
 
@@ -125,7 +127,7 @@ npx supabase functions deploy send-outreach
 
 ### Receive email replies
 
-Configure Resend Receiving for a domain/address that can receive replies. In Resend, set the `email.received` webhook destination to:
+Configure Resend Receiving for the domain used by `OUTREACH_REPLY_TO_EMAIL`. Add the MX records shown in Resend's Receiving settings. If your main domain already uses another email provider, do not replace its MX records; use a dedicated receiving subdomain instead. In Resend, set an `email.received` webhook destination to:
 
 ```text
 https://your-project-ref.supabase.co/functions/v1/resend-inbound
@@ -139,9 +141,9 @@ npx supabase db push --linked
 npx supabase functions deploy resend-inbound
 ```
 
-The receiver verifies Resend's signature, retrieves the message body from Resend, and links it to the most recent sent message from the same sender address. Replies without a matching recorded outbound recipient are acknowledged but not stored. Refresh the Replies page to load newly received messages. Keep the signing secret server-side; never add it to Vite environment variables or frontend code.
+The receiver verifies Resend's signature, retrieves the message body from Resend, and links it to the most recent sent message from the same sender address. Replies without a matching recorded outbound recipient are acknowledged but not stored. After setup, send a new test email and reply to it; confirm that the webhook delivery succeeds in Resend and that the message appears on the Replies page. Replies to older messages continue to go to the address shown in those messages. Keep the signing secret server-side; never add it to Vite environment variables or frontend code.
 
-In **Email Drafts**, generate a draft for a prospect and send it after review and lawful-basis confirmation, write a one-off message to any recipient address, or select up to 10 eligible prospects, preview and edit each individual email, confirm you have a lawful basis to contact the recipients, then send. The configured postal address and an opt-out instruction are appended automatically. Each website prospect must have a completed audit; its PDF report is attached. Prospects without a website receive an introduction without an audit attachment. Previously contacted recipients are clearly labeled and require an explicit confirmation before resending. Suppressed addresses and prospects marked Do Not Contact remain blocked. The server caps sending at 50 messages per rolling 24 hours.
+In **Email Drafts**, generate a draft for a prospect and send it after review and lawful-basis confirmation, write a one-off message to any recipient address, or select up to 10 eligible prospects, preview and edit each individual email, confirm you have a lawful basis to contact the recipients, then send. Website-specific messages include a matching review PDF and tell the recipient it is attached for more detail. Website prospects without a confirmed, evidence-backed customer issue are withheld from automated outreach in both the page and the sending function; having an audit alone is not enough. Prospects without a website can receive a separate introduction. Previously contacted recipients are clearly labeled and require an explicit confirmation before resending. Suppressed addresses and prospects marked Do Not Contact remain blocked. The configured postal address and an opt-out instruction are appended automatically. The server caps sending at 50 messages per rolling 24 hours.
 
 
 ```sh

@@ -122,6 +122,33 @@ export function RepliesPage() {
         </Card>
       </div>
 
+      {repliedMessages.length === 0 && (
+        <Card className="border-amber-200 bg-amber-50/60 p-5">
+          <h2 className="text-base font-semibold text-slate-800">Replies are not showing up?</h2>
+          <p className="mt-1 text-sm text-slate-600">
+            Incoming replies need a working reply address and Resend Receiving setup. Check these items:
+          </p>
+          <ol className="mt-3 list-decimal space-y-2 pl-5 text-sm text-slate-600">
+            <li>
+              Set <code className="rounded bg-white px-1 py-0.5 text-xs">OUTREACH_REPLY_TO_EMAIL</code> in
+              your Supabase function secrets to an address that can receive mail.
+            </li>
+            <li>
+              In Resend Receiving, configure that address’s domain with the DNS records Resend provides.
+              Use a dedicated subdomain if your current email provider already handles the main domain.
+            </li>
+            <li>
+              Configure the Resend <code className="rounded bg-white px-1 py-0.5 text-xs">email.received</code> webhook
+              to the <code className="rounded bg-white px-1 py-0.5 text-xs">resend-inbound</code> Supabase function,
+              then set its signing secret and deploy the function.
+            </li>
+          </ol>
+          <p className="mt-3 text-xs text-slate-500">
+            These settings apply to new emails. Replies to earlier emails still go to the address shown in those messages.
+          </p>
+        </Card>
+      )}
+
       <Card className="p-5">
         <h2 className="mb-4 text-lg font-semibold text-slate-800">{localStorage.getItem('arlotech-login-mode') === 'blacksite' ? 'LATEST INTERCEPTS' : 'Latest Replies'}</h2>
         {prospectsError && (

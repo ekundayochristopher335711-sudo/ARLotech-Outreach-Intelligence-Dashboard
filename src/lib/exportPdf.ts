@@ -98,9 +98,7 @@ function createReport(
     doc.setFillColor(...NAVY)
     doc.rect(0, 0, PAGE_WIDTH, 34, 'F')
     if (logo) {
-      doc.setFillColor(...WHITE)
-      doc.roundedRect(LEFT, 7, 21, 21, 2, 2, 'F')
-      doc.addImage(logo.data, logo.format, LEFT + 1.5, 8.5, 18, 18)
+      doc.addImage(logo.data, logo.format, LEFT, 7, 21, 21)
     }
     doc.setTextColor(...WHITE)
     doc.setFont('helvetica', 'bold')
@@ -150,12 +148,6 @@ function createReport(
     y += 7
   }
 
-  const startNewPage = () => {
-    if (doc.getNumberOfPages() >= maxPages) return
-    doc.addPage()
-    y = drawHeader(true) + 7
-  }
-
   const addParagraph = (
     text: unknown,
     options: { size?: number; color?: readonly [number, number, number]; bold?: boolean; indent?: number } = {},
@@ -173,6 +165,18 @@ function createReport(
       y += size * 0.45 + 1
     }
     y += 2
+  }
+
+  const measureParagraph = (
+    text: unknown,
+    options: { size?: number; bold?: boolean; indent?: number } = {},
+  ) => {
+    const value = String(text ?? '').trim()
+    if (!value) return 0
+    const { size = 9, bold = false, indent = 0 } = options
+    doc.setFont('helvetica', bold ? 'bold' : 'normal')
+    doc.setFontSize(size)
+    return doc.splitTextToSize(value, CONTENT_WIDTH - indent).length * (size * 0.45 + 1) + 2
   }
 
   const addMetricCards = (metrics: Array<[string, unknown]>) => {
@@ -197,6 +201,102 @@ function createReport(
       })
       y += cardHeight + 4
     }
+  }
+
+  const addWebsiteHealthCard = (score: number | null, summary: string, context: string) => {
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(9)
+    const summaryLines = doc.splitTextToSize(summary, CONTENT_WIDTH - 57)
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(8.5)
+    const contextLines = doc.splitTextToSize(context, CONTENT_WIDTH - 57)
+    const cardHeight = Math.max(34, 16 + summaryLines.length * 4.5 + contextLines.length * 4)
+    if (!ensureSpace(cardHeight + 4)) return
+
+    doc.setFillColor(239, 246, 248)
+    doc.roundedRect(LEFT, y, CONTENT_WIDTH, cardHeight, 3, 3, 'F')
+    doc.setFillColor(...TEAL)
+    doc.roundedRect(LEFT, y, 3, cardHeight, 1, 1, 'F')
+    doc.setTextColor(...MUTED)
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(7.5)
+    doc.text('WEBSITE HEALTH SCORE', LEFT + 8, y + 8)
+    doc.setTextColor(...NAVY)
+    doc.setFontSize(score === null ? 11 : 18)
+    doc.text(score === null ? 'Not available' : `${score} / 100`, LEFT + 8, y + 22)
+    doc.setFont('helvetica', 'normal')
+    doc.setTextColor(...NAVY)
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(9)
+    doc.text(summaryLines, LEFT + 53, y + 9)
+    const contextY = y + 9 + summaryLines.length * 4.5 + 2
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(8.5)
+    doc.setTextColor(...SLATE)
+    doc.text(contextLines, LEFT + 53, contextY)
+    y += cardHeight + 5
+  }
+
+  const addWebsiteIssueCard = (index: number, title: string, impact: string) => {
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(10.5)
+    const titleLines = doc.splitTextToSize(title, CONTENT_WIDTH - 22)
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(9)
+    const impactLines = doc.splitTextToSize(impact, CONTENT_WIDTH - 22)
+    const cardHeight = 12 + titleLines.length * 5 + 4 + impactLines.length * 4.5 + 7
+    if (!ensureSpace(cardHeight + 4)) return
+
+    const top = y
+    doc.setFillColor(250, 252, 253)
+    doc.setDrawColor(226, 232, 240)
+    doc.setLineWidth(0.35)
+    doc.roundedRect(LEFT, top, CONTENT_WIDTH, cardHeight, 2.5, 2.5, 'FD')
+    doc.setFillColor(...TEAL)
+    doc.circle(LEFT + 7, top + 8, 3.5, 'F')
+    doc.setTextColor(...WHITE)
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(8)
+    doc.text(String(index), LEFT + 7, top + 9.2, { align: 'center' })
+    doc.setTextColor(...NAVY)
+    doc.setFontSize(10.5)
+    doc.text(titleLines, LEFT + 14, top + 8)
+    const impactLabelY = top + 8 + titleLines.length * 5 + 4
+    doc.setTextColor(...TEAL)
+    doc.setFontSize(7)
+    doc.text('WHY THIS MAY MATTER TO CUSTOMERS', LEFT + 8, impactLabelY)
+    doc.setTextColor(...SLATE)
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(9)
+    doc.text(impactLines, LEFT + 8, impactLabelY + 5)
+    y += cardHeight + 5
+  }
+
+  const addWebsiteContactCard = (impact: string, emailOption: string, callOption: string) => {
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(8.5)
+    const impactLines = doc.splitTextToSize(impact, CONTENT_WIDTH - 14)
+    const emailLines = doc.splitTextToSize(emailOption, CONTENT_WIDTH - 14)
+    const callLines = doc.splitTextToSize(callOption, CONTENT_WIDTH - 14)
+    const cardHeight = 27 + impactLines.length * 4.2 + emailLines.length * 4.2 + callLines.length * 4.2
+    if (!ensureSpace(cardHeight + 4)) return
+
+    const top = y
+    doc.setFillColor(15, 31, 54)
+    doc.roundedRect(LEFT, top, CONTENT_WIDTH, cardHeight, 3, 3, 'F')
+    doc.setTextColor(148, 220, 211)
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(10)
+    doc.text('A smoother website experience starts with a conversation', LEFT + 7, top + 9)
+    doc.setTextColor(...WHITE)
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(8.5)
+    let textY = top + 17
+    for (const lines of [impactLines, emailLines, callLines]) {
+      doc.text(lines, LEFT + 7, textY)
+      textY += lines.length * 4.2 + 3
+    }
+    y += cardHeight + 5
   }
 
   const finish = (filename: string) => {
@@ -226,10 +326,13 @@ function createReport(
   return {
     doc,
     addMetricCards,
+    addWebsiteHealthCard,
+    addWebsiteIssueCard,
+    addWebsiteContactCard,
     addParagraph,
     addSection,
     ensureSpace,
-    startNewPage,
+    measureParagraph,
     finish,
     toBase64,
     get y() {
@@ -487,60 +590,64 @@ function buildConsultantWebsiteAnalysisPdf(
     3,
     logo,
   )
-  const scoreSummary = score === null
-    ? 'We could not calculate a reliable overall score, so this report only highlights issues supported by the available review.'
-    : score >= 90
-      ? 'Your website is in good shape overall. A few focused changes may make the customer experience even smoother.'
-      : score >= 70
-        ? 'Your website has a fair starting point. Addressing the customer frictions below may help it work more smoothly.'
-        : 'This review found areas that may be getting in customers’ way. Addressing the most important ones could make it easier to reach your business.'
+  const scoreSummary = topFindings.length === 0
+    ? score === null
+      ? 'No customer issue was confirmed in the available review. We could not calculate a reliable overall score.'
+      : 'The available checks did not confirm a customer issue that needs attention.'
+    : score === null
+      ? 'A reliable overall score was not available, so this report focuses on the customer issues supported by the review.'
+      : score >= 90
+        ? 'Your website has a strong overall starting point. A few focused changes may make the customer experience even smoother.'
+        : score >= 70
+          ? 'Your website has a fair starting point. Addressing the customer frictions below may help it work more smoothly.'
+          : 'This review found areas that may be getting in customers’ way. Addressing the most important ones could make it easier to reach your business.'
+  const experienceSummary = topFindings.length === 0
+    ? 'This report is a helpful snapshot of the areas reviewed, not a guarantee of how every visitor experiences the website.'
+    : `The review highlights ${topFindings.length} area${topFindings.length === 1 ? '' : 's'} where visitors may experience friction. Each note explains what a customer may notice and why it matters.`
+  const reviewAreaLabels: Record<string, string> = {
+    performance: 'how quickly pages load and respond',
+    seo: 'how pages may appear in search',
+    accessibility: 'how easy pages are to read and use',
+    'best-practices': 'common website quality checks',
+  }
+  const reviewedAreas = Object.entries(scoreInputs)
+    .filter(([, value]) => typeof value === 'number' && Number.isFinite(value))
+    .map(([category]) => reviewAreaLabels[category])
+    .filter(Boolean)
 
   report.addSection('Your website at a glance')
   report.addParagraph(`Prepared for: ${preparedName}`, { size: 9, bold: true, color: NAVY })
   report.addParagraph(`Website reviewed: ${targetUrl}`, { size: 8 })
-  report.addMetricCards([['Website health score', score === null ? 'Not available' : `${score} / 100`]])
-  report.addParagraph(scoreSummary, { size: 9, bold: true, color: NAVY })
+  report.addWebsiteHealthCard(score, scoreSummary, experienceSummary)
   report.addParagraph(
-    `Top customer friction points (${topFindings.length})`,
-    { size: 9, bold: true, color: TEAL },
+    reviewedAreas.length
+      ? `Review areas included ${reviewedAreas.join('; ')}.`
+      : 'The report includes only customer issues supported by the information available.',
+    { size: 8.5 },
   )
-  if (topFindings.length === 0) {
-    report.addParagraph('No confirmed customer friction points were identified in the available review.', { size: 8.5 })
-  } else {
-    topFindings.forEach((finding, index) => {
-      report.addParagraph(`${index + 1}. ${finding.title}`, { size: 8.5, bold: true, color: NAVY })
-    })
-  }
   report.addParagraph(
     'The score is a guide to the areas reviewed, not a promise of search position, sales, or inquiries.',
     { size: 7.5, color: MUTED },
   )
 
-  report.startNewPage()
-  report.addSection(`Priority customer issues (${topFindings.length})`)
+  report.addSection(`Customer friction points (${topFindings.length})`)
   if (topFindings.length === 0) {
-    report.addParagraph('No verified issues were found to include in this section.', { size: 9 })
+    report.addParagraph(
+      'No confirmed customer friction points were identified in the available review. We do not recommend making changes based on issues this report could not verify.',
+      { size: 9, color: NAVY },
+    )
   } else {
     topFindings.forEach((finding, index) => {
-      report.addParagraph(`${index + 1}. ${finding.title}`, { size: 10, bold: true, color: NAVY })
-      report.addParagraph(`Why it matters to your customers: ${finding.impact}`, { size: 9 })
-      report.y += 5
+      report.addWebsiteIssueCard(index + 1, finding.title, finding.impact)
     })
   }
-  report.startNewPage()
-  report.addSection('Protect your reputation and make it easier to get in touch')
-  report.addParagraph(
-    'When a website is slow, unclear, or difficult to use, potential customers may leave before they understand what you offer or how to contact you. A smoother, clearer experience can help your business make a stronger first impression and keep the path to an inquiry simple.',
-    { size: 10, color: NAVY },
-  )
-  report.addParagraph(
-    'The issues in this review are opportunities to reduce customer frustration—not a guarantee of more calls or bookings. The right improvements depend on your business, your customers, and the website itself.',
-    { size: 9 },
-  )
-  report.addParagraph(
-    'Reply to the email that included this report, or book a 10-minute website review call with Arlotech Digital Solutions. We will talk through what matters most to your customers and whether it is worth addressing.',
-    { size: 10, bold: true, color: NAVY },
-  )
+  const businessImpactParagraph = topFindings.length
+    ? 'A clear, dependable website helps protect your reputation and gives potential customers a simpler path from finding your business to getting in touch. The points above show where a small, focused improvement may help.'
+    : 'The available review did not confirm a customer issue that needs fixing. Keeping the website clear and dependable can still help protect your reputation and make it easy for customers to get in touch.'
+  const emailContact = 'Prefer email? Reply directly to the email that included this report if you would like to discuss it.'
+  const callContact =
+    'Prefer to talk it through? Reply with a day and time that suits you to arrange a 10-minute review call with Arlotech Digital Solutions.'
+  report.addWebsiteContactCard(businessImpactParagraph, emailContact, callContact)
 
   return {
     report,

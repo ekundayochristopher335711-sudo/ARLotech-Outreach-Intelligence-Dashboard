@@ -4,6 +4,7 @@ import { htmlToText, normalizedEmail } from './helpers'
 describe('inbound reply normalization', () => {
   it('normalizes and validates sender email addresses', () => {
     expect(normalizedEmail('  Reply@Example.com ')).toBe('reply@example.com')
+    expect(normalizedEmail('JBF Plumbing <Reply@Example.com>')).toBe('reply@example.com')
     expect(normalizedEmail('not an email')).toBeNull()
     expect(normalizedEmail('x'.repeat(250) + '@example.com')).toBeNull()
   })

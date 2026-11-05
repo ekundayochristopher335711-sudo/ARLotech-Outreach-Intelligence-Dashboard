@@ -317,7 +317,7 @@ export function generateProfessionalEmailDraft(input: {
   lines.push('')
 
   if (includeReport && analysis && prospect.website) {
-    lines.push('We have prepared a short website review with the recorded observations and recommendations, and can share it if useful.', '')
+    lines.push('We have attached a short website review with a little more detail about these points. Please feel free to take a look if it would be useful.', '')
   }
 
   const cta = followUpStage === 'final'
@@ -429,6 +429,12 @@ export function validateProfessionalEmailDraft(
   if (draft.includesReportReference && !hasMatchingAnalysis) {
     errors.push('The message refers to a website review that is not available for this prospect.')
   }
+  if (
+    draft.includesReportReference &&
+    !/attached (?:a short|the short) website review.*take a look/i.test(draft.body)
+  ) {
+    errors.push('Tell the recipient that the attached website review has more detail and invite them to take a look.')
+  }
   if (draft.observationsUsed.some((observation) => !observation.trim())) {
     errors.push('A referenced observation is missing its evidence.')
   }
@@ -477,6 +483,7 @@ export function generateFollowUpDraft(
   prospect: DraftProspect,
   stage: Exclude<FollowUpStage, 'none'>,
   signature?: Partial<OutreachSignature>,
+  includeReport = false,
 ) {
   const topic = original.subject.replace(/^(Re:\s*)+/i, '').trim() || 'our earlier website email'
   const name = prospect.business_name.trim() || 'your business'
@@ -502,11 +509,15 @@ export function generateFollowUpDraft(
   const cta = stage === 'final'
     ? '\n\nWould it be helpful to reconnect if this becomes a priority later?'
     : '\n\nWould a short conversation be useful?'
+  const reportNote = includeReport && prospect.website
+    ? 'We have attached the short website review again in case you would like to take a look.'
+    : ''
   const body = [
     `Hi ${firstName(prospect.contact_name)},`,
     '',
     followUpText,
     reassurance,
+    reportNote,
     cta,
     '',
     'If this is not relevant, let us know and we will not follow up.',
@@ -532,9 +543,11 @@ export function generateFollowUpDraft(
     qualityChecks: [
       'Follow-up context comes from a previously sent email.',
       'No claim of a reply or conversation was added.',
-      'No new audit finding or attachment is claimed.',
+      includeReport && prospect.website
+        ? 'The matching website review is attached and mentioned.'
+        : 'No new audit finding or attachment is claimed.',
     ],
-    includesReportReference: false,
+    includesReportReference: includeReport && !!prospect.website,
     wordCount: wordCount(body),
   } satisfies GeneratedEmailDraft
 }

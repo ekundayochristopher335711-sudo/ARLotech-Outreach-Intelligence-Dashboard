@@ -152,44 +152,47 @@ export function auditFindingBusinessTitle(finding: AuditFindingInput) {
 
 export function auditFindingBusinessImpact(finding: AuditFindingInput) {
   const searchText = `${finding.audit_id || ''} ${finding.id || ''} ${finding.title || ''}`
-  if (/image-alt|image.*alt|content-alt/i.test(searchText)) {
-    return 'Visitors who rely on image descriptions may miss important information or lose confidence in what your business offers.'
-  }
-  if (/color-contrast/i.test(searchText)) {
-    return 'Text that blends into its background can be hard to read, making visitors more likely to miss important details or contact options.'
-  }
-  if (/accessibility/i.test(searchText)) {
-    return 'Some people may struggle to read or use this part of the site, making it harder for them to contact your business.'
+  if (/largest-contentful-paint|\blcp\b/i.test(searchText)) {
+    return 'A longer wait can frustrate potential customers looking for help before they see what you offer. If the main information takes too long to appear, they may return to search results and contact a business that responds sooner.'
   }
   if (/render.blocking/i.test(searchText)) {
-    return 'A delay before the page appears can send potential customers elsewhere before they see what you offer.'
+    return 'Some visitors may first see a blank or unfinished page while its content is being prepared. A person comparing local providers may leave before finding your services or contact details.'
   }
   if (/unused.javascript/i.test(searchText)) {
-    return 'If page actions respond slowly, customers may give up before calling, booking, or asking for a quote.'
+    return 'Extra page work can make taps and clicks feel delayed, especially on a phone. Someone trying to call, book, or request a quote may give up if the page does not respond when they expect it to.'
   }
   if (/unused.css/i.test(searchText)) {
-    return 'A page that looks unfinished while it loads can make a poor first impression and weaken trust.'
+    return 'If the page styling takes longer to settle, visitors may briefly see a cluttered or unfinished layout. That first impression can make a capable local business feel less dependable.'
+  }
+  if (/server-response-time|document-request-latency|time-to-first-byte/i.test(searchText)) {
+    return 'Before any service details appear, a visitor is waiting for the website to begin loading. A long pause at that moment can send someone with an urgent need to another provider.'
+  }
+  if (/image-alt|image.*alt|content-alt/i.test(searchText)) {
+    return 'Visitors who cannot see an image rely on its written description to understand what it shows. Without one, they may miss important service or trust information and feel less sure about contacting you.'
+  }
+  if (/color-contrast/i.test(searchText)) {
+    return 'Text that blends into its background is harder to read on a phone or in bright light. Visitors can miss service details, opening information, or the next step for getting in touch.'
+  }
+  if (/accessibility/i.test(searchText)) {
+    return 'Some visitors may find it harder to read or use this part of the site. If a form, service detail, or contact option is difficult to reach, a potential customer may not complete their inquiry.'
   }
   if (/font-display/i.test(searchText)) {
-    return 'Visitors may have to wait for readable text, making it harder to quickly find your services or contact details.'
+    return 'If words are slow to appear or keep changing, visitors must wait to understand the page. That extra effort can make it harder to quickly find your services or contact details.'
   }
   if (/image/i.test(searchText)) {
-    return 'Visitors on slower connections may leave before important photos, services, or trust signals appear.'
-  }
-  if (/largest-contentful-paint|\blcp\b|server-response-time|document-request-latency/i.test(searchText)) {
-    return 'A longer wait can frustrate potential customers and may give them a reason to leave before they contact you.'
+    return 'Large pictures can take longer to appear for people using mobile data or a weak connection. A visitor may leave before seeing the work, services, or customer examples that help them choose you.'
   }
   if (/total-blocking-time|\btbt\b|forced-reflow/i.test(searchText)) {
-    return 'If the page is slow to respond, visitors may struggle to use it or reach the information they need.'
+    return 'A delayed response can make a page feel unreliable, especially when someone is trying to use it on a phone. Visitors may struggle to open service details or reach the information they need before giving up.'
   }
   if (/cumulative-layout-shift|\bcls\b/i.test(searchText)) {
-    return 'Moving text or buttons can confuse visitors and make it harder to choose the right next step.'
+    return 'When text or buttons move as the page loads, visitors can lose their place or tap the wrong thing. On a phone, that can make a simple call or booking option surprisingly difficult to use.'
   }
   if (/document-title|html-title|meta-description|content-meta|canonical|crawlable|robots\.txt/i.test(searchText)) {
-    return 'If search engines have trouble understanding this page, nearby customers may have a harder time finding your business online.'
+    return 'People searching for a nearby service may be less likely to recognize this page as the right result. A clear, relevant search listing helps them understand what you offer before they choose whom to contact.'
   }
   if (/content-h1|h1|heading/i.test(searchText)) {
-    return 'Visitors who cannot quickly understand what you offer may leave without taking the next step.'
+    return 'A visitor should be able to tell quickly what the business does and who it serves. If the main message is unclear, someone comparing providers may leave before checking whether you can help.'
   }
   if (/performance/i.test(finding.category || '')) {
     return 'A frustrating page experience may cause potential customers to leave before they contact you.'

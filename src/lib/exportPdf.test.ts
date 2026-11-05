@@ -64,19 +64,26 @@ describe('website audit PDF', () => {
       category_scores: { performance: 40 },
       findings,
     }))
-    const summaryTitles = pages[0].match(/\d+\.\s+[^\n]+/g) ?? []
-    const issueDescriptions = pages[1].match(/Why it matters to your customers: [^\n]+/g) ?? []
+    const report = pages.join('\n')
+    const summaryEnd = report.indexOf('CUSTOMER FRICTION POINTS (3)')
+    const overview = summaryEnd < 0 ? report : report.slice(0, summaryEnd)
+    const summaryTitles = report.match(/The main page content takes too long to appear|Files may delay the first view of your website|Parts of the page may take longer to look ready|Extra website features may slow down taps and clicks/g) ?? []
+    const issueDescriptions = report.split('WHY THIS MAY MATTER TO CUSTOMERS').slice(1)
+      .map((description) => description.trim().split('\n').slice(0, 2).join(' ').toLowerCase())
 
-    expect(pages).toHaveLength(3)
-    expect(pages[0]).toContain('Top customer friction points (3)')
-    expect(pages[1]).toContain('PRIORITY CUSTOMER ISSUES (3)')
+    expect(pages.length).toBeGreaterThanOrEqual(1)
+    expect(pages.length).toBeLessThanOrEqual(3)
+    expect(pages.length).toBeGreaterThan(1)
+    expect(overview).toContain('YOUR WEBSITE AT A GLANCE')
+    expect(overview).not.toContain('The main page content takes too long to appear')
+    expect(report).toContain('CUSTOMER FRICTION POINTS (3)')
     expect(summaryTitles).toHaveLength(3)
     expect(new Set(summaryTitles.map((title) => title.toLowerCase())).size).toBe(3)
     expect(issueDescriptions).toHaveLength(3)
     expect(new Set(issueDescriptions.map((description) => description.toLowerCase())).size).toBe(3)
   })
 
-  it('creates a three-page, plain-English report with the same three issues in its summary and detail', async () => {
+  it('creates a plain-English report with an overview, unique issue explanations, and a business close', async () => {
     const findings = Array.from({ length: 9 }, (_, index) => ({
       id: `ps-audit-${index}`,
       source: 'lighthouse',
@@ -128,10 +135,10 @@ describe('website audit PDF', () => {
     const report = pdfText(base64)
     const pages = pdfPages(base64)
 
-    expect(pages).toHaveLength(3)
-    expect(report).toContain('Website health score')
-    expect(report).toContain('Top customer friction points (3)')
-    expect(report).toContain('PRIORITY CUSTOMER ISSUES (3)')
+    expect(pages.length).toBeGreaterThanOrEqual(1)
+    expect(pages.length).toBeLessThanOrEqual(3)
+    expect(report).toContain('WEBSITE HEALTH SCORE')
+    expect(report).toContain('CUSTOMER FRICTION POINTS (3)')
     expect(report).toContain('Prepared for: example.com')
     expect(report).not.toContain('Unverified CRM Name')
     expect(report).toContain('The main page content takes too long to appear')
@@ -140,7 +147,7 @@ describe('website audit PDF', () => {
     expect(report).not.toContain('Unrecognized internal check')
     expect(report).not.toMatch(/\bLighthouse\b|\bPageSpeed\b|\bKiB\b|\bDOM\b|\bARIA\b|\bTBT\b|\bFCP\b|\bLCP\b/)
     expect(report).not.toContain('user-id/analysis-id')
-    expect(report).toContain('book a 10-minute website review call')
+    expect(report).toContain('10-minute review call')
   })
 
   it('uses the verified recipient name and official Arlotech logo in the PDF header', async () => {
@@ -155,11 +162,32 @@ describe('website audit PDF', () => {
     expect(report).toContain('ARLOTECH DIGITAL SOLUTIONS')
     expect(atob(reportBase64)).toContain('/Subtype /Image')
     expect(fetch).toHaveBeenCalledWith(getBrandAssetUrl(ARLOTECH_LOGO_FILE))
-    expect(pdfPages(await createWebsiteAnalysisPdfBase64({
+    const emptyReportPages = pdfPages(await createWebsiteAnalysisPdfBase64({
       website_url: 'https://example.com',
       category_scores: {},
       findings: [],
-    }, { businessName: 'Example Legal', verified: true }))).toHaveLength(3)
+    }, { businessName: 'Example Legal', verified: true }))
+    expect(emptyReportPages).toHaveLength(1)
+  })
+
+  it('rewrites technical list findings as customer-focused information without exposing raw markup', async () => {
+    const report = pdfText(await createWebsiteAnalysisPdfBase64({
+      website_url: 'https://jbfplumbing.example',
+      category_scores: { accessibility: 70 },
+      findings: [{
+        id: 'list',
+        source: 'html_inspection',
+        classification: 'verified_issue',
+        title: 'Lists do not contain only <li> elements and script supporting elements (<script> and <template>).',
+        evidence: 'The list has invalid markup.',
+        explanation: 'Screen readers have a specific way of announcing lists. https://dequeuniversity.com/rules/axe/4.14/list',
+        category: 'accessibility',
+        priority: 'medium',
+      }],
+    }))
+
+    expect(report).toContain('Some visitors may find this page difficult to use')
+    expect(report).not.toMatch(/<li>|<script>|<template>|screen readers|dequeuniversity|axe\/4\.14|invalid markup/i)
   })
 
   it('uses one brand logo in PDFs regardless of the active workspace appearance', async () => {
@@ -222,7 +250,8 @@ describe('website audit PDF', () => {
     })
     const report = pdfText(base64)
 
-    expect(pdfPages(base64)).toHaveLength(3)
+    expect(pdfPages(base64).length).toBeGreaterThanOrEqual(1)
+    expect(pdfPages(base64).length).toBeLessThanOrEqual(3)
     expect(atob(base64)).toContain('/Subtype /Image')
     expect(report).toContain('100 / 100')
     expect(report).not.toContain('23 KiB')
@@ -230,7 +259,8 @@ describe('website audit PDF', () => {
     expect(report).not.toContain('BOOT_ERROR')
     expect(report).not.toMatch(/\bLighthouse\b|\bPageSpeed\b|\bJavaScript\b/)
     expect(report).toContain('No confirmed customer friction points')
-    expect(report).toContain('The issues in this review are opportunities')
+    expect(report).toContain('No confirmed customer friction points were identified')
+    expect(report).not.toContain('These observations highlight opportunities')
   })
 
   it('shows only the highest-priority customer issues and ends with a direct business-focused call to action', async () => {
@@ -286,22 +316,20 @@ describe('website audit PDF', () => {
       prospect: { business_name: 'Double C Plumbing', business_name_verified: true },
     })
     const pages = pdfPages(base64)
-    const fullReport = pdfText(base64)
-    const executivePage = pages[0] || ''
-    const issuePage = pages[1] || ''
-    const finalPage = pages[2] || ''
+    const fullReport = pages.join('\n')
 
-    expect(pages).toHaveLength(3)
+    expect(pages.length).toBeGreaterThanOrEqual(1)
+    expect(pages.length).toBeLessThanOrEqual(3)
     expect(pages.every((page) => page.includes('ARLOTECH'))).toBe(true)
-    expect(executivePage).toContain('Top customer friction points (2)')
-    expect(issuePage).toContain('PRIORITY CUSTOMER ISSUES (2)')
-    expect(issuePage).toContain('The main page content takes too long to appear')
-    expect(issuePage).toContain('The page may take too long to respond')
-    expect(issuePage).not.toContain('Speed Index')
-    expect(issuePage).not.toContain('Affected file or page address')
-    expect(finalPage).toContain('PROTECT YOUR REPUTATION')
-    expect(finalPage).toContain('Reply to the email')
-    expect(finalPage).toContain('book a 10-minute website review call')
+    expect(fullReport).toContain('CUSTOMER FRICTION POINTS (2)')
+    expect(fullReport).toContain('The main page content takes too long to appear')
+    expect(fullReport).toContain('The page may take too long to respond')
+    expect(fullReport).not.toContain('Speed Index')
+    expect(fullReport).not.toContain('Affected file or page address')
+    expect(pages.at(-1)).toContain('protect your reputation')
+    expect(pages.at(-1)).toContain('Prefer email?')
+    expect(pages.at(-1)).toContain('Prefer to talk it through?')
+    expect(pages.at(-1)).toContain('10-minute review call')
     expect(fullReport).not.toMatch(/\bLighthouse\b|\bPageSpeed\b|\bLargest Contentful Paint\b|\bTotal Blocking Time\b/)
     expect(fullReport).not.toContain('A practical improvement plan')
   })
@@ -319,10 +347,12 @@ describe('website audit PDF', () => {
     const report = pdfText(base64)
     const pages = pdfPages(base64)
     expect(report).toContain('YOUR WEBSITE AT A GLANCE')
-    expect(report).toContain('Top customer friction points (0)')
-    expect(report).toContain('We could not calculate a reliable overall score')
+    expect(report).toContain('CUSTOMER FRICTION POINTS (0)')
+    expect(report).toMatch(/We could not\s+calculate a reliable overall score/)
     expect(report).not.toContain('100 / 100')
-    expect(pages).toHaveLength(3)
+    expect(report).toContain('Prefer email?')
+    expect(report).toContain('Prefer to talk it through?')
+    expect(pages).toHaveLength(1)
   })
 
 })

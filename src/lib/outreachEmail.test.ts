@@ -115,6 +115,8 @@ describe('outreach eligibility and previews', () => {
     expect(preview.internal_note).toContain('Extra website features may slow down taps and clicks')
     expect(preview.body).toContain('Arlotech Digital Solutions')
     expect(preview.body).toContain('not pitching a costly, full website redesign')
+    expect(preview.body).toContain('attached a short website review')
+    expect(preview.body).toContain('take a look')
     expect(preview.body).not.toMatch(/\b(?:AI|Gemini|weighted technical)\b/i)
     expect(preview.body).not.toMatch(/\b(I|me|my)\b/i)
     expect(preview.has_website_report).toBe(true)

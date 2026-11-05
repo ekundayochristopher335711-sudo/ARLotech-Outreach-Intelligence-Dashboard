@@ -35,6 +35,7 @@ describe('professional email draft generation', () => {
   it('keeps audit measurements and scores out of customer-facing copy', () => {
     const result = generateProfessionalEmailDraft({
       prospect,
+      includeReport: true,
       analysis: analysis({
         findings: [{
           id: 'color-contrast',
@@ -52,6 +53,8 @@ describe('professional email draft generation', () => {
     expect(result.body).toContain('Our website review highlighted a possible point of friction for visitors')
     expect(result.body).not.toMatch(/94\/100|92\/100|91\/100|2\.1:1|Lighthouse|PageSpeed|score/i)
     expect(result.body).toContain('not pitching a costly, full website redesign')
+    expect(result.body).toContain('attached a short website review')
+    expect(result.body).toContain('take a look')
     expect(result.observationsUsed).toHaveLength(1)
   })
 
@@ -189,6 +192,19 @@ describe('professional email draft generation', () => {
     expect(result.body).not.toMatch(/as discussed|following our conversation|you told me/i)
   })
 
+  it('mentions the attached website review in follow-ups when one will be included', () => {
+    const result = generateFollowUpDraft(
+      { subject: 'A quick website observation for AK Plumbing and Heating', body: 'Original draft context.' },
+      prospect,
+      'first',
+      undefined,
+      true,
+    )
+
+    expect(result.body).toContain('attached the short website review again')
+    expect(result.body).toContain('take a look')
+  })
+
   it('supports direct edits through focused rewrite actions', () => {
     const body = 'Hi Alex,\n\nWe reviewed your website.\n\nWould it be helpful to talk this through?\n\nKind regards,'
     expect(rewriteProfessionalEmail(body, 'improve_cta')).toContain('Would you be open to a brief, no-obligation conversation')
@@ -239,6 +255,35 @@ describe('specialized outreach message types', () => {
 
     expect(result.errors).toContain('Add a clear opt-out so the recipient can stop further contact.')
     expect(result.errors).toContain('Remove technical terms or measurements from the customer-facing email.')
+  })
+
+  it('requires an attached website review to be mentioned clearly in the email', () => {
+    const generated = generateProfessionalEmailDraft({
+      prospect,
+      includeReport: true,
+      analysis: analysis({
+        findings: [{
+          id: 'color-contrast',
+          audit_id: 'color-contrast',
+          classification: 'verified_issue',
+          title: 'Low contrast text',
+          evidence: 'Text is difficult to read.',
+        }],
+      }),
+    })
+    const editedDraft = {
+      ...generated,
+      body: generated.body.replace(/We have attached a short website review[^\n]*/, ''),
+    }
+
+    expect(validateProfessionalEmailDraft(
+      editedDraft,
+      prospect,
+      true,
+      generated.subjectSuggestions[0],
+    ).errors).toContain(
+      'Tell the recipient that the attached website review has more detail and invite them to take a look.',
+    )
   })
 
   it('does not invent a price when responding to a pricing question', () => {

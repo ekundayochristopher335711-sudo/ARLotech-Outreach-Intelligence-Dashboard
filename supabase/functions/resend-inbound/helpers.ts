@@ -27,6 +27,8 @@ export function htmlToText(html: string) {
 
 export function normalizedEmail(value: unknown) {
   if (typeof value !== 'string') return null
-  const email = value.trim().toLowerCase()
+  const trimmedValue = value.trim()
+  const mailbox = trimmedValue.match(/<\s*([^<>]+?)\s*>/)
+  const email = (mailbox?.[1] ?? trimmedValue).trim().toLowerCase()
   return email.length <= 254 && EMAIL_PATTERN.test(email) ? email : null
 }

@@ -243,7 +243,6 @@ export function EmailDraftsPage() {
   const [generatorTone, setGeneratorTone] = useState<OutreachTone>('professional')
   const [generatorLength, setGeneratorLength] = useState<OutreachLength>('standard')
   const [senderContext, setSenderContext] = useState('')
-  const [includeReportReference, setIncludeReportReference] = useState(false)
   const [followUpStage, setFollowUpStage] = useState<FollowUpStage>('none')
   const [followUpMessageId, setFollowUpMessageId] = useState('')
   const [generatedDraft, setGeneratedDraft] = useState<GeneratedEmailDraft | null>(null)
@@ -506,6 +505,7 @@ export function EmailDraftsPage() {
             prospect,
             followUpStage,
             effectiveSignature,
+            !!prospect.website && !!analysis,
           )
         } else {
           generatedDraft = generateProfessionalEmailDraft({
@@ -514,7 +514,7 @@ export function EmailDraftsPage() {
             strategy: generatorStrategy,
             tone: generatorTone,
             length: generatorLength,
-            includeReport: includeReportReference,
+            includeReport: !!prospect.website && !!analysis,
             signature: effectiveSignature,
             senderContext,
           })
@@ -929,14 +929,20 @@ export function EmailDraftsPage() {
     }
     try {
       const result = followUpStage !== 'none' && originalFollowUpMessage
-        ? generateFollowUpDraft(originalFollowUpMessage, selectedGeneratorProspect, followUpStage, effectiveSignature)
+        ? generateFollowUpDraft(
+            originalFollowUpMessage,
+            selectedGeneratorProspect,
+            followUpStage,
+            effectiveSignature,
+            !!selectedGeneratorProspect.website && !!matchingGeneratorAnalysis,
+          )
         : generateProfessionalEmailDraft({
             prospect: selectedGeneratorProspect,
             analysis: matchingGeneratorAnalysis,
             strategy: generatorStrategy,
             tone: generatorTone,
             length: generatorLength,
-            includeReport: includeReportReference,
+            includeReport: !!selectedGeneratorProspect.website && !!matchingGeneratorAnalysis,
             signature: effectiveSignature,
             senderContext,
           })
@@ -1022,7 +1028,6 @@ export function EmailDraftsPage() {
                 setGeneratedComplianceConfirmed(false)
                 setGeneratedSendResult(null)
                 setFollowUpMessageId('')
-                setIncludeReportReference(false)
               }}
               className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
             >
@@ -1136,19 +1141,13 @@ export function EmailDraftsPage() {
         </label>
 
         <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
-          <label className="flex items-start gap-2 text-sm text-slate-700">
-            <input
-              type="checkbox"
-              checked={includeReportReference}
-              disabled={!matchingGeneratorAnalysis || !selectedGeneratorProspect?.website}
-              onChange={(event) => setIncludeReportReference(event.target.checked)}
-              className="mt-1 h-4 w-4 accent-arlotech"
-            />
-            <span>
-              Mention the existing website review
-              {matchingGeneratorAnalysis ? ' (available to share; not attached to this saved draft)' : ' (no matching review available)'}
-            </span>
-          </label>
+          {selectedGeneratorProspect?.website && (
+            <p className="text-sm text-slate-600">
+              {matchingGeneratorAnalysis
+                ? 'A matching website review PDF will be attached and mentioned in the email.'
+                : 'A website review PDF will be attached when a matching completed review is available.'}
+            </p>
+          )}
           {selectedGeneratorProspect?.business_category && (
             <p className="text-xs text-slate-500">Industry context: {selectedGeneratorProspect.business_category}</p>
           )}

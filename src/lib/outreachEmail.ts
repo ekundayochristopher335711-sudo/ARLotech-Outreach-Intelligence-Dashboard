@@ -250,6 +250,8 @@ export function createOutreachPreview(
     '',
     'We are not pitching a costly, full website redesign. Small, targeted changes may make it easier for customers to understand your services and get in touch.',
     '',
+    'We have attached a short website review with a little more detail about these points. Please feel free to take a look if it would be useful.',
+    '',
     'Would you be open to a brief conversation about this?',
     '',
     'If this is not relevant, please let us know and we will not follow up.',
@@ -319,6 +321,7 @@ export function validateOutreachPreview(
     !preview.body.includes('Arlotech Digital Solutions') ||
     !/will not follow up/i.test(preview.body) ||
     !/we are not pitching a costly, full website redesign/i.test(preview.body) ||
+    !/attached a short website review/i.test(preview.body) ||
     containsEmailJargon(`${preview.subject}\n${preview.body}`) ||
     !preview.subject.includes(auditFindingEmailTopic(finding)) ||
     !preview.body.toLowerCase().includes(title.toLowerCase()) ||
