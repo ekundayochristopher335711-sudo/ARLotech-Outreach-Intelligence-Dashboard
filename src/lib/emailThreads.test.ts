@@ -38,4 +38,12 @@ describe('groupEmailThreads', () => {
       ['thread-2', 0],
     ])
   })
+
+  it('does not render duplicate records for the same message id', () => {
+    const sentMessage = message({ id: 'original' })
+    const threads = groupEmailThreads([sentMessage, sentMessage])
+
+    expect(threads).toHaveLength(1)
+    expect(threads[0].messages).toHaveLength(1)
+  })
 })

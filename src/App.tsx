@@ -80,15 +80,6 @@ function PrivateRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>
 }
 
-function MatrixBackdrop() {
-  const [streams] = useState<string[]>(() =>
-    Array.from({ length: 40 }, () =>
-      Array.from({ length: 28 }, () => '01ABCDEF'[Math.floor(Math.random() * 8)]).join('\n'),
-    ),
-  )
-  return <div className="blacksite-matrix-field" aria-hidden="true">{streams.map((stream, index) => <span key={index} style={{ animationDelay: `${-(index % 13) * 1.7}s`, animationDuration: `${12 + (index % 9) * 2}s` }}>{stream}</span>)}</div>
-}
-
 function AppShell() {
   const [mobileOpen, setMobileOpen] = useState(false)
   const location = useLocation()
@@ -137,7 +128,6 @@ function AppShell() {
   return (
     <div className={`app-shell flex h-dvh overflow-hidden ${blacksite ? 'theme-blacksite' : 'theme-standard'}`} data-theme={blacksite ? 'blacksite' : 'standard'} data-route={location.pathname}>
       <NotificationListener />
-      {blacksite && <MatrixBackdrop />}
       {mobileOpen && (
         <button
           type="button"

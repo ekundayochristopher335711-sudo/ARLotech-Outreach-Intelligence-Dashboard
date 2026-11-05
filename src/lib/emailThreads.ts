@@ -19,7 +19,10 @@ function messageTimestamp(message: ThreadMessage) {
 
 export function groupEmailThreads<TMessage extends ThreadMessage>(messages: TMessage[]): EmailThread<TMessage>[] {
   const grouped = new Map<string, TMessage[]>()
+  const seenMessageIds = new Set<string>()
   for (const message of messages) {
+    if (seenMessageIds.has(message.id)) continue
+    seenMessageIds.add(message.id)
     const threadId = message.thread_id || message.prospect_id || message.id
     const thread = grouped.get(threadId)
     if (thread) thread.push(message)

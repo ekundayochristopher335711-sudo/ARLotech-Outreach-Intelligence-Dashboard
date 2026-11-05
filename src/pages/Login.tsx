@@ -15,11 +15,6 @@ export function LoginPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [fingerprintHeld, setFingerprintHeld] = useState(false)
-  const [matrixStreams] = useState<string[]>(() =>
-    Array.from({ length: 26 }, () =>
-      Array.from({ length: 22 }, () => Math.random() > .5 ? '1' : '0').join(' '),
-    ),
-  )
   const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const holdStarted = useRef(false)
   const [mode, setMode] = useState<LoginMode>(() => {
@@ -85,7 +80,6 @@ export function LoginPage() {
   return (
     <main className={`login-shell ${isBlacksite ? 'login-blacksite' : 'login-standard'}`}>
       <div className="login-noise" aria-hidden="true" />
-      {isBlacksite && <div className="matrix-rain" aria-hidden="true"><div>{matrixStreams.map((column, i) => <span key={i} style={{ animationDelay: `${-(i % 12) * 1.6}s`, animationDuration: `${13 + (i % 8) * 2}s` }}>{column}</span>)}</div></div>}
       <header className="login-topbar">
         <a className="login-brand" href="/login" aria-label="Arlotech login home">
           <img src={getBrandAssetUrl(ARLOTECH_LOGO_FILE)} alt="Arlotech Digital Solutions" className="login-brand-wordmark" />

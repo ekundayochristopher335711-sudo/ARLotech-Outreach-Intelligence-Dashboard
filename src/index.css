@@ -169,9 +169,6 @@ html {
 
 /* BLACKSITE is a distinct command environment, not a recoloured standard workspace. */
 .app-shell.theme-blacksite{position:relative;background:#020402!important;font-family:'DM Mono','SFMono-Regular',Consolas,monospace!important;isolation:isolate}
-.app-shell.theme-blacksite .blacksite-matrix-field{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden;display:flex;justify-content:space-around;gap:clamp(8px,1.2vw,22px);opacity:.17;mask-image:linear-gradient(90deg,transparent,#000 8%,#000 92%,transparent)}
-.blacksite-matrix-field span{white-space:pre;flex:1;max-width:22px;color:#5dff4f;font:600 12px/1.75 'DM Mono',monospace;text-shadow:0 0 9px #25ff24;animation:matrix-column-fall linear infinite;overflow-wrap:anywhere}
-@keyframes matrix-column-fall{from{transform:translateY(-45%)}to{transform:translateY(35%)}}
 .app-shell.theme-blacksite .app-workspace{position:relative;z-index:1}
 .app-shell.theme-blacksite .app-sidebar{width:278px!important;flex-shrink:0;background:#030603!important;border-right:1px solid #254423!important;box-shadow:10px 0 55px #000a!important}
 .app-shell.theme-blacksite .sidebar-brand-row{height:90px!important;border-bottom:1px solid #254423!important;position:relative}
@@ -203,14 +200,11 @@ html {
 .app-shell.theme-blacksite .app-main input,.app-shell.theme-blacksite .app-main select,.app-shell.theme-blacksite .app-main textarea{border-radius:0!important;background:#030703!important;border-color:#2b4b27!important;color:#d8ffd0!important}
 .app-shell.theme-blacksite .app-main .shadow-sm{box-shadow:inset 0 0 25px #5dff3907,0 12px 30px #0008!important}
 @media(max-width:1023px){.app-shell.theme-blacksite .app-sidebar{width:278px!important}.app-shell.theme-blacksite .app-topbar{height:76px!important;padding-left:12px!important}.app-shell.theme-blacksite .app-topbar:after{left:12px;font-size:7px}.app-shell.theme-blacksite .blacksite-command-ribbon{gap:10px;padding:8px 12px;flex-wrap:wrap}.app-shell.theme-blacksite .app-main{padding:16px!important}}
-@media(prefers-reduced-motion:reduce){.blacksite-matrix-field span{animation:none!important}}
 
 /* BLACKSITE // full visual identity pass. Shared data/actions; separate command-console presentation. */
 .app-shell.theme-blacksite{--app-bg:#020402;--app-panel:#070c07;--app-panel-2:#0b120b;--app-border:#233c20;--app-text:#d7f3d0;--app-muted:#779174;--app-accent:#9dff45;--app-accent-soft:#0d1a0b;--app-shadow:0 18px 50px #000b;display:flex;isolation:isolate;background:#020402!important;color:#d7f3d0!important}
 .app-shell.theme-blacksite:after{content:"";position:fixed;inset:0;z-index:3;pointer-events:none;opacity:.12;background:repeating-linear-gradient(0deg,transparent 0 3px,#b3ff9c0a 4px),linear-gradient(90deg,transparent 49.9%,#5eff3508 50%,transparent 50.1%);mix-blend-mode:screen}
 .app-shell.theme-blacksite .app-workspace{background:linear-gradient(135deg,#020402 0%,#071007 48%,#020402 100%)!important;z-index:1;min-width:0}
-.app-shell.theme-blacksite .blacksite-matrix-field{opacity:.25!important;gap:clamp(6px,1vw,18px)!important;mask-image:linear-gradient(90deg,transparent,#000 5%,#000 95%,transparent)!important}
-.app-shell.theme-blacksite .blacksite-matrix-field span{font-size:clamp(10px,.8vw,13px)!important;line-height:1.9!important;max-width:20px!important;color:#69ff55!important;text-shadow:0 0 7px #27ff21,0 0 19px #19c719!important;animation:matrix-column-fall 12s linear infinite,blacksite-code-flicker 2.4s steps(2,end) infinite!important}
 .app-shell.theme-blacksite .app-sidebar{width:260px!important;min-width:260px!important;background:linear-gradient(180deg,#050905 0%,#020402 100%)!important;border-right:1px solid #31562b!important;box-shadow:12px 0 50px #000b!important;z-index:5}
 .app-shell.theme-blacksite .sidebar-brand-row{height:98px!important;padding:18px!important;align-items:flex-start!important;border-bottom:1px solid #284323!important;background:linear-gradient(120deg,#0b170a,#030603)!important}
 .app-shell.theme-blacksite .sidebar-brand-row:after{content:'CLASSIFIED ENVIRONMENT  /  TIER 09';left:18px!important;bottom:11px!important;color:#83bd6c!important;font-size:7px!important;letter-spacing:.13em!important}
@@ -279,7 +273,6 @@ html {
 .blacksite-loading{min-height:42vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:17px;color:#b8ff9a;text-align:center;font-family:'DM Mono',monospace;letter-spacing:.16em;position:relative;z-index:4}
 .blacksite-loading strong{font-size:11px;letter-spacing:.2em}.blacksite-loading small{font-size:8px;color:#5d8b54;letter-spacing:.12em}.loading-sigil{height:58px;width:58px;position:relative;display:grid;place-items:center;border:1px solid #76ff4c;border-radius:50%;box-shadow:0 0 28px #59ff291c,inset 0 0 18px #59ff291c;animation:sigil-rotate 4s linear infinite}.loading-sigil:before,.loading-sigil:after{content:'';position:absolute;inset:7px;border:1px dashed #4c9e3c;border-radius:50%}.loading-sigil:after{inset:17px;border-radius:1px;transform:rotate(45deg)}.loading-sigil span{position:absolute;width:4px;height:4px;background:#baff78;box-shadow:0 0 12px #baff78}.loading-sigil span:nth-child(1){top:-2px}.loading-sigil span:nth-child(2){right:-2px}.loading-sigil span:nth-child(3){bottom:-2px}.loading-track{height:2px;width:min(300px,60vw);background:#172a13;overflow:hidden}.loading-track i{display:block;width:35%;height:100%;background:#a4ff4f;box-shadow:0 0 12px #a4ff4f;animation:loading-trace 1.25s ease-in-out infinite alternate}.standard-loading{min-height:35vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;color:#71808a;font-size:12px}
 .app-shell.theme-standard .app-mode-toggle{display:none!important}
-@keyframes blacksite-code-flicker{0%,100%{opacity:.23}45%{opacity:.8}60%{opacity:.35}80%{opacity:.65}}
 @keyframes blacksite-skeleton{0%,100%{opacity:.45}50%{opacity:.8}}
 @keyframes sigil-rotate{to{transform:rotate(360deg)}}
 @keyframes loading-trace{from{transform:translateX(-8%)}to{transform:translateX(205%)}}
@@ -335,7 +328,7 @@ html {
   .app-shell .topbar-brand span,.app-shell.theme-blacksite .blacksite-command-ribbon .ribbon-trace{display:none}
   .app-shell.theme-blacksite .app-main{padding:12px!important}
 }
-@media(prefers-reduced-motion:reduce){.app-shell.theme-blacksite .blacksite-matrix-field span,.blacksite-loading *{animation:none!important}}
+@media(prefers-reduced-motion:reduce){.blacksite-loading *{animation:none!important}}
 
 /* Header and desktop navigation refinements */
 .app-shell .sidebar-brand-image{width:34px;height:34px;flex:none;object-fit:contain;border-radius:8px}
@@ -523,10 +516,7 @@ html {
 @media(max-width:1100px){.blacksite-deck-grid{grid-template-columns:1fr}.blacksite-metric-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:700px){.app-shell.theme-blacksite .app-sidebar{width:min(86vw,280px)!important;min-width:0!important;flex-basis:auto!important}.app-shell.theme-blacksite .app-topbar{height:56px!important;min-height:56px!important;padding:0 12px!important}.app-shell.theme-blacksite .topbar-logo-image{height:29px!important;max-width:160px!important}.app-shell.theme-blacksite .app-main{padding:13px!important}.app-shell.theme-blacksite .blacksite-command-ribbon{padding:8px 12px!important;gap:8px!important;flex-wrap:wrap;font-size:7px!important}.blacksite-deck{gap:13px}.blacksite-deck-heading{align-items:flex-start;flex-direction:column}.blacksite-deck-heading h1{font-size:22px}.blacksite-export{width:100%;justify-content:center}.blacksite-metric-grid{gap:8px}.blacksite-metric{padding:12px}.blacksite-metric>strong{font-size:25px}.blacksite-panel-head{padding:10px}.blacksite-panel-body{padding:8px}.blacksite-deck-footer{flex-wrap:wrap;font-size:6px}.app-shell.theme-blacksite .topbar-system-status,.app-shell.theme-blacksite .topbar-mark{display:none!important}}
 @media(prefers-reduced-motion:reduce){.blacksite-live-tag i{animation:none!important}}
-/* Let the animated code field remain visible through the workspace rather than hiding behind an opaque panel. */
 .app-shell.theme-blacksite .app-workspace{position:relative;z-index:1;background:transparent!important}
-.app-shell.theme-blacksite .app-workspace>div.min-w-0{background:linear-gradient(180deg,rgba(3,6,4,.78),rgba(3,6,4,.9))!important}
-.app-shell.theme-blacksite .blacksite-matrix-field{z-index:0!important;opacity:.13!important;mix-blend-mode:screen}
 .app-shell.theme-blacksite .app-main{background:transparent!important}
 /* Prevent the login wordmark from being mistaken for separate brand marks. */
 .login-brand{display:inline-flex!important;align-items:center!important;gap:0!important;min-width:0}
@@ -561,3 +551,6 @@ html {
   .app-shell .topbar-notification-center{margin-left:auto;position:relative;z-index:20}
   .app-shell .topbar-notification-center>[aria-haspopup="dialog"]{width:40px;min-width:40px;height:40px}
 }
+.app-shell.theme-blacksite .app-main label,
+.app-shell.theme-blacksite .app-main button{min-width:0;max-width:100%;overflow-wrap:anywhere;line-height:1.45}
+.app-shell.theme-blacksite .app-main button{white-space:normal}
