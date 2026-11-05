@@ -16,6 +16,7 @@ export interface PersistedAnalysisProgress {
 interface KeyValueStorage {
   getItem(key: string): string | null
   setItem(key: string, value: string): void
+  removeItem(key: string): void
 }
 
 function storageKey(userId: string) {
@@ -65,4 +66,11 @@ export function savePersistedAnalysisProgress(
   storage: KeyValueStorage = window.localStorage,
 ) {
   storage.setItem(storageKey(userId), JSON.stringify(progress))
+}
+
+export function clearPersistedAnalysisProgress(
+  userId: string,
+  storage: KeyValueStorage = window.localStorage,
+) {
+  storage.removeItem(storageKey(userId))
 }

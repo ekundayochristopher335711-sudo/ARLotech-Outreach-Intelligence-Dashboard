@@ -22,6 +22,7 @@ import {
 import { mapWithConcurrency } from '@/lib/mapWithConcurrency'
 import { getErrorMessage } from '@/lib/utils'
 import {
+  clearPersistedAnalysisProgress,
   loadPersistedAnalysisProgress,
   savePersistedAnalysisProgress,
   type PersistedAnalysisProgress,
@@ -659,8 +660,21 @@ export function ProspectsPage() {
   }
 
   const handleCloseAnalysisProgress = () => {
+    const userId = session?.user.id
+    if (userId && hasPersistedAnalysisQueue) {
+      try {
+        clearPersistedAnalysisProgress(userId)
+      } catch (error) {
+        toast.error(error instanceof Error
+          ? `Could not close the saved website analysis progress: ${error.message}`
+          : 'Could not close the saved website analysis progress.')
+        return
+      }
+    }
     setEnrichmentResults([])
     setHasPersistedAnalysisQueue(false)
+    setIsAnalysisPaused(false)
+    setEnrichmentProgress({ completed: 0, total: 0 })
   }
 
   const handleDeleteSelected = () => {

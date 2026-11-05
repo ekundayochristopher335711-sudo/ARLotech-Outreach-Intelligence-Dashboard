@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  clearPersistedAnalysisProgress,
   loadPersistedAnalysisProgress,
   savePersistedAnalysisProgress,
   type PersistedAnalysisProgress,
@@ -10,6 +11,7 @@ function memoryStorage() {
   return {
     getItem: (key: string) => values.get(key) ?? null,
     setItem: (key: string, value: string) => values.set(key, value),
+    removeItem: (key: string) => values.delete(key),
   }
 }
 
@@ -41,5 +43,26 @@ describe('persisted website analysis progress', () => {
     expect(() => loadPersistedAnalysisProgress('user-1', storage)).toThrow(
       'Saved website analysis progress is invalid.',
     )
+  })
+
+  it('clears only the dismissed account queue so it stays closed after reload', () => {
+    const storage = memoryStorage()
+    const progress: PersistedAnalysisProgress = {
+      version: 1,
+      active: false,
+      prospect_ids: ['prospect-1'],
+      outcomes: [{
+        prospect_id: 'prospect-1',
+        analysis_completed: true,
+        analysis_score: 82,
+      }],
+    }
+
+    savePersistedAnalysisProgress('user-1', progress, storage)
+    savePersistedAnalysisProgress('user-2', progress, storage)
+    clearPersistedAnalysisProgress('user-1', storage)
+
+    expect(loadPersistedAnalysisProgress('user-1', storage)).toBeNull()
+    expect(loadPersistedAnalysisProgress('user-2', storage)).toEqual(progress)
   })
 })
