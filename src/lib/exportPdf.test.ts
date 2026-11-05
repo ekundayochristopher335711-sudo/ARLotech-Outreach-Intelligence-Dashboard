@@ -139,7 +139,8 @@ describe('website audit PDF', () => {
     expect(pages.length).toBeLessThanOrEqual(3)
     expect(report).toContain('WEBSITE HEALTH SCORE')
     expect(report).toContain('CUSTOMER FRICTION POINTS (3)')
-    expect(report).toContain('Prepared for: example.com')
+    expect(report).toContain('example.com')
+    expect(report).not.toContain('Prepared for')
     expect(report).not.toContain('Unverified CRM Name')
     expect(report).toContain('The main page content takes too long to appear')
     expect(report).toContain('The page may take too long to respond')
@@ -158,7 +159,8 @@ describe('website audit PDF', () => {
     }, { businessName: 'Example Legal', verified: true })
     const report = pdfText(reportBase64)
 
-    expect(report).toContain('Prepared for: Example Legal')
+    expect(report).toContain('Example Legal')
+    expect(report).not.toContain('Prepared for')
     expect(report).toContain('ARLOTECH DIGITAL SOLUTIONS')
     expect(atob(reportBase64)).toContain('/Subtype /Image')
     expect(fetch).toHaveBeenCalledWith(getBrandAssetUrl(ARLOTECH_LOGO_FILE))
@@ -188,6 +190,25 @@ describe('website audit PDF', () => {
 
     expect(report).toContain('Some visitors may find this page difficult to use')
     expect(report).not.toMatch(/<li>|<script>|<template>|screen readers|dequeuniversity|axe\/4\.14|invalid markup/i)
+  })
+
+  it('does not include external accessibility rule references in the PDF', async () => {
+    const report = pdfText(await createWebsiteAnalysisPdfBase64({
+      website_url: 'https://example.com',
+      category_scores: { accessibility: 70 },
+      findings: [{
+        id: 'link-in-text-block',
+        source: 'lighthouse',
+        classification: 'verified_issue',
+        title: 'Links are not distinguishable without color',
+        evidence: 'A link in a paragraph is only differentiated by color.',
+        explanation: 'Learn how to make links distinguishable https://dequeuniversity.com/rules/axe/4.14/link-in-text-block',
+        category: 'accessibility',
+        priority: 'medium',
+      }],
+    }))
+
+    expect(report).not.toMatch(/dequeuniversity|axe\/4\.14|Learn how to make links distinguishable/i)
   })
 
   it('uses one brand logo in PDFs regardless of the active workspace appearance', async () => {

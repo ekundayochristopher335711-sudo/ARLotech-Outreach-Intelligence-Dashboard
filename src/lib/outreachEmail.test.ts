@@ -170,6 +170,32 @@ describe('outreach eligibility and previews', () => {
     expect(() => validateOutreachPreview(preview, prospect(), audit)).not.toThrow()
   })
 
+  it('blocks external accessibility references if they are added to an edited preview', () => {
+    const audit = analysis({
+      findings: [{
+        id: 'link-in-text-block',
+        source: 'lighthouse',
+        classification: 'verified_issue',
+        verified: true,
+        title: 'Links are not distinguishable without color',
+        evidence: 'A link in a paragraph is only differentiated by color.',
+        explanation: 'https://dequeuniversity.com/rules/axe/4.14/link-in-text-block',
+        category: 'accessibility',
+        priority: 'medium',
+      }],
+      ai_analysis: { audit_completeness: { status: 'complete' }, optimization_opportunities: [] },
+    })
+    const original = createOutreachPreview(prospect(), audit)
+    expect(original.body.toLowerCase()).toContain('some links may be difficult to spot within the text')
+    expect(original.body).not.toContain('dequeuniversity')
+    const edited = {
+      ...original,
+      body: `${original.body}\n\nLearn how to make links distinguishable: https://dequeuniversity.com/rules/axe/4.14/link-in-text-block`,
+    }
+
+    expect(() => validateOutreachPreview(edited, prospect(), audit)).toThrow('The edited email no longer matches the audit evidence or ArloTech company voice.')
+  })
+
   it('withholds outreach when only positive results or diagnostics exist', () => {
     const audit = analysis({
       findings: [],

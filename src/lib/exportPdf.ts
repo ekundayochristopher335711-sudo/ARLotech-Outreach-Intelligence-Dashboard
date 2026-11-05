@@ -616,7 +616,7 @@ function buildConsultantWebsiteAnalysisPdf(
     .filter(Boolean)
 
   report.addSection('Your website at a glance')
-  report.addParagraph(`Prepared for: ${preparedName}`, { size: 9, bold: true, color: NAVY })
+  report.addParagraph(preparedName, { size: 9, bold: true, color: NAVY })
   report.addParagraph(`Website reviewed: ${targetUrl}`, { size: 8 })
   report.addWebsiteHealthCard(score, scoreSummary, experienceSummary)
   report.addParagraph(

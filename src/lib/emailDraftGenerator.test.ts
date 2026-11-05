@@ -124,6 +124,37 @@ describe('professional email draft generation', () => {
     expect(result.body).not.toMatch(/dequeuniversity|axe\/4\.14|Learn how to make links accessible|discernible name|screen reader/i)
   })
 
+  it('rewrites link-in-text-block findings without accessibility help links', () => {
+    const result = generateProfessionalEmailDraft({
+      prospect,
+      analysis: analysis({
+        findings: [{
+          id: 'link-in-text-block',
+          category: 'accessibility',
+          classification: 'verified_issue',
+          title: 'Links are not distinguishable without color',
+          evidence: 'A link in a paragraph is only differentiated by color.',
+          explanation: 'Links need another visual distinction. https://dequeuniversity.com/rules/axe/4.14/link-in-text-block',
+          priority: 'medium',
+        }],
+      }),
+    })
+
+    expect(result.body.toLowerCase()).toContain('some links may be difficult to spot within the text')
+    expect(result.body).toContain('Making links easy to spot can help people find the next step.')
+    expect(result.body).not.toMatch(/dequeuniversity|axe\/4\.14|learn how to make links distinguishable|link-in-text-block/i)
+  })
+
+  it('blocks external accessibility references if they are reintroduced by an edit', () => {
+    const draft = generateProfessionalEmailDraft({ prospect })
+    const result = validateProfessionalEmailDraft({
+      ...draft,
+      body: `${draft.body}\n\nLearn how to make links distinguishable: https://dequeuniversity.com/rules/axe/4.14/link-in-text-block`,
+    }, prospect, false, draft.subjectSuggestions[0])
+
+    expect(result.errors).toContain('Remove external accessibility audit references from the customer-facing email.')
+  })
+
   it('uses the saved visual observation without pitching a redesign', () => {
     const result = generateProfessionalEmailDraft({
       prospect,

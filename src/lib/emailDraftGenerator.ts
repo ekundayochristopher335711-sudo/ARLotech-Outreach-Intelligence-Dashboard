@@ -1,5 +1,10 @@
 import type { EmailDraft, Prospect, WebsiteAnalysis } from '@/types'
-import { containsEmailJargon, emailFindingImpact, emailFindingTitle } from '@/lib/emailCopy'
+import {
+  containsEmailJargon,
+  containsExternalAuditReference,
+  emailFindingImpact,
+  emailFindingTitle,
+} from '@/lib/emailCopy'
 import { rateLighthouseFinding } from '@/lib/websiteAudit'
 
 export const OUTREACH_STRATEGIES = [
@@ -407,6 +412,9 @@ export function validateProfessionalEmailDraft(
     /guarantee(?:d|s)?|will (?:double|triple|increase) (?:your )?(?:revenue|sales|enquiries|leads)/i.test(draft.body)
   ) {
     errors.push('The message makes an unsupported business-results promise.')
+  }
+  if (containsExternalAuditReference(`${subject}\n${draft.body}`)) {
+    errors.push('Remove external accessibility audit references from the customer-facing email.')
   }
   if (!isContextualReply) {
     if (!/if this is not relevant, let us know and we will not follow up/i.test(draft.body)) {

@@ -1,7 +1,12 @@
 import type { Prospect, WebsiteAnalysis } from '@/types'
 import { normalizeWebsiteDomain } from '@/lib/websiteDomain'
 import { auditFindingEmailTopic } from '@/lib/auditReportLanguage'
-import { containsEmailJargon, emailFindingImpact, emailFindingTitle } from '@/lib/emailCopy'
+import {
+  containsEmailJargon,
+  containsExternalAuditReference,
+  emailFindingImpact,
+  emailFindingTitle,
+} from '@/lib/emailCopy'
 import { rateLighthouseFinding } from '@/lib/websiteAudit'
 
 type AuditFinding = {
@@ -326,6 +331,7 @@ export function validateOutreachPreview(
     !preview.subject.includes(auditFindingEmailTopic(finding)) ||
     !preview.body.toLowerCase().includes(title.toLowerCase()) ||
     !preview.body.includes(impact) ||
+    containsExternalAuditReference(`${preview.subject}\n${preview.body}`) ||
     !/\bwould you\b[^?]*\?/i.test(preview.body)
   ) {
     throw new Error('The edited email no longer matches the audit evidence or ArloTech company voice.')

@@ -46,6 +46,10 @@ const findingCopies: Array<[RegExp, FindingCopy]> = [
     title: 'Some links may be unclear to visitors',
     impact: 'When a link does not clearly explain where it leads, visitors may be unsure what to expect. Clear link wording can make it easier to find services or contact information.',
   }],
+  [/link-in-text-block|link.*text.*block|distinguishable.*link/i, {
+    title: 'Some links may be difficult to spot within the text',
+    impact: 'When links look too similar to the surrounding text, visitors may overlook useful service or contact information. Making links easy to spot can help people find the next step.',
+  }],
   [/color-contrast|low contrast|\bcontrast\b/i, {
     title: 'Some text may be difficult for visitors to read',
     impact: 'Text that blends into its background is harder to read on a phone or in bright light. Visitors can miss service details, opening information, or the next step for getting in touch.',
@@ -77,6 +81,10 @@ const technicalOrPressuringLanguage =
 
 export function containsEmailJargon(value: string) {
   return technicalOrPressuringLanguage.test(value)
+}
+
+export function containsExternalAuditReference(value: string) {
+  return /dequeuniversity\.com|axe\/\d+\.\d+\/|learn how to make links (?:accessible|distinguishable)/i.test(value)
 }
 
 function findingSearchText(finding: EmailFinding) {

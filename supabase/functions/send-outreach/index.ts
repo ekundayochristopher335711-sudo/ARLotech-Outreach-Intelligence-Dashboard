@@ -1,5 +1,6 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { outreachEmailHtml, sentEmailBody } from '../_shared/outreachEmailTemplate.ts'
 import { hasActionableWebsiteFinding, resolveReplyToAddress } from './eligibility.ts'
 
 const corsHeaders = {
@@ -317,6 +318,7 @@ serve(async (req) => {
         }
       }
 
+      const sentBody = sentEmailBody(email.body, postalAddress)
       const resendResponse = await fetch('https://api.resend.com/emails', {
         method: 'POST',
         headers: {
@@ -329,7 +331,8 @@ serve(async (req) => {
           reply_to: replyTo,
           to: [recipient],
           subject: email.subject.trim(),
-          text: `${email.body.trim()}\n\n---\nIf you do not want further outreach, reply to this email and let me know.\n\n${postalAddress.trim()}`,
+          text: sentBody,
+          html: outreachEmailHtml(email.body, postalAddress),
           ...(email.attachment
             ? {
                 attachments: [
@@ -351,9 +354,7 @@ serve(async (req) => {
         results.push({ ...result, status: 'failed', error: detail })
         continue
       }
-
       const sentAt = new Date().toISOString()
-      const sentBody = `${email.body.trim()}\n\n---\nIf you do not want further outreach, reply to this email and let me know.\n\n${postalAddress.trim()}`
       const { error: messageError } = await supabase.from('email_messages').insert({
         user_id: userId,
         prospect_id: prospect?.id ?? null,
