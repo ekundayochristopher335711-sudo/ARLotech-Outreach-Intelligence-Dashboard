@@ -108,21 +108,22 @@ describe('outreach eligibility and previews', () => {
     expect(preview.selected_finding?.id).toBe('unused-javascript')
     expect(preview.body).toMatch(/extra website features may slow down taps and clicks/i)
     expect(preview.body).toContain('especially on a phone')
-    expect(preview.body).toContain('Our website review of AmigoDev')
+    expect(preview.body).toContain("We reviewed AmigoDev's website")
     expect(preview.body).toContain('a possible point of friction for visitors')
     expect(preview.body).not.toMatch(/23 KiB|50 ms|PageSpeed|Lighthouse|JavaScript|score/i)
     expect(preview.subject).toBe('A website idea for AmigoDev: faster page loading')
     expect(preview.internal_note).toContain('Extra website features may slow down taps and clicks')
     expect(preview.body).toContain('Arlotech Digital Solutions')
-    expect(preview.body).toContain('not pitching a costly, full website redesign')
-    expect(preview.body).toContain('attached a short website review')
-    expect(preview.body).toContain('take a look')
+    expect(preview.body).toContain('not necessarily suggesting a complete redesign')
+    expect(preview.body).toContain('Your website review is attached.')
+    expect(preview.body).toContain("what's working well and our recommendations")
+    expect(preview.body).toContain("We'd appreciate your feedback:")
     expect(preview.body).not.toMatch(/\b(?:AI|Gemini|weighted technical)\b/i)
     expect(preview.body).not.toMatch(/\b(I|me|my)\b/i)
     expect(preview.has_website_report).toBe(true)
     expect(preview.body.split('?')).toHaveLength(2)
-    expect(preview.body.trim().split(/\s+/).length).toBeGreaterThanOrEqual(90)
-    expect(preview.body.trim().split(/\s+/).length).toBeLessThanOrEqual(150)
+    expect(preview.body.trim().split(/\s+/).length).toBeGreaterThanOrEqual(180)
+    expect(preview.body.trim().split(/\s+/).length).toBeLessThanOrEqual(280)
     expect(preview.internal_note).toContain('Extra website features may slow down taps and clicks')
     expect(() => validateOutreachPreview(preview, prospect(), audit)).not.toThrow()
   })
@@ -273,7 +274,7 @@ describe('outreach eligibility and previews', () => {
     const categorizedLead = { ...prospect(null), business_category: 'Plumbing and Heating' }
     const preview = createOutreachPreview(categorizedLead)
 
-    expect(preview.body).toContain('your plumbing and heating products or services')
+    expect(preview.body).toContain('your plumbing and heating services')
     expect(preview.body).not.toContain('product or service')
   })
 
@@ -287,7 +288,7 @@ describe('outreach eligibility and previews', () => {
     }, prospect(), audit)).toThrow('contains technical language')
     expect(() => validateOutreachPreview({
       ...preview,
-      body: preview.body.replace('Our website review of AmigoDev', "I reviewed AmigoDev"),
+      body: preview.body.replace("We reviewed AmigoDev's website", "I reviewed AmigoDev's website"),
     }, prospect(), audit))
       .toThrow('company voice')
     expect(() => validateOutreachPreview({ ...preview, subject: 'A quick hello, AmigoDev' }, prospect(), audit))

@@ -52,10 +52,50 @@ describe('professional email draft generation', () => {
     expect(result.body).toMatch(/some text may be difficult for visitors to read/i)
     expect(result.body).toContain('Our website review highlighted a possible point of friction for visitors')
     expect(result.body).not.toMatch(/94\/100|92\/100|91\/100|2\.1:1|Lighthouse|PageSpeed|score/i)
-    expect(result.body).toContain('not pitching a costly, full website redesign')
-    expect(result.body).toContain('attached a short website review')
-    expect(result.body).toContain('take a look')
+    expect(result.body).toContain("It's good to see")
+    expect(result.body).toContain('not necessarily suggesting a complete redesign')
+    expect(result.body).toContain("Your website review is attached. We've included a concise PDF")
+    expect(result.body).toContain("what's working well and our recommendations")
+    const signatureStart = result.body.indexOf('\n\nKind regards,\n')
+    const auditWordCount = result.body.slice(0, signatureStart).trim().split(/\s+/).length
+    expect(auditWordCount).toBeGreaterThanOrEqual(180)
+    expect(auditWordCount).toBeLessThanOrEqual(280)
+    expect(validateProfessionalEmailDraft(
+      result,
+      prospect,
+      true,
+      result.subjectSuggestions[0],
+    ).warnings).toEqual([])
     expect(result.observationsUsed).toHaveLength(1)
+  })
+
+  it('uses the verified positive observation and the complete default sender signature', () => {
+    const result = generateProfessionalEmailDraft({
+      prospect,
+      includeReport: true,
+      analysis: analysis({
+        positive_observations: [{
+          id: 'positive-contact',
+          title: 'The business phone number is easy to find',
+          evidence: 'A phone number is visible in the page header.',
+          potential_benefit: 'Visitors can quickly see a contact option.',
+          priority: 'low',
+        }],
+        findings: [{
+          classification: 'verified_issue',
+          title: 'Low contrast text',
+          evidence: 'Some text is difficult to read.',
+        }],
+      }),
+    })
+
+    expect(result.body).toContain("It's good to see that the review noted the business phone number is easy to find.")
+    expect(result.body).toContain('Ekundayo Christopher')
+    expect(result.body).toContain('Lead Web Developer')
+    expect(result.body).toContain('arlotech.com.ng')
+    expect(result.body).toContain('outreach@arlotech.com.ng')
+    expect(result.body).toContain('+2348166419332')
+    expect(result.body).toContain('Lagos, Nigeria')
   })
 
   it('describes a loading finding in plain language without measurements', () => {
@@ -175,7 +215,7 @@ describe('professional email draft generation', () => {
 
     expect(result.body).toContain('mobile navigation overlaps the page heading')
     expect(result.body).toContain('Visitors may have difficulty reading the page heading.')
-    expect(result.body).toContain('not pitching a costly, full website redesign')
+    expect(result.body).toContain('not necessarily suggesting a complete redesign')
     expect(result.body).not.toContain('In the saved mobile screenshot')
     expect(result.observationsUsed).toHaveLength(1)
   })
@@ -185,7 +225,7 @@ describe('professional email draft generation', () => {
 
     expect(result.body).toContain('We have not reviewed the site in enough detail')
     expect(result.body).toContain('plumbing and heating businesses')
-    expect(result.body).toMatch(/not pitching a costly, full website redesign/i)
+    expect(result.body).toMatch(/not necessarily suggesting a complete redesign/i)
     expect(result.body).not.toMatch(/attached|PageSpeed|Lighthouse|score|broken|defect|4\.8 s/i)
     expect(result.includesReportReference).toBe(false)
     expect(result.observationsUsed).toEqual([])
@@ -255,7 +295,7 @@ describe('professional email draft generation', () => {
     expect(result.body).not.toContain('an individual accessibility check failed')
     expect(result.body).not.toContain('your website failed accessibility')
     expect(result.body).not.toContain('overall accessibility score')
-    expect(result.body).toContain('not pitching a costly, full website redesign')
+    expect(result.body).toContain('not necessarily suggesting a complete redesign')
   })
 
   it('builds a contextual follow-up without claiming a previous conversation happened', () => {
@@ -281,8 +321,8 @@ describe('professional email draft generation', () => {
       true,
     )
 
-    expect(result.body).toContain('attached the short website review again')
-    expect(result.body).toContain('take a look')
+    expect(result.body).toContain('Your website review is attached again.')
+    expect(result.body).toContain("what's working well and our recommendations")
   })
 
   it('supports direct edits through focused rewrite actions', () => {
@@ -308,7 +348,7 @@ describe('specialized outreach message types', () => {
       strategy: 'no_website',
     })
     expect(result.body).toContain("couldn't find a website associated with your business")
-    expect(result.body).toContain('works well on phones')
+    expect(result.body).toContain('presents your plumbing and heating services clearly')
     expect(result.body).not.toMatch(/PageSpeed|Lighthouse|broken|defect/i)
     expect(result.observationsUsed).toEqual([])
   })
@@ -317,7 +357,7 @@ describe('specialized outreach message types', () => {
     const result = generateProfessionalEmailDraft({ prospect, strategy: 'cold_outreach' })
     expect(result.body).toContain('briefly introduce Arlotech Digital Solutions')
     expect(result.body).toContain('couple of ideas for your online presence')
-    expect(result.body).toContain('not pitching a costly, full website redesign')
+    expect(result.body).toContain('not necessarily suggesting a complete redesign')
     expect(result.body).toMatch(/If this is not relevant, let us know and we will not follow up/i)
     expect(result.observationsUsed).toEqual([])
   })
@@ -353,7 +393,7 @@ describe('specialized outreach message types', () => {
     })
     const editedDraft = {
       ...generated,
-      body: generated.body.replace(/We have attached a short website review[^\n]*/, ''),
+      body: generated.body.replace(/Your website review is attached[^\n]*/, ''),
     }
 
     expect(validateProfessionalEmailDraft(
@@ -362,7 +402,7 @@ describe('specialized outreach message types', () => {
       true,
       generated.subjectSuggestions[0],
     ).errors).toContain(
-      'Tell the recipient that the attached website review has more detail and invite them to take a look.',
+      'Describe the attached review accurately, including findings, positive observations, and recommendations.',
     )
   })
 

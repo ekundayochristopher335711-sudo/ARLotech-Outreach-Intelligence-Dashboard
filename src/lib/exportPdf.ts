@@ -472,6 +472,18 @@ function findingSource(finding: PdfFinding): NormalizedPdfFinding['sourceLabel']
   return 'Unverified'
 }
 
+function relevantArlotechSupport(finding: PdfFinding) {
+  const category = (finding.category || '').toLowerCase()
+  if (category.includes('performance')) return 'page speed and website performance improvements'
+  if (category.includes('seo')) return 'search-result presentation and technical SEO improvements'
+  if (category.includes('accessibility')) return 'readability and inclusive usability improvements'
+  if (category.includes('best-practices')) return 'website quality and reliability improvements'
+  if (/phone|mobile|screen|display/i.test(finding.title || '')) {
+    return 'responsive layout and mobile usability improvements'
+  }
+  return 'focused website improvements related to the verified findings'
+}
+
 function normalizePdfFindings(findings: PdfFinding[]) {
   const unique = new Map<string, NormalizedPdfFinding>()
   for (const finding of findings) {
@@ -528,6 +540,7 @@ function buildConsultantWebsiteAnalysisPdf(
       return {
         title: auditFindingBusinessTitle(finding),
         impact: auditFindingBusinessImpact(finding),
+        support: relevantArlotechSupport(finding),
         rank: priorityRank * 4 + ratingRank,
       }
     })
@@ -551,6 +564,7 @@ function buildConsultantWebsiteAnalysisPdf(
           impact: viewportKey === 'mobile'
             ? 'A display problem on phones could hide important details or make it harder for customers to contact you.'
             : 'A display problem on larger screens could make the business look less professional to customers comparing local options.',
+          support: 'responsive layout and mobile usability improvements',
           rank: (severity === 'high' ? 12 : 8) + confidence,
         }]
       })
@@ -613,6 +627,30 @@ function buildConsultantWebsiteAnalysisPdf(
     { size: 7.5, color: MUTED },
   )
 
+  const positiveObservations = Array.isArray(rec.positive_observations)
+    ? rec.positive_observations.filter((observation: any) =>
+        typeof observation?.title === 'string' &&
+        observation.title.trim() &&
+        typeof observation.evidence === 'string' &&
+        observation.evidence.trim() &&
+        !/\b(?:speed index|largest contentful paint|first contentful paint|total blocking time|cumulative layout shift|lighthouse|pagespeed|score|kib|milliseconds?)\b/i.test(
+          `${observation.title} ${observation.evidence}`,
+        ),
+      ).slice(0, 5)
+    : []
+  report.addSection("What's working well")
+  if (positiveObservations.length) {
+    positiveObservations.forEach((observation: any) => {
+      report.addParagraph(observation.title.trim(), { bold: true, color: NAVY })
+      report.addParagraph(observation.evidence.trim(), { size: 8.5, indent: 4 })
+    })
+  } else {
+    report.addParagraph(
+      'The review did not record a separate positive observation. This does not mean the website has no strengths; it means no specific positive point was verified for this report.',
+      { size: 9, color: NAVY },
+    )
+  }
+
   report.addSection(`Customer friction points (${topFindings.length})`)
   if (topFindings.length === 0) {
     report.addParagraph(
@@ -624,6 +662,14 @@ function buildConsultantWebsiteAnalysisPdf(
       report.addWebsiteIssueCard(index + 1, finding.title, finding.impact)
     })
   }
+  const relevantSupport = [...new Set(topFindings.map((finding) => finding.support).filter(Boolean))]
+  report.addSection('Relevant Arlotech support')
+  report.addParagraph(
+    relevantSupport.length
+      ? `Based on the findings above, Arlotech can discuss focused options for ${relevantSupport.join('; ')}. Any proposed work should be confirmed against your goals and priorities.`
+      : 'The available review did not verify a specific change to recommend. Arlotech can first discuss your goals and only suggest website work if it is useful.',
+    { size: 9, color: NAVY },
+  )
   const businessImpactParagraph = topFindings.length
     ? 'A clear, dependable website helps protect your reputation and gives potential customers a simpler path from finding your business to getting in touch. The points above show where a small, focused improvement may help.'
     : 'The available review did not confirm a customer issue that needs fixing. Keeping the website clear and dependable can still help protect your reputation and make it easy for customers to get in touch.'

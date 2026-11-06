@@ -18,6 +18,7 @@ import {
 import {
   generateFollowUpDraft,
   generateProfessionalEmailDraft,
+  DEFAULT_OUTREACH_SIGNATURE,
   OUTREACH_STRATEGIES,
   rewriteProfessionalEmail,
   validateProfessionalEmailDraft,
@@ -68,38 +69,23 @@ const strategyDescriptions: Record<OutreachStrategy, string> = {
 
 function readSignature(): OutreachSignature {
   const saved = localStorage.getItem(SIGNATURE_STORAGE_KEY)
-  if (!saved) {
-    return {
-      businessName: 'Arlotech Digital Solutions',
-      senderName: '',
-      jobTitle: '',
-      website: '',
-      email: '',
-      phone: '',
-      socialLinks: '',
-    }
-  }
+  if (!saved) return { ...DEFAULT_OUTREACH_SIGNATURE }
   try {
     const parsed = JSON.parse(saved) as Partial<OutreachSignature>
     return {
-      businessName: parsed.businessName || 'Arlotech Digital Solutions',
-      senderName: parsed.senderName || '',
-      jobTitle: parsed.jobTitle || '',
-      website: parsed.website || '',
-      email: parsed.email || '',
-      phone: parsed.phone || '',
+      ...DEFAULT_OUTREACH_SIGNATURE,
+      ...parsed,
+      businessName: parsed.businessName || DEFAULT_OUTREACH_SIGNATURE.businessName,
+      senderName: parsed.senderName || DEFAULT_OUTREACH_SIGNATURE.senderName,
+      jobTitle: parsed.jobTitle || DEFAULT_OUTREACH_SIGNATURE.jobTitle,
+      website: parsed.website || DEFAULT_OUTREACH_SIGNATURE.website,
+      email: parsed.email || DEFAULT_OUTREACH_SIGNATURE.email,
+      phone: parsed.phone || DEFAULT_OUTREACH_SIGNATURE.phone,
       socialLinks: parsed.socialLinks || '',
+      location: parsed.location || DEFAULT_OUTREACH_SIGNATURE.location,
     }
   } catch {
-    return {
-      businessName: 'Arlotech Digital Solutions',
-      senderName: '',
-      jobTitle: '',
-      website: '',
-      email: '',
-      phone: '',
-      socialLinks: '',
-    }
+    return { ...DEFAULT_OUTREACH_SIGNATURE }
   }
 }
 
@@ -1157,6 +1143,7 @@ export function EmailDraftsPage() {
               ['email', 'Business email'],
               ['phone', 'Telephone'],
               ['socialLinks', 'Social links (optional)'],
+              ['location', 'Location'],
             ] as const).map(([key, label]) => (
               <label key={key} className="block space-y-1">
                 <span className="text-xs font-medium text-slate-600">{label}</span>
@@ -1591,6 +1578,7 @@ export function EmailDraftsPage() {
               ['email', 'Business email'],
               ['phone', 'Telephone'],
               ['socialLinks', 'Social links (optional)'],
+              ['location', 'Location'],
             ] as const).map(([key, label]) => (
               <label key={key} className="block space-y-1">
                 <span className="text-xs font-medium text-slate-600">{label}</span>

@@ -176,6 +176,34 @@ describe('website audit PDF', () => {
     expect(emptyReportPages).toHaveLength(1)
   })
 
+  it('includes verified strengths and support tied to the audit category', async () => {
+    const report = pdfText(await createWebsiteAnalysisPdfBase64({
+      website_url: 'https://example.com',
+      category_scores: { performance: 55 },
+      findings: [{
+        id: 'largest-contentful-paint',
+        audit_id: 'largest-contentful-paint',
+        source: 'lighthouse',
+        classification: 'verified_issue',
+        title: 'Largest Contentful Paint',
+        evidence: 'Main content appeared after 4.8 seconds.',
+        category: 'performance',
+        priority: 'high',
+      }],
+      positive_observations: [{
+        id: 'contact-details',
+        title: 'Business contact details are easy to find',
+        evidence: 'The phone number and email address are shown in the page header.',
+      }],
+    }))
+
+    expect(report).toContain("WHAT'S WORKING WELL")
+    expect(report).toContain('Business contact details are easy to find')
+    expect(report).toContain('The phone number and email address are shown in the page header.')
+    expect(report).toContain('RELEVANT ARLOTECH SUPPORT')
+    expect(report).toContain('page speed and website performance improvements')
+  })
+
   it('rewrites technical list findings as customer-focused information without exposing raw markup', async () => {
     const report = pdfText(await createWebsiteAnalysisPdfBase64({
       website_url: 'https://jbfplumbing.example',

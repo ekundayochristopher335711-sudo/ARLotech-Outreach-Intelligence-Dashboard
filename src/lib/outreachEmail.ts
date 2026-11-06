@@ -7,6 +7,12 @@ import {
   emailFindingImpact,
   emailFindingTitle,
 } from '@/lib/emailCopy'
+import {
+  feedbackRequest,
+  industryImpactLine,
+  positiveWebsiteAcknowledgement,
+  prospectOffering,
+} from '@/lib/emailPersonalization'
 import { rateLighthouseFinding } from '@/lib/websiteAudit'
 
 type AuditFinding = {
@@ -30,6 +36,7 @@ type AuditFinding = {
 }
 
 type OutreachAnalysis = Pick<WebsiteAnalysis, 'id' | 'website_url' | 'findings' | 'overall_score'> & {
+  positive_observations?: WebsiteAnalysis['positive_observations']
   category_scores?: Record<string, number | null> | null
   ai_analysis?: Record<string, unknown> | null
 }
@@ -206,7 +213,7 @@ export function createOutreachPreview(
   const name = prospect.business_name.trim() || 'your business'
   const greetingName = firstName(prospect.contact_name)
   const category = prospect.business_category?.trim()
-  const offering = category ? `${category.toLowerCase()} products or services` : 'product or service'
+  const offering = prospectOffering(category)
   const signOff = 'Kind regards,\nArlotech Digital Solutions'
 
   if (!prospect.website) {
@@ -219,7 +226,7 @@ export function createOutreachPreview(
         '',
         `We came across ${name}${category ? ` while researching local ${category.toLowerCase()} businesses` : ''}. We did not find a website linked to the business information available to us, so we wanted to ask whether you are considering a simple site to help prospective customers learn about your ${offering} and get in touch.`,
         '',
-        'Our team at Arlotech Digital Solutions works on websites and online services. If a website is something you are exploring, we would be glad to share a few practical ideas. If it is not relevant, let us know and we will not follow up.',
+        'At Arlotech Digital Solutions, we design, develop and optimise business websites. If a website is something you are exploring, we would be glad to share a few practical ideas based on your goals. If it is not relevant, let us know and we will not follow up.',
         '',
         'Would it be helpful if we shared a few ideas?',
         '',
@@ -248,17 +255,24 @@ export function createOutreachPreview(
   if (!selectedFinding) throw new Error('No evidence-backed website finding is available for outreach.')
 
   const { title, impact } = observationText(selectedFinding)
+  const positiveObservation = analysis.positive_observations?.find((observation) =>
+    typeof observation?.title === 'string' &&
+    typeof observation.evidence === 'string' &&
+    observation.evidence.trim(),
+  )?.title
   const internalNote = `We chose "${title}" because it is the clearest item supported by this website check.`
   const body = [
     `Hi ${greetingName},`,
     '',
-    `Our website review of ${name}'s site highlighted a possible point of friction for visitors: ${title.toLowerCase()}. ${impact}`,
+    positiveWebsiteAcknowledgement(name, category, positiveObservation),
+    `We reviewed ${name}'s website and wanted to share a practical observation. Our review highlighted a possible point of friction for visitors: ${title.toLowerCase()}. ${impact}`,
+    industryImpactLine(category, title),
     '',
-    `We are not pitching a costly, full website redesign. Small, targeted changes may make it easier for visitors to understand your ${offering} and get in touch.`,
+    `At Arlotech Digital Solutions, we design, develop and optimise business websites. For this ${category ? `${category.toLowerCase()} business` : `business offering a ${offering}`}, we can focus on practical improvements related to this observation. We are not necessarily suggesting a complete redesign; targeted changes may be enough.`,
     '',
-    'We have attached a short website review with a little more detail about these points. Please feel free to take a look if it would be useful.',
+    "Your website review is attached. We've included a concise PDF outlining our findings, what's working well and our recommendations.",
     '',
-    'Would you be open to a brief conversation about this?',
+    feedbackRequest(),
     '',
     'If this is not relevant, please let us know and we will not follow up.',
     '',
@@ -326,14 +340,16 @@ export function validateOutreachPreview(
     /\b(I|me|my)\b/i.test(preview.body) ||
     !preview.body.includes('Arlotech Digital Solutions') ||
     !/will not follow up/i.test(preview.body) ||
-    !/we are not pitching a costly, full website redesign/i.test(preview.body) ||
-    !/attached a short website review/i.test(preview.body) ||
+    !/not necessarily suggesting a complete redesign/i.test(preview.body) ||
+    !/your website review is attached/i.test(preview.body) ||
+    !/what's working well and our recommendations/i.test(preview.body) ||
     containsEmailJargon(`${preview.subject}\n${preview.body}`) ||
     !preview.subject.includes(auditFindingEmailTopic(finding)) ||
     !preview.body.toLowerCase().includes(title.toLowerCase()) ||
     !preview.body.includes(impact) ||
     containsExternalAuditReference(`${preview.subject}\n${preview.body}`) ||
-    !/\bwould you\b[^?]*\?/i.test(preview.body)
+    !/we'd appreciate your feedback:/i.test(preview.body) ||
+    !/\b(?:are|is|do|does|would|could)\b[^?]*\?/i.test(preview.body)
   ) {
     throw new Error('The edited email no longer matches the audit evidence or ArloTech company voice.')
   }
