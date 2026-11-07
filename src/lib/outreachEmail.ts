@@ -10,8 +10,10 @@ import {
 import {
   feedbackRequest,
   industryImpactLine,
+  normalizedDraftIdentity,
   positiveWebsiteAcknowledgement,
   prospectOffering,
+  removeDraftHyphens,
 } from '@/lib/emailPersonalization'
 import { rateLighthouseFinding } from '@/lib/websiteAudit'
 
@@ -220,8 +222,8 @@ export function createOutreachPreview(
     return {
       prospect_id: prospect.id,
       analysis_id: null,
-      subject: `A website idea for ${name}`,
-      body: [
+      subject: removeDraftHyphens(`A website idea for ${name}`),
+      body: removeDraftHyphens([
         `Hi ${greetingName},`,
         '',
         `We came across ${name}${category ? ` while researching local ${category.toLowerCase()} businesses` : ''}. We did not find a website linked to the business information available to us, so we wanted to ask whether you are considering a simple site to help prospective customers learn about your ${offering} and get in touch.`,
@@ -231,7 +233,7 @@ export function createOutreachPreview(
         'Would it be helpful if we shared a few ideas?',
         '',
         signOff,
-      ].join('\n'),
+      ].join('\n')),
       has_website_report: false,
       suitability: 'Low Opportunity',
       internal_note: 'No website was provided, so this is a general introduction and is not based on a website audit.',
@@ -270,7 +272,7 @@ export function createOutreachPreview(
     '',
     `At Arlotech Digital Solutions, we design, develop and optimise business websites. For this ${category ? `${category.toLowerCase()} business` : `business offering a ${offering}`}, we can focus on practical improvements related to this observation. We are not necessarily suggesting a complete redesign; targeted changes may be enough.`,
     '',
-    "Your website review is attached. We've included a concise PDF outlining our findings, what's working well and our recommendations.",
+    "Your website review is attached. The concise PDF outlines the audit findings and our recommendations.",
     '',
     feedbackRequest(),
     '',
@@ -282,8 +284,8 @@ export function createOutreachPreview(
   return {
     prospect_id: prospect.id,
     analysis_id: analysis.id,
-    subject: `A website idea for ${name}: ${auditFindingEmailTopic(selectedFinding)}`,
-    body,
+    subject: removeDraftHyphens(`A website idea for ${name}: ${auditFindingEmailTopic(selectedFinding)}`),
+    body: removeDraftHyphens(body),
     has_website_report: true,
     suitability,
     selected_finding: selectedFinding,
@@ -301,8 +303,8 @@ export function validateOutreachPreview(
     throw new Error('The email report attachment setting does not match the prospect website.')
   }
   if (
-    !preview.subject.includes(prospect.business_name) ||
-    !preview.body.includes(prospect.business_name) ||
+    !normalizedDraftIdentity(preview.subject).includes(normalizedDraftIdentity(prospect.business_name)) ||
+    !normalizedDraftIdentity(preview.body).includes(normalizedDraftIdentity(prospect.business_name)) ||
     !/will not follow up/i.test(preview.body) ||
     containsEmailJargon(`${preview.subject}\n${preview.body}`) ||
     (preview.body.match(/\?/g) ?? []).length !== 1
@@ -336,17 +338,16 @@ export function validateOutreachPreview(
   const finding = currentPreview.selected_finding!
   const { title, impact } = observationText(finding)
   if (
-    !preview.subject.includes(prospect.business_name) ||
+    !normalizedDraftIdentity(preview.subject).includes(normalizedDraftIdentity(prospect.business_name)) ||
     /\b(I|me|my)\b/i.test(preview.body) ||
     !preview.body.includes('Arlotech Digital Solutions') ||
     !/will not follow up/i.test(preview.body) ||
     !/not necessarily suggesting a complete redesign/i.test(preview.body) ||
     !/your website review is attached/i.test(preview.body) ||
-    !/what's working well and our recommendations/i.test(preview.body) ||
     containsEmailJargon(`${preview.subject}\n${preview.body}`) ||
-    !preview.subject.includes(auditFindingEmailTopic(finding)) ||
-    !preview.body.toLowerCase().includes(title.toLowerCase()) ||
-    !preview.body.includes(impact) ||
+    !normalizedDraftIdentity(preview.subject).includes(normalizedDraftIdentity(auditFindingEmailTopic(finding))) ||
+    !normalizedDraftIdentity(preview.body).includes(normalizedDraftIdentity(title)) ||
+    !normalizedDraftIdentity(preview.body).includes(normalizedDraftIdentity(impact)) ||
     containsExternalAuditReference(`${preview.subject}\n${preview.body}`) ||
     !/we'd appreciate your feedback:/i.test(preview.body) ||
     !/\b(?:are|is|do|does|would|could)\b[^?]*\?/i.test(preview.body)

@@ -54,8 +54,8 @@ describe('professional email draft generation', () => {
     expect(result.body).not.toMatch(/94\/100|92\/100|91\/100|2\.1:1|Lighthouse|PageSpeed|score/i)
     expect(result.body).toContain("It's good to see")
     expect(result.body).toContain('not necessarily suggesting a complete redesign')
-    expect(result.body).toContain("Your website review is attached. We've included a concise PDF")
-    expect(result.body).toContain("what's working well and our recommendations")
+    expect(result.body).toContain('Your website review is attached. The concise PDF outlines the audit findings and our recommendations.')
+    expect(result.body).not.toContain("what's working well")
     const signatureStart = result.body.indexOf('\n\nKind regards,\n')
     const auditWordCount = result.body.slice(0, signatureStart).trim().split(/\s+/).length
     expect(auditWordCount).toBeGreaterThanOrEqual(180)
@@ -259,6 +259,62 @@ describe('professional email draft generation', () => {
     expect(websiteDraft.body).not.toMatch(/plumbing|heating|electrician|contractor/i)
   })
 
+  it('allows an audit based email without a business category', () => {
+    const uncategorizedProspect = { ...prospect, business_category: null }
+    const draft = generateProfessionalEmailDraft({
+      prospect: uncategorizedProspect,
+      includeReport: true,
+      analysis: analysis({
+        findings: [{
+          source: 'lighthouse',
+          classification: 'verified_issue',
+          title: 'Low contrast text',
+          evidence: 'Some text is difficult to read.',
+        }],
+      }),
+    })
+    const validation = validateProfessionalEmailDraft(
+      draft,
+      uncategorizedProspect,
+      true,
+      draft.subjectSuggestions[0],
+    )
+
+    expect(draft.body).toContain('your product or service')
+    expect(validation.errors).toEqual([])
+  })
+
+  it('removes hyphens from generated email copy while preserving hyphens in contact links', () => {
+    const result = generateProfessionalEmailDraft({
+      prospect: { ...prospect, business_name: 'North-Star Cafe', business_category: 'Food-Service' },
+      analysis: analysis({
+        findings: [{
+          source: 'lighthouse',
+          classification: 'verified_issue',
+          title: 'Low contrast text',
+          evidence: 'Some text is difficult to read.',
+        }],
+      }),
+      signature: {
+        email: 'hello@north-star.example',
+        website: 'north-star.example',
+      },
+    })
+    const copyWithoutContactLinks = `${result.subjectSuggestions.join('\n')}\n${result.body}`
+      .replace('hello@north-star.example', '')
+      .replace('north-star.example', '')
+
+    expect(copyWithoutContactLinks).not.toContain('-')
+    expect(result.body).toContain('hello@north-star.example')
+    expect(result.body).toContain('north-star.example')
+    expect(validateProfessionalEmailDraft(
+      result,
+      { ...prospect, business_name: 'North-Star Cafe', business_category: 'Food-Service' },
+      true,
+      result.subjectSuggestions[0],
+    ).errors).toEqual([])
+  })
+
   it('prioritizes a small number of confirmed findings rather than listing every issue', () => {
     const result = generateProfessionalEmailDraft({
       prospect,
@@ -322,7 +378,7 @@ describe('professional email draft generation', () => {
     )
 
     expect(result.body).toContain('Your website review is attached again.')
-    expect(result.body).toContain("what's working well and our recommendations")
+    expect(result.body).toContain('audit findings and our recommendations')
   })
 
   it('supports direct edits through focused rewrite actions', () => {
@@ -402,7 +458,7 @@ describe('specialized outreach message types', () => {
       true,
       generated.subjectSuggestions[0],
     ).errors).toContain(
-      'Describe the attached review accurately, including findings, positive observations, and recommendations.',
+      'Describe the attached review accurately and mention its findings and recommendations.',
     )
   })
 
@@ -459,7 +515,7 @@ describe('specialized outreach message types', () => {
 
   it('creates a discovery-call reply without inventing availability', () => {
     const result = generateProfessionalEmailDraft({ prospect, strategy: 'meeting_request' })
-    expect(result.body).toContain('Would you be available for a 15-minute conversation?')
+    expect(result.body).toContain('Would you be available for a 15 minute conversation?')
     expect(result.body).not.toMatch(/Tuesday at|tomorrow at|2:00 PM/i)
   })
 })

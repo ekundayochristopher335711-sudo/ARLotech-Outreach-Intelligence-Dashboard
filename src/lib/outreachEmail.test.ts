@@ -116,7 +116,9 @@ describe('outreach eligibility and previews', () => {
     expect(preview.body).toContain('Arlotech Digital Solutions')
     expect(preview.body).toContain('not necessarily suggesting a complete redesign')
     expect(preview.body).toContain('Your website review is attached.')
-    expect(preview.body).toContain("what's working well and our recommendations")
+    expect(preview.body).toContain('audit findings and our recommendations')
+    expect(preview.body).not.toContain("what's working well")
+    expect(`${preview.subject}\n${preview.body}`).not.toContain('-')
     expect(preview.body).toContain("We'd appreciate your feedback:")
     expect(preview.body).not.toMatch(/\b(?:AI|Gemini|weighted technical)\b/i)
     expect(preview.body).not.toMatch(/\b(I|me|my)\b/i)
@@ -142,7 +144,7 @@ describe('outreach eligibility and previews', () => {
       ai_analysis: { audit_completeness: { status: 'complete' }, optimization_opportunities: [] },
     })
     const preview = createOutreachPreview(prospect(), audit)
-    expect(preview.subject).toBe('A website idea for AmigoDev: easier-to-read text')
+    expect(preview.subject).toBe('A website idea for AmigoDev: easier to read text')
     expect(preview.body).toMatch(/some text may be difficult for visitors to read/i)
     expect(preview.body).not.toMatch(/2\.1:1|#777|#fff/i)
     expect(() => validateOutreachPreview(preview, prospect(), audit)).not.toThrow()
@@ -267,6 +269,7 @@ describe('outreach eligibility and previews', () => {
     expect(noWebsitePreview.body).not.toMatch(/technology|software|developer/i)
     expect(websitePreview.body).toContain('your product or service')
     expect(websitePreview.body).not.toMatch(/technology|software|developer/i)
+    expect(`${websitePreview.subject}\n${websitePreview.body}`).not.toContain('-')
     expect(() => validateOutreachPreview(websitePreview, websiteLead, analysis())).not.toThrow()
   })
 

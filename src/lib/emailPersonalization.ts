@@ -24,6 +24,29 @@ function normalizedCategory(category?: string | null) {
   return category?.trim().replace(/\s+/g, ' ') || ''
 }
 
+export function removeDraftHyphens(value: string) {
+  const preserved: string[] = []
+  const withPlaceholders = value.replace(
+    /\b(?:https?:\/\/|www\.)[^\s]+|\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi,
+    (match) => {
+      const placeholder = `__PRESERVED_DRAFT_VALUE_${preserved.length}__`
+      preserved.push(match)
+      return placeholder
+    },
+  )
+  return withPlaceholders
+    .replace(/(\w)[\u2010-\u2015-](\w)/g, '$1 $2')
+    .replace(/\s*[\u2010-\u2015-]\s*/g, ', ')
+    .replace(/ {2,}/g, ' ')
+    .replace(/,\s*,/g, ',')
+    .replace(/,\s*([.!?])/g, '$1')
+    .replace(/__PRESERVED_DRAFT_VALUE_(\d+)__/g, (_match, index: string) => preserved[Number(index)] || '')
+}
+
+export function normalizedDraftIdentity(value: string) {
+  return value.toLowerCase().replace(/[\u2010-\u2015-]/g, ' ').replace(/\s+/g, ' ').trim()
+}
+
 export function prospectOffering(category?: string | null) {
   const value = normalizedCategory(category)
   if (!value) return 'product or service'

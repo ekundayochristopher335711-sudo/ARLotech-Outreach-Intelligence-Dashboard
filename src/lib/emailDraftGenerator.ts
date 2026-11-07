@@ -8,8 +8,10 @@ import {
 import {
   feedbackRequest,
   industryImpactLine,
+  normalizedDraftIdentity,
   positiveWebsiteAcknowledgement,
   prospectOffering,
+  removeDraftHyphens,
 } from '@/lib/emailPersonalization'
 import { rateLighthouseFinding } from '@/lib/websiteAudit'
 
@@ -272,10 +274,10 @@ export function generateProfessionalEmailDraft(input: {
       : strategy === 'pricing_response'
         ? `Hi ${greetingName},\n\nThanks for asking about pricing. The cost depends on the scope of work, the pages or features required, and whether this is a new website, a redesign, or improvements to an existing site.\n\nWe would rather confirm what you need first and give you a clear quote than suggest a figure that does not match the project.${contextLine}\n\nIf you share a little about what you have in mind, we can outline the most suitable option and its cost.\n\nKind regards,\n${signoff(tone, signature).split('\n').slice(1).join('\n')}`
         : `Hi ${greetingName},\n\nThanks for considering Arlotech Digital Solutions. It would be useful to arrange a short call to understand your goals for ${name}'s website and agree on the most practical next steps.${contextLine}\n\nWould you be available for a 15-minute conversation? Feel free to suggest a day and time that works for you.\n\nKind regards,\n${signoff(tone, signature).split('\n').slice(1).join('\n')}`
-    const replySubject = strategy === 'pricing_response' ? `Re: Website project pricing for ${name}` : strategy === 'meeting_request' ? `A quick call about ${name}'s website` : `Re: ${name} website enquiry`
+    const replySubject = removeDraftHyphens(strategy === 'pricing_response' ? `Re: Website project pricing for ${name}` : strategy === 'meeting_request' ? `A quick call about ${name}'s website` : `Re: ${name} website enquiry`)
     return {
-      subjectSuggestions: [replySubject, `Next steps for ${name}`, `Arlotech Digital Solutions | ${name}`],
-      body: replyBody,
+      subjectSuggestions: [replySubject, `Next steps for ${name}`, `Arlotech Digital Solutions | ${name}`].map(removeDraftHyphens),
+      body: removeDraftHyphens(replyBody),
       personalization: [`Business: ${name}`, ...(prospect.website ? [`Website: ${prospect.website}`] : []), ...(industry ? [`Industry: ${industry}`] : [])],
       observationsUsed: [],
       qualityChecks: ['Written as a response type selected by the operator; verify the conversation context before sending.', senderContext ? 'Additional context supplied by the operator.' : 'No price, delivery date, or project scope was invented.'],
@@ -343,7 +345,7 @@ export function generateProfessionalEmailDraft(input: {
   lines.push('')
 
   if (includeReport && analysis && prospect.website) {
-    lines.push("Your website review is attached. We've included a concise PDF outlining our findings, what's working well and our recommendations.", '')
+    lines.push('Your website review is attached. The concise PDF outlines the audit findings and our recommendations.', '')
   }
 
   const cta = followUpStage === 'final'
@@ -382,12 +384,14 @@ export function generateProfessionalEmailDraft(input: {
   if (tone === 'friendly' || tone === 'conversational') {
     body = body.replace('We would be happy to talk this through.', 'We would be glad to have a quick, informal chat if that suits you.')
   }
+  body = removeDraftHyphens(body)
 
   const suggestions = followUpStage !== 'none' && input.originalSubject
     ? [...new Set([`Re: ${input.originalSubject.replace(/^(Re:\s*)+/i, '')}`, ...subjectOptions(name, strategy, topic)])].slice(0, 5)
     : subjectOptions(name, strategy, topic)
+  const formattedSuggestions = suggestions.map(removeDraftHyphens)
   return {
-    subjectSuggestions: suggestions,
+    subjectSuggestions: formattedSuggestions,
     body,
     personalization: [
       `${prospect.business_name ? `Business: ${prospect.business_name}` : 'Business name unavailable'}`,
@@ -436,7 +440,10 @@ export function validateProfessionalEmailDraft(
   if (!subject.trim()) errors.push('The email subject is empty.')
   if (subject.length > 100) warnings.push('Consider shortening the subject line.')
   if (!draft.body.trim()) errors.push('The email message is empty.')
-  if (prospect.business_name.trim() && !body.includes(prospect.business_name.trim().toLowerCase())) {
+  if (
+    prospect.business_name.trim() &&
+    !normalizedDraftIdentity(body).includes(normalizedDraftIdentity(prospect.business_name))
+  ) {
     errors.push('The message does not include the selected business name.')
   }
   if (
@@ -473,9 +480,9 @@ export function validateProfessionalEmailDraft(
   }
   if (
     draft.includesReportReference &&
-    !/your website review is attached.*what.s working well and our recommendations/i.test(draft.body)
+    !/your website review is attached.*audit findings and our recommendations/i.test(draft.body)
   ) {
-    errors.push('Describe the attached review accurately, including findings, positive observations, and recommendations.')
+    errors.push('Describe the attached review accurately and mention its findings and recommendations.')
   }
   if (draft.includesReportReference && !isFollowUp && !isContextualReply) {
     if (!/it.s good to see/i.test(body)) {
@@ -558,9 +565,9 @@ export function generateFollowUpDraft(
     ? '\n\nWould it be helpful to reconnect if this becomes a priority later?'
     : '\n\nWould a short conversation be useful?'
   const reportNote = includeReport && prospect.website
-    ? "Your website review is attached again. The concise PDF outlines our findings, what's working well and our recommendations."
+    ? 'Your website review is attached again. The concise PDF outlines the audit findings and our recommendations.'
     : ''
-  const body = [
+  const body = removeDraftHyphens([
     `Hi ${firstName(prospect.contact_name)},`,
     '',
     followUpText,
@@ -571,12 +578,12 @@ export function generateFollowUpDraft(
     'If this is not relevant, let us know and we will not follow up.',
     '',
     signoff(tone, signatureDetails),
-  ].filter(Boolean).join('\n')
+  ].filter(Boolean).join('\n'))
   const suggestions = [...new Set([
     `Re: ${topic}`,
     `Following up on ${name}'s website`,
     `A quick follow-up for ${name}`,
-  ])].slice(0, 5)
+  ])].slice(0, 5).map(removeDraftHyphens)
 
   return {
     subjectSuggestions: suggestions,

@@ -502,7 +502,12 @@ function normalizePdfFindings(findings: PdfFinding[]) {
 
 function buildConsultantWebsiteAnalysisPdf(
   analysis: Record<string, any>,
-  _preparedFor?: { businessName: string; verified: boolean } | null,
+  preparedFor?: {
+    businessName: string
+    verified: boolean
+    contactName?: string
+    email?: string | null
+  } | null,
   logo?: PdfBrandLogo,
 ) {
   const rec = analysis?.record || analysis || {}
@@ -615,6 +620,17 @@ function buildConsultantWebsiteAnalysisPdf(
     .filter(Boolean)
 
   report.addSection('Your website at a glance')
+  const recipientLabel = [
+    preparedFor?.contactName?.trim(),
+    preparedFor?.verified ? preparedFor.businessName.trim() : '',
+  ].filter(Boolean).join(' at ')
+  const recipient = recipientLabel || preparedFor?.email?.trim()
+  if (recipient) {
+    report.addParagraph(
+      `Prepared for: ${recipient}${preparedFor?.email?.trim() ? ` | ${preparedFor.email.trim()}` : ''}`,
+      { size: 8.5, color: NAVY },
+    )
+  }
   report.addWebsiteHealthCard(score, scoreSummary, experienceSummary)
   report.addParagraph(
     reviewedAreas.length
@@ -626,30 +642,6 @@ function buildConsultantWebsiteAnalysisPdf(
     'The score is a guide to the areas reviewed, not a promise of search position, sales, or inquiries.',
     { size: 7.5, color: MUTED },
   )
-
-  const positiveObservations = Array.isArray(rec.positive_observations)
-    ? rec.positive_observations.filter((observation: any) =>
-        typeof observation?.title === 'string' &&
-        observation.title.trim() &&
-        typeof observation.evidence === 'string' &&
-        observation.evidence.trim() &&
-        !/\b(?:speed index|largest contentful paint|first contentful paint|total blocking time|cumulative layout shift|lighthouse|pagespeed|score|kib|milliseconds?)\b/i.test(
-          `${observation.title} ${observation.evidence}`,
-        ),
-      ).slice(0, 5)
-    : []
-  report.addSection("What's working well")
-  if (positiveObservations.length) {
-    positiveObservations.forEach((observation: any) => {
-      report.addParagraph(observation.title.trim(), { bold: true, color: NAVY })
-      report.addParagraph(observation.evidence.trim(), { size: 8.5, indent: 4 })
-    })
-  } else {
-    report.addParagraph(
-      'The review did not record a separate positive observation. This does not mean the website has no strengths; it means no specific positive point was verified for this report.',
-      { size: 9, color: NAVY },
-    )
-  }
 
   report.addSection(`Customer friction points (${topFindings.length})`)
   if (topFindings.length === 0) {
@@ -695,7 +687,12 @@ export async function exportWebsiteAnalysisPdf(analysis: Record<string, any>, _s
 
 export async function createWebsiteAnalysisPdfBase64(
   analysis: Record<string, any>,
-  preparedFor?: { businessName: string; verified: boolean } | null,
+  preparedFor?: {
+    businessName: string
+    verified: boolean
+    contactName?: string
+    email?: string | null
+  } | null,
   _screenshotImages: Record<string, string> = {},
 ) {
   const logo = await loadPdfBrandLogo()

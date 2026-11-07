@@ -187,6 +187,8 @@ async function createAuditPdfAttachment(
   return createWebsiteAnalysisPdfBase64(analysis, {
     businessName: prospect.business_name,
     verified: prospect.business_name_verified,
+    contactName: prospect.contact_name,
+    email: prospect.email,
   }, screenshotImages)
 }
 
@@ -1127,8 +1129,12 @@ export function EmailDraftsPage() {
                 : 'A website review PDF will be attached when a matching completed review is available.'}
             </p>
           )}
-          {selectedGeneratorProspect?.business_category && (
-            <p className="text-xs text-slate-500">Industry context: {selectedGeneratorProspect.business_category}</p>
+          {selectedGeneratorProspect && (
+            <p className="text-xs text-slate-500">
+              {selectedGeneratorProspect.business_category
+                ? `Industry context: ${selectedGeneratorProspect.business_category}`
+                : 'Business category is optional. Generic product or service wording will be used.'}
+            </p>
           )}
         </div>
 

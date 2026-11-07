@@ -152,6 +152,8 @@ describe('website audit PDF', () => {
     expect(report).toContain('outreach@arlotech.com.ng')
     expect(report).toContain('arlotech.com.ng')
     expect(report).toContain('+2348166419332')
+    expect(report).not.toContain("WHAT'S WORKING WELL")
+    expect(report).not.toContain('The review did not record a separate positive observation')
   })
 
   it('uses the verified recipient name and official Arlotech logo in the PDF header', async () => {
@@ -159,12 +161,16 @@ describe('website audit PDF', () => {
       website_url: 'https://example.com',
       category_scores: {},
       findings: [],
-    }, { businessName: 'Example Legal', verified: true })
+    }, {
+      businessName: 'Example Legal',
+      verified: true,
+      contactName: 'Alex Kent',
+      email: 'alex@example.org',
+    })
     const report = pdfText(reportBase64)
 
-    expect(report).not.toContain('Example Legal')
-    expect(report).not.toContain('example.com')
-    expect(report).not.toContain('Prepared for')
+    expect(report).toContain('Prepared for: Alex Kent at Example Legal | alex@example.org')
+    expect(report).not.toContain('https://example.com')
     expect(report).toContain('ARLOTECH DIGITAL SOLUTIONS')
     expect(atob(reportBase64)).toContain('/Subtype /Image')
     expect(fetch).toHaveBeenCalledWith(getBrandAssetUrl(ARLOTECH_LOGO_FILE))
@@ -176,7 +182,7 @@ describe('website audit PDF', () => {
     expect(emptyReportPages).toHaveLength(1)
   })
 
-  it('includes verified strengths and support tied to the audit category', async () => {
+  it('omits the positive observations section and keeps support tied to the audit category', async () => {
     const report = pdfText(await createWebsiteAnalysisPdfBase64({
       website_url: 'https://example.com',
       category_scores: { performance: 55 },
@@ -197,9 +203,9 @@ describe('website audit PDF', () => {
       }],
     }))
 
-    expect(report).toContain("WHAT'S WORKING WELL")
-    expect(report).toContain('Business contact details are easy to find')
-    expect(report).toContain('The phone number and email address are shown in the page header.')
+    expect(report).not.toContain("WHAT'S WORKING WELL")
+    expect(report).not.toContain('Business contact details are easy to find')
+    expect(report).not.toContain('The review did not record a separate positive observation')
     expect(report).toContain('RELEVANT ARLOTECH SUPPORT')
     expect(report).toContain('page speed and website performance improvements')
   })
