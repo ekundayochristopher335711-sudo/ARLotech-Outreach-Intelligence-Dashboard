@@ -1,5 +1,6 @@
 export const ARLOTECH_LOGO_FILE = 'system logo.png'
 export const ARLOTECH_BLACKSITE_LOGO_FILE = 'blacksite logo.png'
+export const ARLOTECH_BLACKSITE_PDF_LOGO_FILE = 'blacksite-logo-pdf.png'
 export const ARLOTECH_FAVICON_FILE = 'favicon-32x32.png'
 
 export function getBrandAssetUrl(fileName: string) {

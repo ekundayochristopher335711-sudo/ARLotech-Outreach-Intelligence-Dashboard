@@ -8,7 +8,7 @@ import {
   auditFindingBusinessImpact,
   auditFindingBusinessTitle,
 } from '@/lib/auditReportLanguage'
-import { ARLOTECH_BLACKSITE_LOGO_FILE, loadArlotechLogoDataUrl } from '@/lib/brandAssets'
+import { ARLOTECH_BLACKSITE_PDF_LOGO_FILE, loadArlotechLogoDataUrl } from '@/lib/brandAssets'
 
 const PAGE_WIDTH = 210
 const PAGE_HEIGHT = 297
@@ -29,7 +29,7 @@ interface PdfBrandLogo {
 }
 
 async function loadPdfBrandLogo(): Promise<PdfBrandLogo> {
-  return { data: await loadArlotechLogoDataUrl(ARLOTECH_BLACKSITE_LOGO_FILE), format: 'PNG' }
+  return { data: await loadArlotechLogoDataUrl(ARLOTECH_BLACKSITE_PDF_LOGO_FILE), format: 'PNG' }
 }
 
 interface PdfProspect {

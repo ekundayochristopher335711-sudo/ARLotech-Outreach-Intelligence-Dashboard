@@ -109,6 +109,10 @@ interface SendOutreachResponse {
   results: OutreachSendResult[]
 }
 
+interface SendOutreachMutationResult extends SendOutreachResponse {
+  omittedReports: string[]
+}
+
 interface GeneratedOutreachPreview extends OutreachPreview {
   generatedDraft: GeneratedEmailDraft
 }
@@ -611,28 +615,57 @@ export function EmailDraftsPage() {
       const pendingPreviews = outreachPreviews.filter((preview) => !alreadySentIds.has(preview.prospect_id))
       if (!pendingPreviews.length) throw new Error('There are no unsent emails remaining in this batch.')
 
+      const omittedReports: string[] = []
       const emailPayload = await Promise.all(pendingPreviews.map(async (preview) => {
         const prospect = outreachProspectRows.find((item: OutreachProspect) => item.id === preview.prospect_id)
         if (!prospect) throw new Error('A selected prospect is no longer available.')
         const blockReason = getOutreachBlockReason(prospect)
         if (blockReason) throw new Error(`${prospect.business_name}: ${blockReason}.`)
         const analysis = analysisByProspect.get(prospect.id)
-        if (!!prospect.website !== preview.has_website_report) {
-          throw new Error(`${prospect.business_name}'s report attachment no longer matches the prospect website.`)
-        }
-        if (prospect.website && (
-          !analysis ||
-          analysis.id !== preview.analysis_id ||
-          !hasMatchingWebsiteAnalysis(prospect, analysis)
-        )) {
+        const matchingPreviewAnalysis = !!analysis &&
+          analysis.id === preview.analysis_id &&
+          hasMatchingWebsiteAnalysis(prospect, analysis)
+        if (preview.has_website_report && analysis && !matchingPreviewAnalysis) {
           throw new Error(`${prospect.business_name}'s website audit changed. Regenerate the email before sending.`)
         }
+        const safeFilename = prospect.business_name
+          .replace(/[^a-z0-9-]/gi, '-')
+          .replace(/^-+|-+$/g, '')
+          .slice(0, 60)
+          .toLowerCase() || 'prospect'
+        let attachmentContent: string | null = null
+        if (preview.has_website_report) {
+          if (!matchingPreviewAnalysis || !analysis) {
+            omittedReports.push(`${prospect.business_name}: matching website review is unavailable`)
+          } else {
+            try {
+              attachmentContent = await createAuditPdfAttachment(analysis, prospect)
+              if (attachmentContent.length > MAX_ATTACHMENT_BASE64_LENGTH) {
+                attachmentContent = null
+                omittedReports.push(`${prospect.business_name}: PDF exceeds the 525 KB attachment limit`)
+              }
+            } catch (error) {
+              const reason = error instanceof Error ? error.message : 'PDF generation failed'
+              omittedReports.push(`${prospect.business_name}: ${reason}`)
+            }
+          }
+        }
+        const reportOmitted = preview.has_website_report && !attachmentContent
+        const body = reportOmitted
+          ? preview.body
+              .split(/\r?\n/)
+              .filter((line) => !/(?:your website review is attached|we have attached|please see the attached)/i.test(line))
+              .join('\n')
+              .replace(/\n{3,}/g, '\n\n')
+          : preview.body
+        const generatedDraft = {
+          ...preview.generatedDraft,
+          body,
+          includesReportReference: reportOmitted ? false : preview.generatedDraft.includesReportReference,
+          wordCount: body.trim().split(/\s+/).filter(Boolean).length,
+        }
         const validation = validateProfessionalEmailDraft(
-          {
-            ...preview.generatedDraft,
-            body: preview.body,
-            wordCount: preview.body.trim().split(/\s+/).filter(Boolean).length,
-          },
+          generatedDraft,
           prospect,
           !!analysis && hasMatchingWebsiteAnalysis(prospect, analysis),
           preview.subject,
@@ -640,24 +673,13 @@ export function EmailDraftsPage() {
         if (validation.errors.length) {
           throw new Error(`${prospect.business_name}: ${validation.errors.join(' ')}`)
         }
-        if (!preview.subject.trim() || preview.subject.length > 200 || !preview.body.trim() || preview.body.length > 12_000) {
+        if (!preview.subject.trim() || preview.subject.length > 200 || !body.trim() || body.length > 12_000) {
           throw new Error(`${prospect.business_name}'s email has an empty or over-limit subject or message.`)
-        }
-        const safeFilename = prospect.business_name
-          .replace(/[^a-z0-9-]/gi, '-')
-          .replace(/^-+|-+$/g, '')
-          .slice(0, 60)
-          .toLowerCase() || 'prospect'
-        const attachmentContent = preview.has_website_report && analysis
-          ? await createAuditPdfAttachment(analysis, prospect)
-          : null
-        if (attachmentContent && attachmentContent.length > MAX_ATTACHMENT_BASE64_LENGTH) {
-          throw new Error(`${prospect.business_name}'s PDF exceeds the sending attachment limit.`)
         }
         return {
           prospect_id: prospect.id,
           subject: preview.subject,
-          body: preview.body,
+          body,
           ...(attachmentContent
             ? {
                 attachment: {
@@ -714,14 +736,17 @@ export function EmailDraftsPage() {
           throw new Error('The send function did not return a result for every recipient in this batch. Review the results before retrying.')
         }
       }
-      return { results: Array.from(resultById.values()) }
+      return { results: Array.from(resultById.values()), omittedReports }
     },
-    onSuccess: async (data: SendOutreachResponse) => {
+    onSuccess: async (data: SendOutreachMutationResult) => {
       setOutreachResults(data.results)
       const sentCount = data.results.filter((result: OutreachSendResult) => result.status === 'sent').length
       const failedCount = data.results.length - sentCount
       if (failedCount > 0) toast.error(`Sent ${sentCount}; ${failedCount} were skipped or failed.`)
       else toast.success(`Sent ${sentCount} personalized email${sentCount === 1 ? '' : 's'}.`)
+      if (data.omittedReports.length > 0) {
+        toast.warning(`Website PDFs were omitted for these email attempts: ${data.omittedReports.join('; ')}.`)
+      }
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['/email-messages'] }),
         queryClient.invalidateQueries({ queryKey: ['/prospects'] }),
@@ -816,6 +841,9 @@ export function EmailDraftsPage() {
       const attachmentContent = selectedGeneratorProspect.website && matchingGeneratorAnalysis
         ? await createAuditPdfAttachment(matchingGeneratorAnalysis, selectedGeneratorProspect)
         : null
+      if (attachmentContent && attachmentContent.length > MAX_ATTACHMENT_BASE64_LENGTH) {
+        throw new Error('The website PDF is over the 525 KB attachment limit. Download the report and send it separately.')
+      }
       const safeFilename = selectedGeneratorProspect.business_name
         .replace(/[^a-z0-9-]/gi, '-')
         .replace(/^-+|-+$/g, '')

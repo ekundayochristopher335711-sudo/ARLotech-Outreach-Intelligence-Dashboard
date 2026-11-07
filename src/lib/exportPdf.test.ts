@@ -2,12 +2,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { createWebsiteAnalysisPdfBase64 } from './exportPdf'
 import {
-  ARLOTECH_BLACKSITE_LOGO_FILE,
+  ARLOTECH_BLACKSITE_PDF_LOGO_FILE,
   ARLOTECH_FAVICON_FILE,
   getBrandAssetUrl,
 } from './brandAssets'
 
-const arlotechLogo = readFileSync(new URL('../../public/blacksite logo.png', import.meta.url))
+const arlotechLogo = readFileSync(new URL('../../public/blacksite-logo-pdf.png', import.meta.url))
 
 beforeEach(() => {
   vi.stubGlobal('fetch', vi.fn(async () => {
@@ -179,7 +179,8 @@ describe('website audit PDF', () => {
     expect(report).not.toContain('https://example.com')
     expect(report).toContain('ARLOTECH DIGITAL SOLUTIONS')
     expect(atob(reportBase64)).toContain('/Subtype /Image')
-    expect(fetch).toHaveBeenCalledWith(getBrandAssetUrl(ARLOTECH_BLACKSITE_LOGO_FILE))
+    expect(fetch).toHaveBeenCalledWith(getBrandAssetUrl(ARLOTECH_BLACKSITE_PDF_LOGO_FILE))
+    expect(reportBase64.length).toBeLessThan(700_000)
     const emptyReportPages = pdfPages(await createWebsiteAnalysisPdfBase64({
       website_url: 'https://example.com',
       category_scores: {},
@@ -262,7 +263,7 @@ describe('website audit PDF', () => {
       findings: [],
     })
 
-    expect(fetch).toHaveBeenCalledWith(getBrandAssetUrl(ARLOTECH_BLACKSITE_LOGO_FILE))
+    expect(fetch).toHaveBeenCalledWith(getBrandAssetUrl(ARLOTECH_BLACKSITE_PDF_LOGO_FILE))
     expect(getBrandAssetUrl(ARLOTECH_FAVICON_FILE)).toContain('favicon-32x32.png')
   })
 
