@@ -170,14 +170,6 @@ function candidateObservations(analysis?: DraftAnalysis | null) {
   }))
 }
 
-function toneOpening(tone: OutreachTone, name: string) {
-  if (tone === 'friendly' || tone === 'conversational') return `We wanted to share one practical observation from our review of ${name}'s website.`
-  if (tone === 'direct') return `One area from the review may be worth a closer look.`
-  if (tone === 'premium') return `We noted one opportunity to refine the website experience.`
-  if (tone === 'consultative') return `We wanted to share one observation for your team to consider.`
-  return `We wanted to share one practical observation from the review.`
-}
-
 function signoff(tone: OutreachTone, signature: OutreachSignature) {
   const closing = tone === 'friendly' || tone === 'conversational'
     ? 'Best wishes,'
@@ -298,7 +290,6 @@ export function generateProfessionalEmailDraft(input: {
     lines.push(`We came across ${name}${industry ? ` while researching ${industry.toLowerCase()} businesses` : ''} and wanted to briefly introduce Arlotech Digital Solutions. We build and improve websites to help businesses present their ${offering} clearly online.`)
   } else if (prospect.website && analysis) {
     lines.push(positiveWebsiteAcknowledgement(name, industry, positiveObservation))
-    lines.push(toneOpening(tone, name))
   } else {
     lines.push(`We came across ${name}${industry ? ` while looking at ${industry.toLowerCase()} businesses` : ''} and wanted to introduce Arlotech Digital Solutions.`)
   }
@@ -317,8 +308,8 @@ export function generateProfessionalEmailDraft(input: {
     : []
 
   if (selectedObservations.length) {
-    lines.push(`Our website review highlighted ${selectedObservations.length === 1 ? 'a possible point of friction for visitors' : 'a couple of possible points of friction for visitors'}: ${selectedObservations.map((item) => item.title.toLowerCase()).join(' and ')}. ${selectedObservations[0].why}`)
-    lines.push(industryImpactLine(industry, selectedObservations[0].title))
+    lines.push(`One area we noticed was ${selectedObservations[0].title.toLowerCase()}. ${selectedObservations[0].why}`)
+    if (industry) lines.push(industryImpactLine(industry, selectedObservations[0].title))
     if (selectedObservations.length > 1) lines.push(selectedObservations[1].why)
     lines.push('')
   } else if (analysis && !['no_website', 'cold_outreach'].includes(strategy)) {
@@ -329,19 +320,25 @@ export function generateProfessionalEmailDraft(input: {
 
   const valueLine = strategy === 'no_website'
     ? `At Arlotech Digital Solutions, we design, develop and optimise business websites. We can help plan a site that presents your ${offering} clearly and gives interested people a straightforward way to get in touch.`
-    : prospect.website
-      ? `At Arlotech Digital Solutions, we design, develop and optimise business websites. We can focus on practical changes related to this observation${industryContext ? `, such as ${industryContext}` : `, helping visitors understand your ${offering} and find a way to contact you`}. We are not necessarily suggesting a complete redesign; targeted improvements may be enough.`
+    : prospect.website && selectedObservations.length
+      ? 'Arlotech Digital Solutions designs and improves business websites. A focused change may address this issue without a full redesign.'
+      : prospect.website
+        ? 'Arlotech Digital Solutions designs and improves business websites. We would be glad to share a couple of ideas based on your goals.'
       : `At Arlotech Digital Solutions, we design, develop and optimise business websites. We can help present your ${offering} clearly online and make it straightforward for interested people to get in touch.`
   lines.push(valueLine)
 
-  if (strategy === 'business_growth' && industryContext) {
+  if (prospect.website && analysis && selectedObservations.length) {
+    if (senderContext) lines.push(senderContext)
+  } else if (strategy === 'business_growth' && industryContext) {
     lines.push('Any changes would depend on your goals; we cannot promise a particular increase in enquiries or sales.')
   } else if (strategy === 'personal_consultancy') {
     lines.push('We would be glad to understand your priorities first and suggest only changes that make sense for your business.')
   } else {
     lines.push('We would be happy to talk through the observation and whether any next step makes sense for your business.')
   }
-  if (senderContext) lines.push(`Additional project detail: ${senderContext}`)
+  if (senderContext && !(prospect.website && analysis && selectedObservations.length)) {
+    lines.push(`Additional project detail: ${senderContext}`)
+  }
   lines.push('')
 
   if (includeReport && analysis && prospect.website) {
@@ -466,7 +463,8 @@ export function validateProfessionalEmailDraft(
     }
     if (
       prospect.website &&
-      !/not necessarily suggesting a complete redesign/i.test(draft.body)
+      draft.observationsUsed.length > 0 &&
+      !/a focused change may address this issue without a full redesign/i.test(draft.body)
     ) {
       errors.push('Clarify that the audit does not automatically call for a complete redesign.')
     }
@@ -499,8 +497,8 @@ export function validateProfessionalEmailDraft(
   const signatureStart = draft.body.search(/\n\n(?:Kind regards|Best wishes|Regards),\n/)
   const auditCopy = signatureStart >= 0 ? draft.body.slice(0, signatureStart) : draft.body
   const auditCopyWords = wordCount(auditCopy)
-  if (draft.includesReportReference && !isContextualReply && !isFollowUp && (auditCopyWords < 180 || auditCopyWords > 280)) {
-    warnings.push('Audit-based first-touch emails should contain 180-280 words before the signature; review the message length.')
+  if (draft.includesReportReference && !isContextualReply && !isFollowUp && (auditCopyWords < 70 || auditCopyWords > 150)) {
+    warnings.push('Audit-based first-touch emails should contain 70-150 words before the signature; review the message length.')
   } else if (!draft.includesReportReference && (draft.wordCount < 80 || draft.wordCount > 190)) {
     warnings.push('This draft is outside the usual 80-190 word range; review its length.')
   }

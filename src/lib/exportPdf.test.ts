@@ -1,9 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { createWebsiteAnalysisPdfBase64 } from './exportPdf'
-import { ARLOTECH_FAVICON_FILE, ARLOTECH_LOGO_FILE, getBrandAssetUrl } from './brandAssets'
+import {
+  ARLOTECH_BLACKSITE_LOGO_FILE,
+  ARLOTECH_FAVICON_FILE,
+  getBrandAssetUrl,
+} from './brandAssets'
 
-const arlotechLogo = readFileSync(new URL('../../public/overall logo.png', import.meta.url))
+const arlotechLogo = readFileSync(new URL('../../public/blacksite logo.png', import.meta.url))
 
 beforeEach(() => {
   vi.stubGlobal('fetch', vi.fn(async () => {
@@ -59,12 +63,13 @@ describe('website audit PDF', () => {
       lighthouse_score_pct: 40,
       affected_resources: [],
     }))
-    const pages = pdfPages(await createWebsiteAnalysisPdfBase64({
+    const base64 = await createWebsiteAnalysisPdfBase64({
       website_url: 'https://example.com',
       category_scores: { performance: 40 },
       findings,
-    }))
-    const report = pages.join('\n')
+    })
+    const pages = pdfPages(base64)
+    const report = pdfText(base64)
     const summaryEnd = report.indexOf('CUSTOMER FRICTION POINTS (3)')
     const overview = summaryEnd < 0 ? report : report.slice(0, summaryEnd)
     const summaryTitles = report.match(/The main page content takes too long to appear|Files may delay the first view of your website|Parts of the page may take longer to look ready|Extra website features may slow down taps and clicks/g) ?? []
@@ -74,6 +79,7 @@ describe('website audit PDF', () => {
     expect(pages.length).toBeGreaterThanOrEqual(1)
     expect(pages.length).toBeLessThanOrEqual(3)
     expect(pages.length).toBeGreaterThan(1)
+    expect(pages.every((_page, index) => report.includes(`Page ${index + 1} of ${pages.length}`))).toBe(true)
     expect(overview).toContain('YOUR WEBSITE AT A GLANCE')
     expect(overview).not.toContain('The main page content takes too long to appear')
     expect(report).toContain('CUSTOMER FRICTION POINTS (3)')
@@ -173,7 +179,7 @@ describe('website audit PDF', () => {
     expect(report).not.toContain('https://example.com')
     expect(report).toContain('ARLOTECH DIGITAL SOLUTIONS')
     expect(atob(reportBase64)).toContain('/Subtype /Image')
-    expect(fetch).toHaveBeenCalledWith(getBrandAssetUrl(ARLOTECH_LOGO_FILE))
+    expect(fetch).toHaveBeenCalledWith(getBrandAssetUrl(ARLOTECH_BLACKSITE_LOGO_FILE))
     const emptyReportPages = pdfPages(await createWebsiteAnalysisPdfBase64({
       website_url: 'https://example.com',
       category_scores: {},
@@ -256,7 +262,7 @@ describe('website audit PDF', () => {
       findings: [],
     })
 
-    expect(fetch).toHaveBeenCalledWith(getBrandAssetUrl(ARLOTECH_LOGO_FILE))
+    expect(fetch).toHaveBeenCalledWith(getBrandAssetUrl(ARLOTECH_BLACKSITE_LOGO_FILE))
     expect(getBrandAssetUrl(ARLOTECH_FAVICON_FILE)).toContain('favicon-32x32.png')
   })
 

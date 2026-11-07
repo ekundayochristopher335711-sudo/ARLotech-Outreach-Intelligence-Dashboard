@@ -8,7 +8,7 @@ import {
   auditFindingBusinessImpact,
   auditFindingBusinessTitle,
 } from '@/lib/auditReportLanguage'
-import { loadArlotechLogoDataUrl } from '@/lib/brandAssets'
+import { ARLOTECH_BLACKSITE_LOGO_FILE, loadArlotechLogoDataUrl } from '@/lib/brandAssets'
 
 const PAGE_WIDTH = 210
 const PAGE_HEIGHT = 297
@@ -29,7 +29,7 @@ interface PdfBrandLogo {
 }
 
 async function loadPdfBrandLogo(): Promise<PdfBrandLogo> {
-  return { data: await loadArlotechLogoDataUrl(), format: 'PNG' }
+  return { data: await loadArlotechLogoDataUrl(ARLOTECH_BLACKSITE_LOGO_FILE), format: 'PNG' }
 }
 
 interface PdfProspect {
@@ -98,15 +98,15 @@ function createReport(
     doc.setFillColor(...NAVY)
     doc.rect(0, 0, PAGE_WIDTH, 34, 'F')
     if (logo) {
-      doc.addImage(logo.data, logo.format, LEFT, 7, 21, 21)
+      doc.addImage(logo.data, logo.format, LEFT, 8, 26, 18)
     }
     doc.setTextColor(...WHITE)
     doc.setFont('helvetica', 'bold')
     doc.setFontSize(9)
-    doc.text('ARLOTECH DIGITAL SOLUTIONS', LEFT + (logo ? 25 : 8), 15)
+    doc.text('ARLOTECH DIGITAL SOLUTIONS', LEFT + (logo ? 30 : 8), 15)
     doc.setFont('helvetica', 'normal')
     doc.setFontSize(8)
-    doc.text(brand, LEFT + (logo ? 25 : 8), 21)
+    doc.text(brand, LEFT + (logo ? 30 : 8), 21)
     doc.setTextColor(148, 190, 195)
     doc.setFont('helvetica', 'bold')
     doc.setFontSize(7)
@@ -303,7 +303,10 @@ function createReport(
     y += cardHeight + 5
   }
 
-  const finish = (filename: string) => {
+  let pageFooterAdded = false
+  const addPageFooter = () => {
+    if (pageFooterAdded) return
+
     const pageCount = doc.getNumberOfPages()
     for (let page = 1; page <= pageCount; page += 1) {
       doc.setPage(page)
@@ -320,12 +323,20 @@ function createReport(
         LEFT,
         PAGE_HEIGHT - 8,
       )
-      doc.text(`${page} / ${pageCount}`, RIGHT, PAGE_HEIGHT - 8, { align: 'right' })
+      doc.text(`Page ${page} of ${pageCount}`, RIGHT, PAGE_HEIGHT - 8, { align: 'right' })
     }
+    pageFooterAdded = true
+  }
+
+  const finish = (filename: string) => {
+    addPageFooter()
     doc.save(filename)
   }
 
-  const toBase64 = () => doc.output('datauristring').split(',')[1]
+  const toBase64 = () => {
+    addPageFooter()
+    return doc.output('datauristring').split(',')[1]
+  }
 
   return {
     doc,
@@ -576,14 +587,27 @@ function buildConsultantWebsiteAnalysisPdf(
     : []
   const selectedTitles = new Set<string>()
   const selectedImpacts = new Set<string>()
+  const selectedFacts: Array<{ title: string; impact: string }> = []
+  const factSimilarity = (left: string, right: string) => {
+    const leftWords = new Set(left.toLowerCase().match(/[a-z0-9]+/g) || [])
+    const rightWords = new Set(right.toLowerCase().match(/[a-z0-9]+/g) || [])
+    if (!leftWords.size || !rightWords.size) return 0
+    const shared = [...leftWords].filter((word) => rightWords.has(word)).length
+    return shared / new Set([...leftWords, ...rightWords]).size
+  }
   const topFindings = [...measuredCandidates, ...visualCandidates]
     .sort((left, right) => right.rank - left.rank)
     .filter((finding) => {
       const titleKey = finding.title.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
       const impactKey = finding.impact.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
-      if (!titleKey || !impactKey || selectedTitles.has(titleKey) || selectedImpacts.has(impactKey)) return false
+      const repeatsSelectedFact = selectedFacts.some((selected) =>
+        factSimilarity(titleKey, selected.title) >= 0.8 ||
+        factSimilarity(impactKey, selected.impact) >= 0.85,
+      )
+      if (!titleKey || !impactKey || repeatsSelectedFact || selectedTitles.has(titleKey) || selectedImpacts.has(impactKey)) return false
       selectedTitles.add(titleKey)
       selectedImpacts.add(impactKey)
+      selectedFacts.push({ title: titleKey, impact: impactKey })
       return true
     })
     .slice(0, 3)

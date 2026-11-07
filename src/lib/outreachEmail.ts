@@ -267,10 +267,10 @@ export function createOutreachPreview(
     `Hi ${greetingName},`,
     '',
     positiveWebsiteAcknowledgement(name, category, positiveObservation),
-    `We reviewed ${name}'s website and wanted to share a practical observation. Our review highlighted a possible point of friction for visitors: ${title.toLowerCase()}. ${impact}`,
-    industryImpactLine(category, title),
+    `Our review found ${title.toLowerCase()}. ${impact}`,
+    ...(category ? [industryImpactLine(category, title)] : []),
     '',
-    `At Arlotech Digital Solutions, we design, develop and optimise business websites. For this ${category ? `${category.toLowerCase()} business` : `business offering a ${offering}`}, we can focus on practical improvements related to this observation. We are not necessarily suggesting a complete redesign; targeted changes may be enough.`,
+    'Arlotech Digital Solutions designs and improves business websites. A focused change may address this issue without a full redesign.',
     '',
     "Your website review is attached. The concise PDF outlines the audit findings and our recommendations.",
     '',
@@ -342,14 +342,14 @@ export function validateOutreachPreview(
     /\b(I|me|my)\b/i.test(preview.body) ||
     !preview.body.includes('Arlotech Digital Solutions') ||
     !/will not follow up/i.test(preview.body) ||
-    !/not necessarily suggesting a complete redesign/i.test(preview.body) ||
+    !/a focused change may address this issue without a full redesign/i.test(preview.body) ||
     !/your website review is attached/i.test(preview.body) ||
     containsEmailJargon(`${preview.subject}\n${preview.body}`) ||
     !normalizedDraftIdentity(preview.subject).includes(normalizedDraftIdentity(auditFindingEmailTopic(finding))) ||
     !normalizedDraftIdentity(preview.body).includes(normalizedDraftIdentity(title)) ||
     !normalizedDraftIdentity(preview.body).includes(normalizedDraftIdentity(impact)) ||
     containsExternalAuditReference(`${preview.subject}\n${preview.body}`) ||
-    !/we'd appreciate your feedback:/i.test(preview.body) ||
+    !/we'd value your feedback:/i.test(preview.body) ||
     !/\b(?:are|is|do|does|would|could)\b[^?]*\?/i.test(preview.body)
   ) {
     throw new Error('The edited email no longer matches the audit evidence or ArloTech company voice.')

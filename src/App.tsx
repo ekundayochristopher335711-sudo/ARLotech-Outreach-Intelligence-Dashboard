@@ -13,7 +13,12 @@ import { useLocation } from 'react-router-dom'
 import { Sidebar } from '@/components/layout/Sidebar'
 import { NotificationListener } from '@/components/notifications/NotificationListener'
 import { NotificationCenter } from '@/components/notifications/NotificationCenter'
-import { ARLOTECH_FAVICON_FILE, ARLOTECH_LOGO_FILE, getBrandAssetUrl } from '@/lib/brandAssets'
+import {
+  ARLOTECH_BLACKSITE_LOGO_FILE,
+  ARLOTECH_FAVICON_FILE,
+  ARLOTECH_LOGO_FILE,
+  getBrandAssetUrl,
+} from '@/lib/brandAssets'
 
 const LoginPage = lazy(() => import('@/pages/Login').then((module) => ({ default: module.LoginPage })))
 const DashboardPage = lazy(() => import('@/pages/Dashboard').then((module) => ({ default: module.DashboardPage })))
@@ -154,7 +159,11 @@ function AppShell() {
             <Menu className="h-6 w-6" />
           </button>
           <span className="topbar-brand flex items-center" aria-label="Arlotech Digital Solutions">
-            <img src={getBrandAssetUrl(ARLOTECH_LOGO_FILE)} alt="Arlotech Digital Solutions" className="topbar-logo-image" />
+            <img
+              src={getBrandAssetUrl(blacksite ? ARLOTECH_BLACKSITE_LOGO_FILE : ARLOTECH_LOGO_FILE)}
+              alt="Arlotech Digital Solutions"
+              className="topbar-logo-image"
+            />
           </span>
           <div className="topbar-system-status"><span className="status-live-dot" /> <span>{blacksite ? 'UPLINK ESTABLISHED' : 'WORKSPACE ONLINE'}</span><span className="topbar-divider">/</span><span className="topbar-clock">{blacksite ? 'TRACE NULL // UPLINK LIVE' : 'OUTREACH CONSOLE'}</span></div>
           <NotificationCenter className="topbar-notification-center" />

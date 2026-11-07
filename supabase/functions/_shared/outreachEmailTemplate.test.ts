@@ -20,7 +20,7 @@ describe('outreach email template', () => {
       'Chris Example',
     )
 
-    expect(html).toContain('<img src="cid:arlotech-logo" width="26" height="26"')
+    expect(html).toContain('<img src="cid:arlotech-logo" width="36" height="24"')
     expect(html).toContain('Sent by Chris Example')
     expect(html).not.toContain('width="44" height="44"')
     expect(html).not.toContain('width="190"')

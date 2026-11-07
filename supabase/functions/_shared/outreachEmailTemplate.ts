@@ -43,7 +43,7 @@ export function outreachEmailHtml(
             <table role="presentation" cellpadding="0" cellspacing="0" border="0">
               <tr>
             ${includeInlineLogo
-              ? '<td valign="middle" style="padding-right:10px"><img src="cid:arlotech-logo" width="26" height="26" alt="" style="display:block;width:26px!important;height:26px!important;max-width:26px;max-height:26px;object-fit:contain;border:0;border-radius:6px"></td>'
+              ? '<td valign="middle" style="padding-right:10px"><img src="cid:arlotech-logo" width="36" height="24" alt="" style="display:block;width:36px!important;height:24px!important;max-width:36px;max-height:24px;object-fit:contain;border:0"></td>'
               : ''}
                 <td valign="middle">
                   <div style="color:#ffffff;font:700 17px/1.3 Arial,Helvetica,sans-serif;letter-spacing:1.4px">ARLOTECH</div>

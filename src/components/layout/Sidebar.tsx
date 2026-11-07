@@ -18,7 +18,11 @@ import {
 import { useAuth } from '@/hooks/useAuthState'
 import { useAccessibleDialog } from '@/hooks/useAccessibleDialog'
 import { useUnreadReplyCount } from '@/hooks/useUnreadReplyCount'
-import { ARLOTECH_LOGO_FILE, getBrandAssetUrl } from '@/lib/brandAssets'
+import {
+  ARLOTECH_BLACKSITE_LOGO_FILE,
+  ARLOTECH_LOGO_FILE,
+  getBrandAssetUrl,
+} from '@/lib/brandAssets'
 
 interface NavItem {
   label: string
@@ -85,7 +89,11 @@ export function Sidebar({
       >
         <div className="sidebar-brand-row flex items-center justify-between h-20 px-4 border-b border-slate-200">
           <div className="flex items-center gap-2">
-            <img src={getBrandAssetUrl(ARLOTECH_LOGO_FILE)} alt="Arlotech Digital Solutions" className="sidebar-brand-image" />
+            <img
+              src={getBrandAssetUrl(blacksite ? ARLOTECH_BLACKSITE_LOGO_FILE : ARLOTECH_LOGO_FILE)}
+              alt="Arlotech Digital Solutions"
+              className="sidebar-brand-image"
+            />
             <span className="sidebar-brand-copy text-sm font-bold text-slate-800">
               <>ARLOTECH<span>DIGITAL SOLUTIONS</span></>
             </span>

@@ -101,5 +101,5 @@ export function positiveWebsiteAcknowledgement(
 }
 
 export function feedbackRequest() {
-  return "We'd appreciate your feedback: are these areas you would be interested in improving, or is there something else you'd like your website to achieve for your business?"
+  return "We'd value your feedback: is this worth addressing, or is another website goal more important?"
 }

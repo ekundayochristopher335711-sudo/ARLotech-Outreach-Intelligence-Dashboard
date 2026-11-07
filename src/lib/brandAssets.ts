@@ -1,12 +1,13 @@
-export const ARLOTECH_LOGO_FILE = 'overall logo.png'
+export const ARLOTECH_LOGO_FILE = 'system logo.png'
+export const ARLOTECH_BLACKSITE_LOGO_FILE = 'blacksite logo.png'
 export const ARLOTECH_FAVICON_FILE = 'favicon-32x32.png'
 
 export function getBrandAssetUrl(fileName: string) {
   return `${import.meta.env.BASE_URL}${encodeURIComponent(fileName)}`
 }
 
-export async function loadArlotechLogoDataUrl() {
-  const response = await fetch(getBrandAssetUrl(ARLOTECH_LOGO_FILE))
+export async function loadArlotechLogoDataUrl(fileName = ARLOTECH_LOGO_FILE) {
+  const response = await fetch(getBrandAssetUrl(fileName))
   if (!response.ok) {
     throw new Error(`Could not load the Arlotech Digital Solutions logo (${response.status}).`)
   }

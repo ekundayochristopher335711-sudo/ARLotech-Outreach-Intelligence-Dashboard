@@ -2,7 +2,11 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ArrowUpRight, AudioLines, Check, Fingerprint, KeyRound, LockKeyhole, ShieldCheck, Terminal } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
-import { ARLOTECH_LOGO_FILE, getBrandAssetUrl } from '@/lib/brandAssets'
+import {
+  ARLOTECH_BLACKSITE_LOGO_FILE,
+  ARLOTECH_LOGO_FILE,
+  getBrandAssetUrl,
+} from '@/lib/brandAssets'
 import './Login.css'
 
 type LoginMode = 'standard' | 'blacksite'
@@ -82,7 +86,11 @@ export function LoginPage() {
       <div className="login-noise" aria-hidden="true" />
       <header className="login-topbar">
         <a className="login-brand" href="/login" aria-label="Arlotech login home">
-          <img src={getBrandAssetUrl(ARLOTECH_LOGO_FILE)} alt="Arlotech Digital Solutions" className="login-brand-wordmark" />
+          <img
+            src={getBrandAssetUrl(isBlacksite ? ARLOTECH_BLACKSITE_LOGO_FILE : ARLOTECH_LOGO_FILE)}
+            alt="Arlotech Digital Solutions"
+            className="login-brand-wordmark"
+          />
         </a>
         <div className="login-top-actions">
           <span className="login-secure-status"><span className="status-pulse" /> {isBlacksite ? 'COVERT NODE // ONLINE' : 'SECURE ACCESS'}</span>

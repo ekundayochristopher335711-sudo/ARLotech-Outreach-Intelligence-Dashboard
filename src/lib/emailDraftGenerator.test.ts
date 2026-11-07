@@ -50,16 +50,16 @@ describe('professional email draft generation', () => {
     })
 
     expect(result.body).toMatch(/some text may be difficult for visitors to read/i)
-    expect(result.body).toContain('Our website review highlighted a possible point of friction for visitors')
+    expect(result.body).toContain('One area we noticed was')
     expect(result.body).not.toMatch(/94\/100|92\/100|91\/100|2\.1:1|Lighthouse|PageSpeed|score/i)
     expect(result.body).toContain("It's good to see")
-    expect(result.body).toContain('not necessarily suggesting a complete redesign')
+    expect(result.body).toContain('A focused change may address this issue without a full redesign.')
     expect(result.body).toContain('Your website review is attached. The concise PDF outlines the audit findings and our recommendations.')
     expect(result.body).not.toContain("what's working well")
     const signatureStart = result.body.indexOf('\n\nKind regards,\n')
     const auditWordCount = result.body.slice(0, signatureStart).trim().split(/\s+/).length
-    expect(auditWordCount).toBeGreaterThanOrEqual(180)
-    expect(auditWordCount).toBeLessThanOrEqual(280)
+    expect(auditWordCount).toBeGreaterThanOrEqual(70)
+    expect(auditWordCount).toBeLessThanOrEqual(150)
     expect(validateProfessionalEmailDraft(
       result,
       prospect,
@@ -118,7 +118,7 @@ describe('professional email draft generation', () => {
 
     expect(result.body).toContain('main page content takes too long to appear')
     expect(result.body).toContain('A longer wait can frustrate potential customers')
-    expect(result.body).toContain('customers quickly find the right service and request a quote')
+    expect(result.body).toContain('homeowners looking for plumbing help understand whether your offering fits what they need')
     expect(result.body).not.toMatch(/4\.8 s|Lighthouse|PageSpeed|LCP|score|guarantee|increase revenue/i)
   })
 
@@ -215,7 +215,7 @@ describe('professional email draft generation', () => {
 
     expect(result.body).toContain('mobile navigation overlaps the page heading')
     expect(result.body).toContain('Visitors may have difficulty reading the page heading.')
-    expect(result.body).toContain('not necessarily suggesting a complete redesign')
+    expect(result.body).toContain('A focused change may address this issue without a full redesign.')
     expect(result.body).not.toContain('In the saved mobile screenshot')
     expect(result.observationsUsed).toHaveLength(1)
   })
@@ -225,7 +225,7 @@ describe('professional email draft generation', () => {
 
     expect(result.body).toContain('We have not reviewed the site in enough detail')
     expect(result.body).toContain('plumbing and heating businesses')
-    expect(result.body).toMatch(/not necessarily suggesting a complete redesign/i)
+    expect(result.body).toContain('share a couple of ideas based on your goals')
     expect(result.body).not.toMatch(/attached|PageSpeed|Lighthouse|score|broken|defect|4\.8 s/i)
     expect(result.includesReportReference).toBe(false)
     expect(result.observationsUsed).toEqual([])
@@ -255,7 +255,7 @@ describe('professional email draft generation', () => {
 
     expect(noWebsiteDraft.body).toContain('your product or service')
     expect(noWebsiteDraft.body).not.toMatch(/plumbing|heating|electrician|contractor/i)
-    expect(websiteDraft.body).toContain('your product or service')
+    expect(websiteDraft.body).toContain('its product or service')
     expect(websiteDraft.body).not.toMatch(/plumbing|heating|electrician|contractor/i)
   })
 
@@ -280,7 +280,7 @@ describe('professional email draft generation', () => {
       draft.subjectSuggestions[0],
     )
 
-    expect(draft.body).toContain('your product or service')
+    expect(draft.body).toContain('its product or service')
     expect(validation.errors).toEqual([])
   })
 
@@ -351,7 +351,7 @@ describe('professional email draft generation', () => {
     expect(result.body).not.toContain('an individual accessibility check failed')
     expect(result.body).not.toContain('your website failed accessibility')
     expect(result.body).not.toContain('overall accessibility score')
-    expect(result.body).toContain('not necessarily suggesting a complete redesign')
+    expect(result.body).toContain('A focused change may address this issue without a full redesign.')
   })
 
   it('builds a contextual follow-up without claiming a previous conversation happened', () => {
@@ -413,7 +413,8 @@ describe('specialized outreach message types', () => {
     const result = generateProfessionalEmailDraft({ prospect, strategy: 'cold_outreach' })
     expect(result.body).toContain('briefly introduce Arlotech Digital Solutions')
     expect(result.body).toContain('couple of ideas for your online presence')
-    expect(result.body).toContain('not necessarily suggesting a complete redesign')
+    expect(result.body).not.toContain('focused change may address this issue')
+    expect(result.body).toContain('share a couple of ideas based on your goals')
     expect(result.body).toMatch(/If this is not relevant, let us know and we will not follow up/i)
     expect(result.observationsUsed).toEqual([])
   })
