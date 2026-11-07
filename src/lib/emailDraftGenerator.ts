@@ -203,7 +203,7 @@ function subjectOptions(name: string, strategy: OutreachStrategy, topic?: string
           : strategy === 'no_website'
             ? `A website idea for ${business}`
             : strategy === 'cold_outreach'
-              ? `A quick introduction from Arlotech`
+              ? `A quick introduction for ${business}`
               : strategy === 'seo_performance'
                 ? `Search visibility and website performance for ${business}`
                 : `A website review for ${business}`
@@ -264,7 +264,7 @@ export function generateProfessionalEmailDraft(input: {
     const replyBody = strategy === 'interested_response'
       ? `Hi ${greetingName},\n\nThank you for getting back to us. We appreciate your interest in exploring improvements to ${name}'s online presence.\n\nThe best next step is to understand what you want the website to achieve, what is working well today, and what you would like to improve. From there, we can suggest a sensible scope rather than recommending work you may not need.${contextLine}\n\nWould you be available for a brief conversation this week?\n\nKind regards,\n${signoff(tone, signature).split('\n').slice(1).join('\n')}`
       : strategy === 'pricing_response'
-        ? `Hi ${greetingName},\n\nThanks for asking about pricing. The cost depends on the scope of work, the pages or features required, and whether this is a new website, a redesign, or improvements to an existing site.\n\nWe would rather confirm what you need first and give you a clear quote than suggest a figure that does not match the project.${contextLine}\n\nIf you share a little about what you have in mind, we can outline the most suitable option and its cost.\n\nKind regards,\n${signoff(tone, signature).split('\n').slice(1).join('\n')}`
+        ? `Hi ${greetingName},\n\nThanks for asking about pricing for ${name}. The cost depends on the scope of work, the pages or features required, and whether this is a new website, a redesign, or improvements to an existing site.\n\nWe would rather confirm what you need first and give you a clear quote than suggest a figure that does not match the project.${contextLine}\n\nIf you share a little about what you have in mind, we can outline the most suitable option and its cost.\n\nKind regards,\n${signoff(tone, signature).split('\n').slice(1).join('\n')}`
         : `Hi ${greetingName},\n\nThanks for considering Arlotech Digital Solutions. It would be useful to arrange a short call to understand your goals for ${name}'s website and agree on the most practical next steps.${contextLine}\n\nWould you be available for a 15-minute conversation? Feel free to suggest a day and time that works for you.\n\nKind regards,\n${signoff(tone, signature).split('\n').slice(1).join('\n')}`
     const replySubject = removeDraftHyphens(strategy === 'pricing_response' ? `Re: Website project pricing for ${name}` : strategy === 'meeting_request' ? `A quick call about ${name}'s website` : `Re: ${name} website enquiry`)
     return {
@@ -425,7 +425,7 @@ export function validateProfessionalEmailDraft(
   const warnings: string[] = []
   const body = draft.body.toLowerCase()
   const isContextualReply = draft.qualityChecks.some((check) =>
-    check.startsWith('Written as a response type selected by the operator.'),
+    check.startsWith('Written as a response type selected by the operator'),
   )
   const isFollowUp = draft.qualityChecks.some((check) =>
     check.startsWith('Follow-up context comes from a previously sent email.'),
@@ -463,6 +463,7 @@ export function validateProfessionalEmailDraft(
     }
     if (
       prospect.website &&
+      !isFollowUp &&
       draft.observationsUsed.length > 0 &&
       !/a focused change may address this issue without a full redesign/i.test(draft.body)
     ) {
@@ -485,9 +486,6 @@ export function validateProfessionalEmailDraft(
   if (draft.includesReportReference && !isFollowUp && !isContextualReply) {
     if (!/it.s good to see/i.test(body)) {
       errors.push('Open the audit-based email with a positive, evidence-based acknowledgement.')
-    }
-    if (!draft.observationsUsed.length) {
-      errors.push('Include a specific, verified website observation in the audit-based email.')
     }
   }
   if (draft.observationsUsed.some((observation) => !observation.trim())) {
@@ -552,10 +550,10 @@ export function generateFollowUpDraft(
   const tone: OutreachTone = stage === 'second' ? 'direct' : 'professional'
   const signatureDetails: OutreachSignature = { ...DEFAULT_OUTREACH_SIGNATURE, ...signature }
   const followUpText = stage === 'first'
-    ? `We wanted to follow up on our earlier note. If useful, we can talk through a few small, targeted website changes that may make it easier for visitors to understand your ${offering} and get in touch.`
+    ? `We wanted to follow up on our earlier note about ${name}. If useful, we can discuss a few practical ways to present your ${offering} and help interested people get in touch.`
     : stage === 'second'
-      ? `We are checking once more in case a few small, targeted website changes may help visitors understand your ${offering}. If you would like to explore them, simply reply and we can arrange a brief conversation.`
-      : 'We will leave it here for now. If small website improvements become a priority later, we would be happy to reconnect.'
+      ? `We are checking once more in case a few practical changes to ${name}'s online presence may help visitors understand your ${offering}. If you would like to explore them, simply reply and we can arrange a brief conversation.`
+      : `We will leave it here for now regarding ${name}. If improving how your business is presented online becomes a priority later, we would be happy to reconnect.`
   const reassurance = prospect.website
     ? 'We are not necessarily suggesting a complete redesign; focused changes may be enough.'
     : 'If website work is not a priority right now, that is completely fine.'

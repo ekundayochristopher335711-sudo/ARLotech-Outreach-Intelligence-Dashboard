@@ -89,7 +89,7 @@ describe('professional email draft generation', () => {
       }),
     })
 
-    expect(result.body).toContain("It's good to see that the review noted the business phone number is easy to find.")
+    expect(result.body).toContain("It's good to see that the review noted the business phone number is easy to find on AK Plumbing and Heating's website.")
     expect(result.body).toContain('Ekundayo Christopher')
     expect(result.body).toContain('Lead Web Developer')
     expect(result.body).toContain('arlotech.com.ng')
@@ -231,6 +231,84 @@ describe('professional email draft generation', () => {
     expect(result.observationsUsed).toEqual([])
   })
 
+  it.each([
+    'general_review',
+    'technical_improvement',
+    'website_redesign',
+    'business_growth',
+    'personal_consultancy',
+    'cold_outreach',
+    'no_website',
+    'seo_performance',
+    'interested_response',
+    'pricing_response',
+    'meeting_request',
+  ] as const)('includes the business name and validates the %s email type', (strategy) => {
+    const result = generateProfessionalEmailDraft({
+      prospect,
+      strategy,
+      analysis: analysis({
+        findings: [{
+          source: 'lighthouse',
+          classification: 'verified_issue',
+          title: 'Low contrast text',
+          evidence: 'Some text is difficult to read.',
+        }],
+      }),
+    })
+
+    expect(result.body).toContain('AK Plumbing and Heating')
+    expect(validateProfessionalEmailDraft(
+      result,
+      prospect,
+      false,
+      result.subjectSuggestions[0],
+    ).errors).toEqual([])
+  })
+
+  it('generates and validates an email when contact, website, category, location, and audit data are missing', () => {
+    const incompleteProspect = {
+      ...prospect,
+      business_name: '',
+      contact_name: '',
+      website: null,
+      business_category: null,
+      city: null,
+    }
+    const result = generateProfessionalEmailDraft({
+      prospect: incompleteProspect,
+      includeReport: true,
+    })
+
+    expect(result.body).toContain('Hi there,')
+    expect(result.body).toContain('your business')
+    expect(result.body).not.toMatch(/attached|plumbing|heating|4\.8 s|Lighthouse/i)
+    expect(result.includesReportReference).toBe(false)
+    expect(validateProfessionalEmailDraft(
+      result,
+      incompleteProspect,
+      false,
+      result.subjectSuggestions[0],
+    ).errors).toEqual([])
+  })
+
+  it('does not require a finding to generate an email from a completed review', () => {
+    const result = generateProfessionalEmailDraft({
+      prospect,
+      analysis: analysis({ findings: [] }),
+      includeReport: true,
+    })
+
+    expect(result.body).toContain('The review did not identify a clear issue worth calling out')
+    expect(result.body).toContain('Your website review is attached.')
+    expect(validateProfessionalEmailDraft(
+      result,
+      prospect,
+      true,
+      result.subjectSuggestions[0],
+    ).errors).toEqual([])
+  })
+
   it('uses only generic product or service wording when no business category is provided', () => {
     const uncategorizedProspect = {
       ...prospect,
@@ -363,9 +441,16 @@ describe('professional email draft generation', () => {
 
     expect(result.subjectSuggestions[0]).toContain('Re:')
     expect(result.body.toLowerCase()).toContain('our earlier note')
+    expect(result.body).toContain('AK Plumbing and Heating')
     expect(result.body).toMatch(/will not follow up/i)
     expect(result.body).toContain('?')
     expect(result.body).not.toMatch(/as discussed|following our conversation|you told me/i)
+    expect(validateProfessionalEmailDraft(
+      result,
+      prospect,
+      false,
+      result.subjectSuggestions[0],
+    ).errors).toEqual([])
   })
 
   it('mentions the attached website review in follow-ups when one will be included', () => {

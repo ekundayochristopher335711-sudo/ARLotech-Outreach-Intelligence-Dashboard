@@ -94,7 +94,7 @@ export function positiveWebsiteAcknowledgement(
     !containsEmailJargon(safeTitle) &&
     !containsExternalAuditReference(safeTitle)
   ) {
-    return `It's good to see that the review noted ${safeTitle.charAt(0).toLowerCase()}${safeTitle.slice(1)}.`
+    return `It's good to see that the review noted ${safeTitle.charAt(0).toLowerCase()}${safeTitle.slice(1)} on ${businessName}'s website.`
   }
   const offering = prospectOffering(category)
   return `It's good to see ${businessName} has an online presence for its ${offering}.`

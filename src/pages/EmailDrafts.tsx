@@ -71,9 +71,9 @@ const strategyDescriptions: Record<OutreachStrategy, string> = {
 }
 
 function readSignature(): OutreachSignature {
-  const saved = localStorage.getItem(SIGNATURE_STORAGE_KEY)
-  if (!saved) return { ...DEFAULT_OUTREACH_SIGNATURE }
   try {
+    const saved = localStorage.getItem(SIGNATURE_STORAGE_KEY)
+    if (!saved) return { ...DEFAULT_OUTREACH_SIGNATURE }
     const parsed = JSON.parse(saved) as Partial<OutreachSignature>
     return {
       ...DEFAULT_OUTREACH_SIGNATURE,
@@ -440,7 +440,7 @@ export function EmailDraftsPage() {
       prospect.do_not_contact &&
       prospect.email?.trim().toLowerCase() === manualRecipient.trim().toLowerCase(),
   )
-  const selectedGeneratorProspect = emailOutreachProspectRows.find((prospect) => prospect.id === generatorProspectId)
+  const selectedGeneratorProspect = outreachProspectRows.find((prospect) => prospect.id === generatorProspectId)
   const selectedGeneratorAnalysis = selectedGeneratorProspect
     ? analysisByProspect.get(selectedGeneratorProspect.id)
     : undefined
@@ -937,10 +937,7 @@ export function EmailDraftsPage() {
       toast.error('Select a prospect before generating an email.')
       return
     }
-    if (followUpStage !== 'none' && !originalFollowUpMessage) {
-      toast.error('Select an email that was previously sent to provide follow-up context.')
-      return
-    }
+    const missingFollowUpContext = followUpStage !== 'none' && !originalFollowUpMessage
     try {
       const result = followUpStage !== 'none' && originalFollowUpMessage
         ? generateFollowUpDraft(
@@ -960,11 +957,23 @@ export function EmailDraftsPage() {
             signature: effectiveSignature,
             senderContext,
           })
-      setGeneratedDraft(result)
+      setGeneratedDraft(missingFollowUpContext
+          ? {
+            ...result,
+            qualityChecks: [
+              ...result.qualityChecks,
+              'No previously sent email was available, so this was written as a new outreach email instead.',
+            ],
+          }
+          : result)
       setGeneratedSubject(result.subjectSuggestions[0] || '')
       setGeneratedBody(result.body)
       setGeneratedComplianceConfirmed(false)
       setGeneratedSendResult(null)
+      if (missingFollowUpContext) {
+        setFollowUpStage('none')
+        setFollowUpMessageId('')
+      }
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Could not generate an email.')
     }
@@ -1024,11 +1033,11 @@ export function EmailDraftsPage() {
         </Button>
       </div>
 
-      <Card className="hidden space-y-5 p-4 sm:p-6">
+      <Card className="space-y-5 p-4 sm:p-6">
         <div>
           <h2 className="text-lg font-semibold text-slate-800">Personalized email workspace</h2>
           <p className="mt-1 text-sm text-slate-500">
-            Build a client-ready draft from the prospect details and existing website review. The writing tools do not invent missing findings or promise business results.
+            Generate a reviewed email from available prospect details. Missing optional contact, category, website, or audit information will not prevent a generic draft.
           </p>
         </div>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -1046,10 +1055,17 @@ export function EmailDraftsPage() {
               className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
             >
               <option value="">Select a prospect</option>
-              {emailOutreachProspectRows.map((prospect) => (
-                <option key={prospect.id} value={prospect.id}>{prospect.business_name}</option>
+              {outreachProspectRows.map((prospect) => (
+                <option key={prospect.id} value={prospect.id}>
+                  {prospect.business_name.trim() || prospect.contact_name?.trim() || prospect.email?.trim() || 'Unnamed prospect'}
+                </option>
               ))}
             </select>
+            {outreachProspectsLoading && <span className="block text-xs text-slate-500">Loading prospects…</span>}
+            {outreachProspectsError && <span className="block text-xs text-red-700" role="alert">Could not load prospects: {outreachProspectsError.message}</span>}
+            {!outreachProspectsLoading && !outreachProspectsError && outreachProspectRows.length === 0 && (
+              <span className="block text-xs text-slate-500">Add a prospect to generate a personalized email.</span>
+            )}
           </label>
           <label className="block space-y-1">
             <span className="text-sm font-medium text-slate-700">Message type</span>
@@ -1158,6 +1174,9 @@ export function EmailDraftsPage() {
                 : 'Business category is optional. Generic product or service wording will be used.'}
             </p>
           )}
+          {selectedGeneratorProspect && !selectedGeneratorProspect.email?.trim() && (
+            <p className="text-xs text-amber-800">No recipient email is recorded. You can still generate and copy the message, but sending requires an email address.</p>
+          )}
         </div>
 
         <details className="rounded-lg border border-slate-200 p-3">
@@ -1194,7 +1213,7 @@ export function EmailDraftsPage() {
         )}
 
         <div className="flex justify-end">
-          <Button onClick={generateDraft} disabled={!generatorProspectId || (followUpStage !== 'none' && !followUpMessageId)}>
+          <Button onClick={generateDraft} disabled={!selectedGeneratorProspect || outreachProspectsLoading}>
             <Sparkles className="h-4 w-4" /> {generatedDraft ? 'Regenerate email' : 'Generate email'}
           </Button>
         </div>
