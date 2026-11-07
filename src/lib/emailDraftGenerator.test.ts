@@ -238,7 +238,6 @@ describe('professional email draft generation', () => {
     'business_growth',
     'personal_consultancy',
     'cold_outreach',
-    'no_website',
     'seo_performance',
     'interested_response',
     'pricing_response',
@@ -266,12 +265,12 @@ describe('professional email draft generation', () => {
     ).errors).toEqual([])
   })
 
-  it('generates and validates an email when contact, website, category, location, and audit data are missing', () => {
+  it('generates and validates an email when contact, category, location, and audit data are missing', () => {
     const incompleteProspect = {
       ...prospect,
       business_name: '',
       contact_name: '',
-      website: null,
+      website: 'https://example.com',
       business_category: null,
       city: null,
     }
@@ -309,16 +308,12 @@ describe('professional email draft generation', () => {
     ).errors).toEqual([])
   })
 
-  it('uses only generic product or service wording when no business category is provided', () => {
+  it('uses generic wording without a category and requires a website link', () => {
     const uncategorizedProspect = {
       ...prospect,
       business_name: 'Acme Group',
       business_category: null,
     }
-    const noWebsiteDraft = generateProfessionalEmailDraft({
-      prospect: { ...uncategorizedProspect, website: null },
-      strategy: 'no_website',
-    })
     const websiteDraft = generateProfessionalEmailDraft({
       prospect: uncategorizedProspect,
       analysis: analysis({
@@ -331,8 +326,9 @@ describe('professional email draft generation', () => {
       }),
     })
 
-    expect(noWebsiteDraft.body).toContain('your product or service')
-    expect(noWebsiteDraft.body).not.toMatch(/plumbing|heating|electrician|contractor/i)
+    expect(() => generateProfessionalEmailDraft({
+      prospect: { ...uncategorizedProspect, website: null },
+    })).toThrow('Add a website link')
     expect(websiteDraft.body).toContain('its product or service')
     expect(websiteDraft.body).not.toMatch(/plumbing|heating|electrician|contractor/i)
   })
@@ -442,7 +438,7 @@ describe('professional email draft generation', () => {
     expect(result.subjectSuggestions[0]).toContain('Re:')
     expect(result.body.toLowerCase()).toContain('our earlier note')
     expect(result.body).toContain('AK Plumbing and Heating')
-    expect(result.body).toMatch(/will not follow up/i)
+    expect(result.body).not.toMatch(/will not follow up|not relevant/i)
     expect(result.body).toContain('?')
     expect(result.body).not.toMatch(/as discussed|following our conversation|you told me/i)
     expect(validateProfessionalEmailDraft(
@@ -483,15 +479,15 @@ describe('professional email draft generation', () => {
 
 
 describe('specialized outreach message types', () => {
-  it('creates a cautious website offer for a prospect with no recorded website', () => {
-    const result = generateProfessionalEmailDraft({
+  it('blocks draft generation when the prospect has no website link', () => {
+    expect(() => generateProfessionalEmailDraft({
       prospect: { ...prospect, website: '' },
-      strategy: 'no_website',
-    })
-    expect(result.body).toContain("couldn't find a website associated with your business")
-    expect(result.body).toContain('presents your plumbing and heating services clearly')
-    expect(result.body).not.toMatch(/PageSpeed|Lighthouse|broken|defect/i)
-    expect(result.observationsUsed).toEqual([])
+    })).toThrow('Add a website link')
+    expect(() => generateFollowUpDraft(
+      { subject: 'A website note', body: 'Earlier message' },
+      { ...prospect, website: null },
+      'first',
+    )).toThrow('Add a website link')
   })
 
   it('creates a short first-contact introduction without inventing audit findings', () => {
@@ -500,7 +496,7 @@ describe('specialized outreach message types', () => {
     expect(result.body).toContain('couple of ideas for your online presence')
     expect(result.body).not.toContain('focused change may address this issue')
     expect(result.body).toContain('share a couple of ideas based on your goals')
-    expect(result.body).toMatch(/If this is not relevant, let us know and we will not follow up/i)
+    expect(result.body).not.toMatch(/If this is not relevant|will not follow up/i)
     expect(result.observationsUsed).toEqual([])
   })
 
@@ -508,14 +504,12 @@ describe('specialized outreach message types', () => {
     const draft = generateProfessionalEmailDraft({ prospect })
     const invalid = {
       ...draft,
-      body: draft.body
-        .replace('If this is not relevant, let us know and we will not follow up.', '')
-        .replace('We came across', 'Lighthouse measured the page at 4.8 s. We came across'),
+      body: draft.body.replace('We came across', 'Lighthouse measured the page at 4.8 s. We came across'),
     }
 
     const result = validateProfessionalEmailDraft(invalid, prospect, false, draft.subjectSuggestions[0])
 
-    expect(result.errors).toContain('Add a clear opt-out so the recipient can stop further contact.')
+    expect(result.errors).not.toContain('Add a clear opt-out so the recipient can stop further contact.')
     expect(result.errors).toContain('Remove technical terms or measurements from the customer-facing email.')
   })
 

@@ -70,6 +70,9 @@ export function WebsiteIntelligencePage() {
         : result.prospectCreated
           ? 'Analysis complete and prospect added'
           : 'Analysis complete and linked to existing prospect')
+      if (result.contactUpdateError) {
+        toast.warning(`Website analysis completed, but prospect contact details could not be updated: ${result.contactUpdateError}`)
+      }
     },
     onError: (err: any) => {
       toast.error(err?.message || 'Analysis failed')

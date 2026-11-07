@@ -128,8 +128,11 @@ export function ProspectDetails() {
       await ensureWebsiteProspect(prospect.website, prospect.id)
       return analyzeWebsite(prospect.website, prospect.id, true)
     },
-    onSuccess: () => {
+    onSuccess: (result: Awaited<ReturnType<typeof analyzeWebsite>>) => {
       toast.success('Website analysis refreshed')
+      if (result.contactUpdateError) {
+        toast.warning(`Website analysis completed, but prospect contact details could not be updated: ${result.contactUpdateError}`)
+      }
       void queryClient.invalidateQueries({ queryKey: ['/website-analyses'] })
       void queryClient.invalidateQueries({ queryKey: ['/prospect', id] })
       void queryClient.invalidateQueries({ queryKey: ['/prospects'] })

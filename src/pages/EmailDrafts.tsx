@@ -49,7 +49,6 @@ const strategyLabels: Record<OutreachStrategy, string> = {
   business_growth: 'Business growth',
   personal_consultancy: 'Personal consultancy',
   cold_outreach: 'Cold introduction',
-  no_website: 'Business without a website',
   seo_performance: 'SEO & performance improvement',
   interested_response: 'Reply to an interested prospect',
   pricing_response: 'Respond to a pricing question',
@@ -63,7 +62,6 @@ const strategyDescriptions: Record<OutreachStrategy, string> = {
   business_growth: 'Connect website usability to the customer journey without promising sales or lead increases.',
   personal_consultancy: 'A softer, discovery-led message focused on understanding the business first.',
   cold_outreach: 'A brief introduction for a business you have not contacted before.',
-  no_website: 'For businesses with no website recorded. The wording stays cautious because a listing may be incomplete.',
   seo_performance: 'Discuss measured search and performance results, or offer a review when no audit exists.',
   interested_response: 'Reply after a prospect has expressed interest. Confirm the actual conversation before sending.',
   pricing_response: 'Answer a pricing question without inventing a price. Add your confirmed offer details below.',
@@ -412,7 +410,7 @@ export function EmailDraftsPage() {
   }
 
   const outreachProspectRows = outreachProspects as OutreachProspect[]
-  const emailOutreachProspectRows = outreachProspectRows.filter((prospect) => !!prospect.email?.trim())
+  const emailOutreachProspectRows = outreachProspectRows.filter((prospect) => !!prospect.website?.trim())
   const outreachAnalysisRows = outreachAnalyses as WebsiteAnalysis[]
   const suppressedEmailRows = suppressedRows as Array<{ normalized_email: string }>
   const sentEmailRows = previouslySentRows as SentOutreachContext[]
@@ -472,6 +470,7 @@ export function EmailDraftsPage() {
   })
 
   const getOutreachBlockReason = (prospect: OutreachProspect) => {
+    if (!prospect.website?.trim()) return 'No website link'
     if (!prospect.email?.trim()) return 'No email address'
     if (prospect.do_not_contact) return 'Do not contact'
     if (suppressedEmails.has(prospect.email.trim().toLowerCase())) return 'On suppression list'
@@ -490,6 +489,8 @@ export function EmailDraftsPage() {
     }
     return null
   }
+  const getDraftBlockReason = (prospect: OutreachProspect) =>
+    prospect.website?.trim() ? null : 'No website link'
 
   const hasPreviousSend = (prospect: OutreachProspect) =>
     alreadyEmailedProspects.has(prospect.id) ||
@@ -507,13 +508,13 @@ export function EmailDraftsPage() {
     !suppressionLoading &&
     !sentHistoryLoading
     ? requestedProspect
-      ? getOutreachBlockReason(requestedProspect)
-      : 'Prospect is not available or has no email address'
+      ? getDraftBlockReason(requestedProspect)
+    : 'Prospect is not available or has no website link'
     : null
   const outreachProspectById = new Map(emailOutreachProspectRows.map((prospect) => [prospect.id, prospect]))
   const validSelectedOutreachIds = selectedOutreachIds.filter((id) => {
     const prospect = outreachProspectById.get(id)
-    return !!prospect && !getOutreachBlockReason(prospect)
+    return !!prospect && !getDraftBlockReason(prospect)
   })
 
   const clearProspectPrefill = () => {
@@ -536,14 +537,15 @@ export function EmailDraftsPage() {
       toast.error(`Send up to ${MAX_OUTREACH_BATCH_SIZE} prospects per batch.`)
       return
     }
-    const blockedProspects = selectedProspects.filter(getOutreachBlockReason)
+    const blockedProspects = selectedProspects.filter(getDraftBlockReason)
     if (blockedProspects.length > 0) {
       toast.error('Remove ineligible prospects before preparing the batch.')
       return
     }
     try {
       const previews = selectedProspects.map((prospect) => {
-        const analysis = analysisByProspect.get(prospect.id)
+        const savedAnalysis = analysisByProspect.get(prospect.id)
+        const analysis = hasMatchingWebsiteAnalysis(prospect, savedAnalysis) ? savedAnalysis : undefined
         const preview = createOutreachPreview(prospect, analysis)
         let generatedDraft: GeneratedEmailDraft
         if (followUpStage !== 'none') {
@@ -612,6 +614,8 @@ export function EmailDraftsPage() {
       const emailPayload = await Promise.all(pendingPreviews.map(async (preview) => {
         const prospect = outreachProspectRows.find((item: OutreachProspect) => item.id === preview.prospect_id)
         if (!prospect) throw new Error('A selected prospect is no longer available.')
+        const blockReason = getOutreachBlockReason(prospect)
+        if (blockReason) throw new Error(`${prospect.business_name}: ${blockReason}.`)
         const analysis = analysisByProspect.get(prospect.id)
         if (!!prospect.website !== preview.has_website_report) {
           throw new Error(`${prospect.business_name}'s report attachment no longer matches the prospect website.`)
@@ -1037,7 +1041,7 @@ export function EmailDraftsPage() {
         <div>
           <h2 className="text-lg font-semibold text-slate-800">Personalized email workspace</h2>
           <p className="mt-1 text-sm text-slate-500">
-            Generate a reviewed email from available prospect details. Missing optional contact, category, website, or audit information will not prevent a generic draft.
+            Generate a reviewed email from available prospect details. A website link is required; contact, category, email, and audit details are optional for drafting.
           </p>
         </div>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -1174,6 +1178,9 @@ export function EmailDraftsPage() {
                 : 'Business category is optional. Generic product or service wording will be used.'}
             </p>
           )}
+          {selectedGeneratorProspect && !selectedGeneratorProspect.website?.trim() && (
+            <p className="text-xs text-amber-800">Add a website link to generate an email draft.</p>
+          )}
           {selectedGeneratorProspect && !selectedGeneratorProspect.email?.trim() && (
             <p className="text-xs text-amber-800">No recipient email is recorded. You can still generate and copy the message, but sending requires an email address.</p>
           )}
@@ -1213,7 +1220,7 @@ export function EmailDraftsPage() {
         )}
 
         <div className="flex justify-end">
-          <Button onClick={generateDraft} disabled={!selectedGeneratorProspect || outreachProspectsLoading}>
+          <Button onClick={generateDraft} disabled={!selectedGeneratorProspect || !selectedGeneratorProspect.website?.trim() || outreachProspectsLoading}>
             <Sparkles className="h-4 w-4" /> {generatedDraft ? 'Regenerate email' : 'Generate email'}
           </Button>
         </div>
@@ -1477,7 +1484,7 @@ export function EmailDraftsPage() {
           />
         </label>
         <p className="text-xs text-slate-500">
-          The sender adds the configured postal address and an opt-out instruction to the end of the email.
+          Sent outreach includes your configured postal address and a working unsubscribe link.
         </p>
         <label className="flex items-start gap-2 text-sm text-slate-600">
           <input
@@ -1541,8 +1548,8 @@ export function EmailDraftsPage() {
         <div>
           <h2 className="text-lg font-semibold text-slate-800">{localStorage.getItem('arlotech-login-mode') === 'blacksite' ? 'BATCH TRANSMISSION ASSEMBLY' : 'Personalized outreach batch'}</h2>
           <p className="mt-1 text-sm text-slate-500">
-            Choose the writing style, select up to {MAX_OUTREACH_BATCH_SIZE} eligible prospects, then review each personalized draft before sending. Messages are saved to Drafts first. Sends are processed in safe batches of {MAX_SEND_REQUEST_SIZE}, up to the account limit of 50 per rolling 24 hours.
-            Website prospects must have a completed audit; its report is attached. Prospects without a website get a separate introduction.
+            Choose the writing style, select prospects with website links, then review each personalized draft. These previews are not saved to Drafts. Sending is processed in safe batches of {MAX_SEND_REQUEST_SIZE}, up to the account limit of 50 per rolling 24 hours.
+            A website link is required to generate a draft. Contact and audit data are optional for drafting, but sends still require an eligible recipient and a matching audit with an evidence-backed finding.
           </p>
         </div>
 
@@ -1657,20 +1664,21 @@ export function EmailDraftsPage() {
         ) : (
           <div className="max-h-80 space-y-2 overflow-y-auto rounded-lg border border-slate-200 p-2">
             {emailOutreachProspectRows.map((prospect: OutreachProspect) => {
-              const blockReason = getOutreachBlockReason(prospect)
+              const draftBlockReason = getDraftBlockReason(prospect)
+              const sendBlockReason = getOutreachBlockReason(prospect)
               const selected = validSelectedOutreachIds.includes(prospect.id)
               return (
                 <label
                   key={prospect.id}
                   className={`flex min-w-0 items-start gap-3 rounded-lg p-3 ${
-                    blockReason ? 'bg-slate-50 text-slate-400' : 'cursor-pointer hover:bg-slate-50'
+                    draftBlockReason ? 'bg-slate-50 text-slate-400' : 'cursor-pointer hover:bg-slate-50'
                   }`}
                 >
                   <input
                     type="checkbox"
                     className="mt-1 h-4 w-4 shrink-0 accent-arlotech"
                     checked={selected}
-                    disabled={!!blockReason || !!suppressionError || !!sentHistoryError}
+                    disabled={!!draftBlockReason}
                     onChange={() => {
                       clearProspectPrefill()
                       setOutreachPreviews([])
@@ -1678,7 +1686,7 @@ export function EmailDraftsPage() {
                       setSelectedOutreachIds((current) => {
                         const eligibleCurrent = current.filter((id) => {
                           const currentProspect = outreachProspectById.get(id)
-                          return !!currentProspect && !getOutreachBlockReason(currentProspect)
+                          return !!currentProspect && !getDraftBlockReason(currentProspect)
                         })
                         if (eligibleCurrent.includes(prospect.id)) return eligibleCurrent.filter((id) => id !== prospect.id)
                         if (eligibleCurrent.length >= MAX_OUTREACH_BATCH_SIZE) {
@@ -1701,13 +1709,13 @@ export function EmailDraftsPage() {
                     </span>
                     <span className="block break-all text-xs text-slate-500">{prospect.email || 'No email address'}</span>
                     <span className="mt-1 block text-xs text-slate-500">
-                      {blockReason
-                        ? blockReason
+                      {draftBlockReason
+                        ? draftBlockReason
+                        : sendBlockReason
+                          ? `Draft can be created, but sending is blocked: ${sendBlockReason}`
                         : hasPreviousSend(prospect)
                           ? 'Review before sending again'
-                        : prospect.website
-                          ? 'Website audit attached'
-                          : 'No-website introduction'}
+                          : 'Website link recorded'}
                     </span>
                   </span>
                 </label>
@@ -1719,7 +1727,7 @@ export function EmailDraftsPage() {
               </p>
             )}
             {emailOutreachProspectRows.length === 0 && (
-              <p className="p-4 text-center text-sm text-slate-500">Add prospects with email addresses to prepare an outreach batch.</p>
+              <p className="p-4 text-center text-sm text-slate-500">Add prospects with website links to prepare email drafts.</p>
             )}
           </div>
         )}
@@ -1732,11 +1740,7 @@ export function EmailDraftsPage() {
             disabled={
               validSelectedOutreachIds.length === 0 ||
               outreachProspectsLoading ||
-              outreachAnalysesLoading ||
-              !!outreachProspectsError ||
-              !!outreachAnalysesError ||
-              !!suppressionError ||
-              !!sentHistoryError
+              !!outreachProspectsError
             }
           >
             <Sparkles className="h-4 w-4" /> Generate personalized emails

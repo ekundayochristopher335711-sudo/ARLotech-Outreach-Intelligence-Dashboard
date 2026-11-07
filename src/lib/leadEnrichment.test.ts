@@ -1,8 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { analyzeWebsiteMock, invokeMock } = vi.hoisted(() => ({
+const { analyzeWebsiteMock, invokeMock, fromMock, updateMock, eqMock } = vi.hoisted(() => ({
   analyzeWebsiteMock: vi.fn(),
   invokeMock: vi.fn(),
+  fromMock: vi.fn(),
+  updateMock: vi.fn(),
+  eqMock: vi.fn(),
 }))
 
 vi.mock('@/lib/websiteAnalysis', () => ({
@@ -11,16 +14,19 @@ vi.mock('@/lib/websiteAnalysis', () => ({
 }))
 
 vi.mock('@/lib/supabase', () => ({
-  supabase: { functions: { invoke: invokeMock } },
-  getCurrentUserId: vi.fn(),
+  supabase: { functions: { invoke: invokeMock }, from: fromMock },
+  getCurrentUserId: vi.fn().mockResolvedValue('user-1'),
 }))
 
-import { enrichAndAnalyzeProspect } from './leadEnrichment'
+import { enrichAndAnalyzeProspect, enrichProspectContacts } from './leadEnrichment'
 import { type Prospect } from '@/types'
 
 describe('enrichAndAnalyzeProspect', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    fromMock.mockReturnValue({ update: updateMock })
+    updateMock.mockReturnValue({ eq: eqMock })
+    eqMock.mockReturnValue({ eq: eqMock })
     analyzeWebsiteMock.mockResolvedValue({
       overallScore: 82,
       record: { findings: [], positive_observations: [] },
@@ -28,6 +34,37 @@ describe('enrichAndAnalyzeProspect', () => {
       contentExtractionError: 'site request failed',
     })
     invokeMock.mockResolvedValue({ data: {} })
+  })
+
+  it('overwrites saved email and phone with contact details found during re-analysis', async () => {
+    const prospect: Prospect = {
+      id: 'prospect-1',
+      user_id: 'user-1',
+      business_name: 'Example Business',
+      business_name_verified: false,
+      contact_name: '',
+      email: 'old@example.com',
+      website: 'https://example.com',
+      normalized_domain: 'example.com',
+      business_category: null,
+      city: null,
+      country: null,
+      phone: '+1 555 0100',
+      linkedin_url: null,
+      notes: null,
+      source: 'manual',
+      status: 'New',
+      do_not_contact: false,
+      last_contacted_at: null,
+      created_at: '',
+      updated_at: '',
+    }
+
+    await expect(enrichProspectContacts(prospect, {
+      contacts: { emails: ['new@example.com'], phones: ['+1 555 0199'] },
+    })).resolves.toEqual({ email: 'new@example.com', phone: '+1 555 0199' })
+    expect(fromMock).toHaveBeenCalledWith('prospects')
+    expect(updateMock).toHaveBeenCalledWith({ email: 'new@example.com', phone: '+1 555 0199' })
   })
 
   it('completes analysis when content extraction fails without repeating the failed fetch', async () => {
@@ -60,7 +97,7 @@ describe('enrichAndAnalyzeProspect', () => {
     expect(analyzeWebsiteMock).toHaveBeenCalledWith(prospect.website, prospect.id, true)
     expect(result.analysis_score).toBe(82)
     expect(result.analysis_completed).toBe(true)
-    expect(result.error).toContain('Contact lookup failed: site request failed')
+    expect(result.error).toContain('Website content extraction failed: site request failed')
   })
 
   it('does not create an outreach draft when re-analyzing a prospect', async () => {

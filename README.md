@@ -55,7 +55,7 @@ The dashboard reads Supabase metrics and activity. The prospect list supports se
 
 Campaigns can be created, filtered, updated, and deleted. Email drafts can be created, edited, associated with prospects or campaigns, and deleted. The Email Drafts page has two sending workflows: manually compose a one-off email, or generate personalized drafts for one or more selected prospects, review/edit them, then send. Generated messages are saved as drafts before sending. All sends use the authenticated Resend function and are recorded in email history. Replies and analytics use the email activity records stored in Supabase. Follow-up reminders can be scheduled and their statuses managed, but reminders do not trigger automatic email. Account profile details can be updated in Settings.
 
-Outreach batches are sent individually through the `send-outreach` Supabase Edge Function and Resend. The function checks ownership, do-not-contact status, suppressions, and completed website audits; it accepts up to 10 emails per request and sends to 50 recipients per rolling 24 hours. The dashboard can select up to 50 prospects and processes sends in sequential requests of at most 10, retaining sent results so a failed remainder can be retried without resending successful recipients. Previously contacted prospects are labeled and require confirmation before resending. Website reports are attached for audited prospects, while prospects without a website receive a separate introduction. Review and confirm every message before sending. Email sending does not guarantee inbox placement or replace applicable marketing/privacy compliance.
+Outreach batches are sent individually through the `send-outreach` Supabase Edge Function and Resend. The function checks ownership, do-not-contact status, suppressions, and completed website audits; it accepts up to 10 emails per request and sends to 50 recipients per rolling 24 hours. The dashboard can select up to 50 prospects and processes sends in sequential requests of at most 10, retaining sent results so a failed remainder can be retried without resending successful recipients. Previously contacted prospects are labeled and require confirmation before resending. Draft generation requires a website link but does not require an email address, category, or completed audit; sending still requires a valid recipient and a matching audit with an evidence-backed finding. Review and confirm every message before sending. Email sending does not guarantee inbox placement or replace applicable marketing/privacy compliance.
 
 AI website analysis and outreach generation require their respective server-side secrets. Replies sent to your configured Resend receiving domain are recorded by the `resend-inbound` Edge Function. Automatic follow-up sending is not implemented.
 
@@ -69,6 +69,8 @@ The Website Intelligence page orchestrates three Supabase Edge Functions:
 - `gemini-analysis` — sends the extracted content + PageSpeed data to the Gemini API and returns an AI summary, score explanation, recommendations and observations.
 
 The combined report is stored in the `website_analyses` Supabase table.
+
+After a successful analysis linked to a prospect, valid website-extracted email and phone values replace saved values. If the website yields no email or phone, the saved value is retained. The current extractor does not infer a person's name.
 
 Customer-facing PDFs use the official Arlotech Digital Solutions logo without an added frame. Website audit reports adapt to the confirmed findings, use one to three readable pages, and include a clear health overview, customer-focused explanations of the priority issues, and a low-pressure contact invitation. They avoid repeating findings, raw file paths, developer-only wording, do-it-yourself instructions, and estimated savings that could be mistaken for guaranteed results. Verified prospect names are used only when explicitly confirmed.
 
@@ -111,10 +113,17 @@ The Gemini key is also used by `gemini-analysis`; set it once for the linked pro
 
 Verify a sender domain in Resend, then configure these secrets for the linked Supabase project. Use a valid sender address from the verified domain, a reply address configured for Resend Receiving, and your business's postal address. Never put the Resend API key in `.env`, a `VITE_` variable, source control, or browser code.
 
+Generate a separate signing secret with at least 32 random bytes. Keep the same value configured while links from previously sent emails may still be used:
+
 ```sh
+node -e "console.log(require('node:crypto').randomBytes(32).toString('base64url'))"
+npx supabase secrets set OUTREACH_UNSUBSCRIBE_SECRET="paste-the-generated-value-here"
 npx supabase secrets set RESEND_API_KEY=re_your_key RESEND_FROM_EMAIL="ArloTech <outreach@yourdomain.com>" OUTREACH_REPLY_TO_EMAIL="replies@your-inbound-domain.com" OUTREACH_POSTAL_ADDRESS="Your business postal address"
+npx supabase functions deploy unsubscribe
 npx supabase functions deploy send-outreach
 ```
+
+The unsubscribe endpoint verifies signed, recipient-specific links and records the recipient in the sending account's suppression list. Opening the link shows a confirmation page; it does not unsubscribe until the recipient confirms. Email clients that support one-click unsubscribe can submit the signed link directly. The Edge Function uses Supabase's server-side `SUPABASE_SERVICE_ROLE_KEY`; never expose that key to the browser. Do not rotate `OUTREACH_UNSUBSCRIBE_SECRET` casually, because doing so invalidates links already sent.
 
 `OUTREACH_REPLY_TO_EMAIL` is added to new messages as their reply address. If it is not set, replies go to the email address in `RESEND_FROM_EMAIL`.
 
@@ -174,7 +183,7 @@ npm run build
 
 In the signed-in dashboard, open **Settings** and enable browser notifications. The browser must support notifications and the site must be served over HTTPS. The Replies page labels opens as possible, not confirmed. Notifications also appear in the dashboard while it is open. If push keys are not configured, the dashboard will explain that notifications cannot be enabled.
 
-In **Email Drafts**, generate a draft for a prospect and send it after review and lawful-basis confirmation, write a one-off message to any recipient address, or select up to 10 eligible prospects, preview and edit each individual email, confirm you have a lawful basis to contact the recipients, then send. Website-specific messages include a matching review PDF and tell the recipient it is attached for more detail. Website prospects without a confirmed, evidence-backed customer issue are withheld from automated outreach in both the page and the sending function; having an audit alone is not enough. Prospects without a website can receive a separate introduction. Previously contacted recipients are clearly labeled and require an explicit confirmation before resending. Suppressed addresses and prospects marked Do Not Contact remain blocked. The configured postal address and an opt-out instruction are appended automatically. The server caps sending at 50 messages per rolling 24 hours.
+In **Email Drafts**, generate a draft for a prospect with a website link and send it after review and lawful-basis confirmation, write a one-off message to any recipient address, or select prospects with websites to prepare temporary previews. Missing email, category, contact name, or audit data does not prevent drafting; sending still requires a valid recipient, matching completed audit, evidence-backed customer issue, and all other eligibility checks. Website-specific messages with a usable audit include a matching review PDF and say it is attached. Previously contacted recipients are clearly labeled and require an explicit confirmation before resending. Suppressed addresses and prospects marked Do Not Contact remain blocked. Sent outreach includes the configured postal address and a working unsubscribe link, and no unsubscribe boilerplate is added to the draft body. The server caps sending at 50 messages per rolling 24 hours.
 
 
 ```sh

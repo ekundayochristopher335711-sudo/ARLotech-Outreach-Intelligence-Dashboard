@@ -35,7 +35,7 @@ export async function recordFailedWebsiteAnalysis(prospect: Prospect, errorMessa
 
 export async function enrichProspectContacts(
   prospect: Prospect,
-  extractedContent?: ExtractedContent,
+  extractedContent?: Pick<ExtractedContent, 'contacts'>,
 ): Promise<{ email: string | null; phone: string | null }> {
   let email = prospect.email
   let phone = prospect.phone
@@ -44,8 +44,8 @@ export async function enrichProspectContacts(
   const contacts = content.contacts
   const emails = contacts?.emails ?? []
   const phones = contacts?.phones ?? []
-  if (!email && emails.length) email = emails[0]
-  if (!phone && phones.length) phone = phones[0]
+  if (emails.length) email = emails[0]
+  if (phones.length) phone = phones[0]
   if (email !== prospect.email || phone !== prospect.phone) {
     const userId = await getCurrentUserId()
     const { error } = await supabase

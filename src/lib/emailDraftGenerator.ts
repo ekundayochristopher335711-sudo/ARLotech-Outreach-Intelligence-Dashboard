@@ -22,7 +22,6 @@ export const OUTREACH_STRATEGIES = [
   'business_growth',
   'personal_consultancy',
   'cold_outreach',
-  'no_website',
   'seo_performance',
   'interested_response',
   'pricing_response',
@@ -200,9 +199,7 @@ function subjectOptions(name: string, strategy: OutreachStrategy, topic?: string
         ? 'A website improvement to consider'
         : strategy === 'personal_consultancy'
           ? 'A quick note about your website'
-          : strategy === 'no_website'
-            ? `A website idea for ${business}`
-            : strategy === 'cold_outreach'
+          : strategy === 'cold_outreach'
               ? `A quick introduction for ${business}`
               : strategy === 'seo_performance'
                 ? `Search visibility and website performance for ${business}`
@@ -237,6 +234,9 @@ export function generateProfessionalEmailDraft(input: {
     includeReport = false,
     followUpStage = 'none',
   } = input
+  if (!prospect.website?.trim()) {
+    throw new Error('Add a website link to this prospect before generating an email draft.')
+  }
   const name = prospect.business_name.trim() || 'your business'
   const greetingName = firstName(prospect.contact_name)
   const signature: OutreachSignature = {
@@ -284,8 +284,6 @@ export function generateProfessionalEmailDraft(input: {
         ? `We wanted to briefly follow up about ${topic.toLowerCase()} in case it is useful to your team.`
         : `We will leave it here for now regarding ${topic.toLowerCase()}.`
     lines.push(stageOpening)
-  } else if (strategy === 'no_website') {
-    lines.push(`We came across ${name}${industry ? ` while looking at ${industry.toLowerCase()} businesses` : ''}. We couldn't find a website associated with your business in the information available to us, so we wanted to reach out in case building one to explain your ${offering} is something you have been considering.`)
   } else if (strategy === 'cold_outreach') {
     lines.push(`We came across ${name}${industry ? ` while researching ${industry.toLowerCase()} businesses` : ''} and wanted to briefly introduce Arlotech Digital Solutions. We build and improve websites to help businesses present their ${offering} clearly online.`)
   } else if (prospect.website && analysis) {
@@ -294,7 +292,7 @@ export function generateProfessionalEmailDraft(input: {
     lines.push(`We came across ${name}${industry ? ` while looking at ${industry.toLowerCase()} businesses` : ''} and wanted to introduce Arlotech Digital Solutions.`)
   }
 
-  const strategyObservation = ['no_website', 'cold_outreach'].includes(strategy)
+  const strategyObservation = strategy === 'cold_outreach'
     ? undefined
     : observations.find((item) =>
         strategy === 'technical_improvement' || strategy === 'seo_performance'
@@ -312,15 +310,13 @@ export function generateProfessionalEmailDraft(input: {
     if (industry) lines.push(industryImpactLine(industry, selectedObservations[0].title))
     if (selectedObservations.length > 1) lines.push(selectedObservations[1].why)
     lines.push('')
-  } else if (analysis && !['no_website', 'cold_outreach'].includes(strategy)) {
+  } else if (analysis && strategy !== 'cold_outreach') {
     lines.push('The review did not identify a clear issue worth calling out, so we do not want to invent one. If useful, we can discuss your website goals and see whether any small adjustments make sense.', '')
-  } else if ((!analysis || !observations.length) && !['no_website', 'cold_outreach'].includes(strategy)) {
+  } else if ((!analysis || !observations.length) && strategy !== 'cold_outreach') {
     lines.push('We have not reviewed the site in enough detail to comment on a specific issue, so we do not want to guess.', '')
   }
 
-  const valueLine = strategy === 'no_website'
-    ? `At Arlotech Digital Solutions, we design, develop and optimise business websites. We can help plan a site that presents your ${offering} clearly and gives interested people a straightforward way to get in touch.`
-    : prospect.website && selectedObservations.length
+  const valueLine = prospect.website && selectedObservations.length
       ? 'Arlotech Digital Solutions designs and improves business websites. A focused change may address this issue without a full redesign.'
       : prospect.website
         ? 'Arlotech Digital Solutions designs and improves business websites. We would be glad to share a couple of ideas based on your goals.'
@@ -347,9 +343,7 @@ export function generateProfessionalEmailDraft(input: {
 
   const cta = followUpStage === 'final'
     ? 'Would it be helpful to reconnect if this becomes a priority later?'
-    : strategy === 'no_website'
-      ? 'Would you be open to seeing a simple outline of what a website for your business could include?'
-      : strategy === 'cold_outreach'
+    : strategy === 'cold_outreach'
         ? 'Would it be useful if we sent over a couple of ideas for your online presence?'
         : tone === 'direct'
       ? 'Would a short conversation be useful?'
@@ -361,7 +355,6 @@ export function generateProfessionalEmailDraft(input: {
       ? feedbackRequest()
       : cta,
   )
-  lines.push('', 'If this is not relevant, let us know and we will not follow up.')
   lines.push('', signoff(tone, signature))
 
   let body = lines.join('\n')
@@ -403,7 +396,6 @@ export function generateProfessionalEmailDraft(input: {
       `${item.title}: ${item.why}${item.estimated ? ' (possible opportunity)' : ''}`,
     ),
     qualityChecks: [
-      ...(strategy === 'no_website' ? ['Confirm that the business truly has no website; the prospect record only shows that none was found.'] : []),
       prospect.business_name ? 'Business name taken from the prospect record.' : 'No business name recorded; generic greeting used.',
       selectedObservations.length || !analysis ? 'No unsupported website findings added.' : 'No clear finding available; message avoids an unsupported claim.',
       includeReport && analysis && prospect.website
@@ -431,6 +423,9 @@ export function validateProfessionalEmailDraft(
     check.startsWith('Follow-up context comes from a previously sent email.'),
   )
 
+  if (!prospect.website?.trim()) {
+    errors.push('Add a website link to this prospect before generating an email draft.')
+  }
   if (draft.subjectSuggestions.length < 3 || draft.subjectSuggestions.length > 5) {
     errors.push('Provide between three and five subject suggestions.')
   }
@@ -452,9 +447,6 @@ export function validateProfessionalEmailDraft(
     errors.push('Remove external accessibility audit references from the customer-facing email.')
   }
   if (!isContextualReply) {
-    if (!/if this is not relevant, let us know and we will not follow up/i.test(draft.body)) {
-      errors.push('Add a clear opt-out so the recipient can stop further contact.')
-    }
     if ((draft.body.match(/\?/g) ?? []).length !== 1) {
       errors.push('Include one clear, low-pressure question.')
     }
@@ -517,7 +509,7 @@ export function rewriteProfessionalEmail(body: string, action: RewriteAction) {
   if (action === 'expand') {
     if (/We do not have enough verified website review information/.test(body)) return body
     const line = 'Any suggested work would be based on the pages and measurements available, and we would confirm the details with you before recommending a change.'
-    return body.includes(line) ? body : body.replace(/\n\n(Would|If this is not relevant)/, `\n\n${line}\n\n$1`)
+    return body.includes(line) ? body : body.replace(/\n\n(Would)/, `\n\n${line}\n\n$1`)
   }
   if (action === 'improve_cta') {
     return body.replace(
@@ -543,6 +535,9 @@ export function generateFollowUpDraft(
   signature?: Partial<OutreachSignature>,
   includeReport = false,
 ) {
+  if (!prospect.website?.trim()) {
+    throw new Error('Add a website link to this prospect before generating an email draft.')
+  }
   const topic = original.subject.replace(/^(Re:\s*)+/i, '').trim() || 'our earlier website email'
   const name = prospect.business_name.trim() || 'your business'
   const industry = prospect.business_category?.trim()
@@ -554,9 +549,7 @@ export function generateFollowUpDraft(
     : stage === 'second'
       ? `We are checking once more in case a few practical changes to ${name}'s online presence may help visitors understand your ${offering}. If you would like to explore them, simply reply and we can arrange a brief conversation.`
       : `We will leave it here for now regarding ${name}. If improving how your business is presented online becomes a priority later, we would be happy to reconnect.`
-  const reassurance = prospect.website
-    ? 'We are not necessarily suggesting a complete redesign; focused changes may be enough.'
-    : 'If website work is not a priority right now, that is completely fine.'
+  const reassurance = 'We are not necessarily suggesting a complete redesign; focused changes may be enough.'
   const cta = stage === 'final'
     ? '\n\nWould it be helpful to reconnect if this becomes a priority later?'
     : '\n\nWould a short conversation be useful?'
@@ -571,7 +564,6 @@ export function generateFollowUpDraft(
     reportNote,
     cta,
     '',
-    'If this is not relevant, let us know and we will not follow up.',
     '',
     signoff(tone, signatureDetails),
   ].filter(Boolean).join('\n'))

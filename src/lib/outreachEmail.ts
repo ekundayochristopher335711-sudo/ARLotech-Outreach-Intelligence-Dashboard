@@ -12,7 +12,6 @@ import {
   industryImpactLine,
   normalizedDraftIdentity,
   positiveWebsiteAcknowledgement,
-  prospectOffering,
   removeDraftHyphens,
 } from '@/lib/emailPersonalization'
 import { rateLighthouseFinding } from '@/lib/websiteAudit'
@@ -212,38 +211,24 @@ export function createOutreachPreview(
   prospect: Pick<Prospect, 'id' | 'business_name' | 'contact_name' | 'website' | 'business_category'>,
   analysis?: OutreachAnalysis | null,
 ): OutreachPreview {
+  if (!prospect.website?.trim()) {
+    throw new Error('Add a website link to this prospect before generating an email draft.')
+  }
   const name = prospect.business_name.trim() || 'your business'
   const greetingName = firstName(prospect.contact_name)
   const category = prospect.business_category?.trim()
-  const offering = prospectOffering(category)
   const signOff = 'Kind regards,\nArlotech Digital Solutions'
-
-  if (!prospect.website) {
+  if (!analysis || !hasMatchingWebsiteAnalysis(prospect, analysis)) {
     return {
       prospect_id: prospect.id,
       analysis_id: null,
-      subject: removeDraftHyphens(`A website idea for ${name}`),
-      body: removeDraftHyphens([
-        `Hi ${greetingName},`,
-        '',
-        `We came across ${name}${category ? ` while researching local ${category.toLowerCase()} businesses` : ''}. We did not find a website linked to the business information available to us, so we wanted to ask whether you are considering a simple site to help prospective customers learn about your ${offering} and get in touch.`,
-        '',
-        'At Arlotech Digital Solutions, we design, develop and optimise business websites. If a website is something you are exploring, we would be glad to share a few practical ideas based on your goals. If it is not relevant, let us know and we will not follow up.',
-        '',
-        'Would it be helpful if we shared a few ideas?',
-        '',
-        signOff,
-      ].join('\n')),
+      subject: removeDraftHyphens(`A quick website observation for ${name}`),
+      body: `Hi ${greetingName},\n\nArlotech Digital Solutions designs and improves business websites. We would be glad to discuss your goals for ${name}'s website.\n\nWould a short conversation be useful?\n\nKind regards,\nArlotech Digital Solutions`,
       has_website_report: false,
-      suitability: 'Low Opportunity',
-      internal_note: 'No website was provided, so this is a general introduction and is not based on a website audit.',
+      suitability: 'Incomplete Audit',
+      internal_note: 'No matching website review is available; this general draft is not based on site-specific findings.',
     }
   }
-
-  if (!hasMatchingWebsiteAnalysis(prospect, analysis)) {
-    throw new Error('A completed audit for this exact website is required before preparing the email.')
-  }
-  if (!analysis) throw new Error('A completed website audit is required before preparing the email.')
 
   const suitability = getOutreachSuitability(analysis)
   if (suitability === 'Incomplete Audit') {
@@ -276,8 +261,6 @@ export function createOutreachPreview(
     '',
     feedbackRequest(),
     '',
-    'If this is not relevant, please let us know and we will not follow up.',
-    '',
     signOff,
   ].join('\n')
 
@@ -299,29 +282,27 @@ export function validateOutreachPreview(
   analysis?: OutreachAnalysis | null,
 ) {
   if (!preview.subject.trim() || !preview.body.trim()) throw new Error('Every message needs a subject and body.')
-  if (preview.has_website_report !== !!prospect.website) {
+  if (!prospect.website?.trim()) {
+    throw new Error('Add a website link to this prospect before generating an email draft.')
+  }
+  if (preview.has_website_report && !prospect.website) {
     throw new Error('The email report attachment setting does not match the prospect website.')
   }
   if (
     !normalizedDraftIdentity(preview.subject).includes(normalizedDraftIdentity(prospect.business_name)) ||
     !normalizedDraftIdentity(preview.body).includes(normalizedDraftIdentity(prospect.business_name)) ||
-    !/will not follow up/i.test(preview.body) ||
     containsEmailJargon(`${preview.subject}\n${preview.body}`) ||
     (preview.body.match(/\?/g) ?? []).length !== 1
   ) {
-    throw new Error('The email is missing the correct business name, opt-out, or single conversational question, or contains technical language.')
+    throw new Error('The email is missing the correct business name or single conversational question, or contains technical language.')
   }
-  if (!prospect.website) {
-    if (
-      /\b(I|me|my)\b/i.test(preview.body) ||
-      !preview.body.includes('Arlotech Digital Solutions') ||
-      /attached|attachment/i.test(preview.body)
-    ) {
-      throw new Error('Outreach messages must use ArloTech company voice and signature.')
+  if (!analysis || !hasMatchingWebsiteAnalysis(prospect, analysis)) {
+    if (preview.has_website_report || /your website review is attached|attachment/i.test(preview.body)) {
+      throw new Error('A matching website audit is required before attaching a report.')
     }
     return
   }
-  if (!analysis || preview.analysis_id !== analysis.id || !hasMatchingWebsiteAnalysis(prospect, analysis)) {
+  if (preview.analysis_id !== analysis.id || !preview.has_website_report) {
     throw new Error('The website audit changed after this preview. Refresh the email preview before sending.')
   }
 
@@ -341,7 +322,6 @@ export function validateOutreachPreview(
     !normalizedDraftIdentity(preview.subject).includes(normalizedDraftIdentity(prospect.business_name)) ||
     /\b(I|me|my)\b/i.test(preview.body) ||
     !preview.body.includes('Arlotech Digital Solutions') ||
-    !/will not follow up/i.test(preview.body) ||
     !/a focused change may address this issue without a full redesign/i.test(preview.body) ||
     !/your website review is attached/i.test(preview.body) ||
     containsEmailJargon(`${preview.subject}\n${preview.body}`) ||

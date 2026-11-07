@@ -246,39 +246,26 @@ describe('outreach eligibility and previews', () => {
     expect(() => createOutreachPreview(prospect(), audit)).toThrow('audit is incomplete')
   })
 
-  it('uses ArloTech company voice for website-free introductions', () => {
+  it('blocks draft creation when there is no website link', () => {
     const lead = prospect(null)
-    const preview = createOutreachPreview(lead)
-    expect(preview.has_website_report).toBe(false)
-    expect(preview.body).toContain('Hi there,')
-    expect(preview.body).toContain('Arlotech Digital Solutions')
-    expect(preview.body).not.toMatch(/\b(I|me|my)\b/i)
-    expect(preview.body).not.toContain('attached')
-    expect(() => validateOutreachPreview(preview, lead)).not.toThrow()
+    expect(() => createOutreachPreview(lead)).toThrow('Add a website link')
   })
 
-  it('uses generic product or service wording when the prospect has no category', () => {
-    const uncategorizedLead = { ...prospect(null), business_category: null }
-    const noWebsitePreview = createOutreachPreview(uncategorizedLead)
-    const websiteLead = { ...uncategorizedLead, website: 'https://www.amigodev.com.ng' }
-    const websitePreview = createOutreachPreview(
-      websiteLead,
-      analysis(),
-    )
+  it('creates a generic fallback draft without an audit or category', () => {
+    const uncategorizedLead = { ...prospect(), business_category: null }
+    const websitePreview = createOutreachPreview(uncategorizedLead)
 
-    expect(noWebsitePreview.body).toContain('your product or service')
-    expect(noWebsitePreview.body).not.toMatch(/technology|software|developer/i)
-    expect(websitePreview.body).toContain('its product or service')
-    expect(websitePreview.body).not.toMatch(/technology|software|developer/i)
-    expect(`${websitePreview.subject}\n${websitePreview.body}`).not.toContain('-')
-    expect(() => validateOutreachPreview(websitePreview, websiteLead, analysis())).not.toThrow()
+    expect(websitePreview.body).toContain('AmigoDev')
+    expect(websitePreview.body).toContain('Arlotech Digital Solutions')
+    expect(websitePreview.body).not.toContain('attached')
+    expect(() => validateOutreachPreview(websitePreview, uncategorizedLead)).not.toThrow()
   })
 
   it('uses the supplied category instead of generic product or service wording', () => {
-    const categorizedLead = { ...prospect(null), business_category: 'Plumbing and Heating' }
-    const preview = createOutreachPreview(categorizedLead)
+    const categorizedLead = { ...prospect(), business_category: 'Plumbing and Heating' }
+    const preview = createOutreachPreview(categorizedLead, analysis())
 
-    expect(preview.body).toContain('your plumbing and heating services')
+    expect(preview.body).toContain('plumbing and heating')
     expect(preview.body).not.toContain('product or service')
   })
 
@@ -299,7 +286,16 @@ describe('outreach eligibility and previews', () => {
       .toThrow('company voice')
   })
 
-  it('requires a matching website analysis before creating website outreach', () => {
-    expect(() => createOutreachPreview(prospect())).toThrow('A completed audit for this exact website is required')
+  it('creates a generic review draft without an audit but keeps it out of sending', () => {
+    const preview = createOutreachPreview(prospect())
+    expect(preview.body).toContain('AmigoDev')
+    expect(preview.has_website_report).toBe(false)
+    expect(preview.suitability).toBe('Incomplete Audit')
+    expect(preview.internal_note).toContain('No matching website review')
+    expect(() => validateOutreachPreview(preview, prospect())).not.toThrow()
+  })
+
+  it('requires a website link before creating an outreach draft', () => {
+    expect(() => createOutreachPreview(prospect(null))).toThrow('Add a website link')
   })
 })

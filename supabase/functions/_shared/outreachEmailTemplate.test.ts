@@ -3,10 +3,14 @@ import { outreachEmailHtml, replyEmailHtml, sentEmailBody } from './outreachEmai
 
 describe('outreach email template', () => {
   it('formats the message in a responsive Arlotech-branded layout', () => {
-    const html = outreachEmailHtml('Hi Alex,\n\nA useful website observation.\n\nKind regards,\nArlotech', 'Business address')
+    const html = outreachEmailHtml(
+      'Hi Alex,\n\nA useful website observation.\n\nKind regards,\nArlotech',
+      'Business address',
+      'https://project.supabase.co/functions/v1/unsubscribe?token=signed',
+    )
 
     expect(html).toContain('ARLOTECH')
-    expect(html).toContain('max-width:600px')
+    expect(html).toContain('max-width:560px')
     expect(html).toContain('<p ')
     expect(html).toContain('A useful website observation.')
     expect(html).toContain('Business address')
@@ -16,6 +20,7 @@ describe('outreach email template', () => {
     const html = outreachEmailHtml(
       'Hi Alex,\n\nA useful website observation.\n\nWe have attached a short website review with more detail. Please take a look.\n\nWould a conversation help?',
       'Business address',
+      'https://project.supabase.co/functions/v1/unsubscribe?token=signed',
       true,
       'Chris Example',
     )
@@ -33,22 +38,30 @@ describe('outreach email template', () => {
   })
 
   it('escapes the sender name in the branded header', () => {
-    const html = outreachEmailHtml('Hello', 'Business address', false, '<Chris>')
+    const html = outreachEmailHtml(
+      'Hello',
+      'Business address',
+      'https://project.supabase.co/functions/v1/unsubscribe?token=signed',
+      false,
+      '<Chris>',
+    )
 
     expect(html).toContain('Sent by &lt;Chris&gt;')
     expect(html).not.toContain('Sent by <Chris>')
   })
 
-  it('escapes message markup and keeps the opt-out and address in both formats', () => {
+  it('escapes message markup and includes the unsubscribe link and address in both formats', () => {
     const message = 'Hello <script>alert("x")</script>'
-    const html = outreachEmailHtml(message, '1 Main & Second Street')
-    const text = sentEmailBody(message, '1 Main & Second Street')
+    const unsubscribeUrl = 'https://project.supabase.co/functions/v1/unsubscribe?token=signed&source=email'
+    const html = outreachEmailHtml(message, '1 Main & Second Street', unsubscribeUrl)
+    const text = sentEmailBody(message, '1 Main & Second Street', unsubscribeUrl)
 
     expect(html).toContain('&lt;script&gt;')
     expect(html).not.toContain('<script>')
     expect(html).toContain('1 Main &amp; Second Street')
-    expect(html).toContain('reply to this email and let us know')
-    expect(text).toContain('reply to this email and let us know')
+    expect(html).toContain('href="https://project.supabase.co/functions/v1/unsubscribe?token=signed&amp;source=email"')
+    expect(html).not.toContain('reply to this email')
+    expect(text).toContain(`Unsubscribe: ${unsubscribeUrl}`)
     expect(text).toContain('1 Main & Second Street')
   })
 

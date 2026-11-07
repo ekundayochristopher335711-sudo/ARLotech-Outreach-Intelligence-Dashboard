@@ -50,6 +50,31 @@ export interface ExtractedContent {
   contacts?: { emails: string[]; phones: string[] }
 }
 
+export async function refreshProspectContactsFromWebsite(
+  prospectId: string,
+  userId: string,
+  contacts?: ExtractedContent['contacts'],
+) {
+  const updates: { email?: string; phone?: string } = {}
+  const extractedEmail = contacts?.emails.find((value) =>
+    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim()),
+  )
+  const extractedPhone = contacts?.phones.find((value) => value.replace(/\D/g, '').length >= 7)
+  if (extractedEmail) updates.email = extractedEmail.trim().toLowerCase()
+  if (extractedPhone) updates.phone = extractedPhone.trim()
+  if (Object.keys(updates).length === 0) return
+
+  const { data, error } = await supabase
+    .from('prospects')
+    .update(updates)
+    .eq('id', prospectId)
+    .eq('user_id', userId)
+    .select('id')
+    .maybeSingle()
+  if (error) throw error
+  if (!data) throw new Error('The prospect could not be found while updating website contacts.')
+}
+
 export interface PageSpeedResult {
   id: string
   title: string
@@ -523,6 +548,15 @@ export async function analyzeWebsite(
 
   if (error) throw error
 
+  let contactUpdateError: string | undefined
+  if (prospectId) {
+    try {
+      await refreshProspectContactsFromWebsite(prospectId, userId, content.contacts)
+    } catch (error) {
+      contactUpdateError = error instanceof Error ? error.message : 'Could not update prospect contact details.'
+    }
+  }
+
   const pagespeedSummary = {
     ...pagespeed,
     lighthouseResult: { ...pagespeed.lighthouseResult, fullPageScreenshot: undefined },
@@ -630,6 +664,7 @@ export async function analyzeWebsite(
       seoScore,
       perfScore,
       contentExtractionError,
+      contactUpdateError,
     }
   }
 
@@ -642,5 +677,6 @@ export async function analyzeWebsite(
     seoScore,
     perfScore,
     contentExtractionError,
+    contactUpdateError,
   }
 }

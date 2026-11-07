@@ -1,6 +1,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { outreachEmailHtml, sentEmailBody } from '../_shared/outreachEmailTemplate.ts'
+import { createUnsubscribeToken } from '../_shared/unsubscribe.ts'
 import { formatSenderAddress, hasActionableWebsiteFinding, resolveReplyToAddress } from './eligibility.ts'
 
 const corsHeaders = {
@@ -71,12 +72,16 @@ serve(async (req) => {
     const fromEmail = Deno.env.get('RESEND_FROM_EMAIL')
     const configuredReplyTo = Deno.env.get('OUTREACH_REPLY_TO_EMAIL')?.trim()
     const postalAddress = Deno.env.get('OUTREACH_POSTAL_ADDRESS')
+    const unsubscribeSecret = Deno.env.get('OUTREACH_UNSUBSCRIBE_SECRET')
     if (!supabaseUrl || !supabaseKey) throw new Error('Supabase function authentication is not configured.')
     if (!resendApiKey || !fromEmail) {
       throw new Error('Set RESEND_API_KEY and RESEND_FROM_EMAIL as Supabase function secrets before sending.')
     }
     if (!postalAddress?.trim()) {
       throw new Error('Set OUTREACH_POSTAL_ADDRESS as a Supabase function secret before sending commercial outreach.')
+    }
+    if (!unsubscribeSecret || unsubscribeSecret.length < 32) {
+      throw new Error('Set OUTREACH_UNSUBSCRIBE_SECRET to a random value of at least 32 characters before sending outreach.')
     }
     const replyTo = resolveReplyToAddress(configuredReplyTo, fromEmail)
     if (!replyTo) {
@@ -364,7 +369,11 @@ serve(async (req) => {
         threadId = previousMessage?.thread_id ?? previousMessage?.id ?? null
       }
 
-      const sentBody = sentEmailBody(email.body, postalAddress)
+      const unsubscribeToken = await createUnsubscribeToken(userId, recipient, unsubscribeSecret)
+      const unsubscribeUrl = new URL('/functions/v1/unsubscribe', supabaseUrl)
+      unsubscribeUrl.searchParams.set('token', unsubscribeToken)
+      const unsubscribeLink = unsubscribeUrl.toString()
+      const sentBody = sentEmailBody(email.body, postalAddress, unsubscribeLink)
       const resendResponse = await fetch('https://api.resend.com/emails', {
         method: 'POST',
         headers: {
@@ -377,8 +386,12 @@ serve(async (req) => {
           reply_to: replyTo,
           to: [recipient],
           subject: email.subject.trim(),
+          headers: {
+            'List-Unsubscribe': `<${unsubscribeLink}>`,
+            'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+          },
           text: sentBody,
-          html: outreachEmailHtml(email.body, postalAddress, !!inlineLogo, senderName),
+          html: outreachEmailHtml(email.body, postalAddress, unsubscribeLink, !!inlineLogo, senderName),
           ...((inlineLogo || email.attachment)
             ? {
                 attachments: [
