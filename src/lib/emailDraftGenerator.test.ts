@@ -50,7 +50,10 @@ describe('professional email draft generation', () => {
     })
 
     expect(result.body).toMatch(/some text may be difficult for visitors to read/i)
-    expect(result.body).toContain('One area we noticed was')
+    expect(result.body).toContain('Website review snapshot')
+    expect(result.body).toContain('Finding: Some text may be difficult for visitors to read')
+    expect(result.body.indexOf('Would this be something you’d consider improving?'))
+      .toBeLessThan(result.body.indexOf('We’ve attached a concise PDF'))
     expect(result.body).not.toMatch(/94\/100|92\/100|91\/100|2\.1:1|Lighthouse|PageSpeed|score/i)
     expect(result.body).toContain("It's good to see")
     expect(result.body).toContain('A focused change may address this issue without a full redesign.')

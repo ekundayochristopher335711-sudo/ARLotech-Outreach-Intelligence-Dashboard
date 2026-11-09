@@ -10,6 +10,22 @@ const corsHeaders = {
 }
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
+type InlineLogoPayload = {
+  filename: 'arlotech-logo.png'
+  content: string
+}
+
+function isInlineLogoPayload(value: unknown): value is InlineLogoPayload {
+  return !!value &&
+    typeof value === 'object' &&
+    'filename' in value &&
+    value.filename === 'arlotech-logo.png' &&
+    'content' in value &&
+    typeof value.content === 'string' &&
+    value.content.length <= 100_000 &&
+    /^[A-Za-z0-9+/]+={0,2}$/.test(value.content)
+}
+
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
@@ -61,6 +77,14 @@ serve(async (req) => {
     ) {
       return jsonResponse({ error: 'Choose a received message and enter a reply of no more than 12,000 characters.' }, 400)
     }
+    const inlineLogo = 'inlineLogo' in body
+      ? isInlineLogoPayload(body.inlineLogo)
+        ? body.inlineLogo
+        : null
+      : null
+    if ('inlineLogo' in body && !inlineLogo) {
+      return jsonResponse({ error: 'The Arlotech logo attachment is invalid.' }, 400)
+    }
 
     const { data: inboundMessage, error: messageLookupError } = await supabase
       .from('email_messages')
@@ -97,7 +121,17 @@ serve(async (req) => {
         to: [recipient],
         subject: replySubject,
         text: replyBody,
-        html: replyEmailHtml(replyBody),
+        html: replyEmailHtml(replyBody, !!inlineLogo),
+        ...(inlineLogo
+          ? {
+              attachments: [{
+                filename: inlineLogo.filename,
+                content: inlineLogo.content,
+                content_type: 'image/png',
+                content_id: 'arlotech-logo',
+              }],
+            }
+          : {}),
       }),
     })
     const resendBody = await resendResponse.json().catch(() => ({}))

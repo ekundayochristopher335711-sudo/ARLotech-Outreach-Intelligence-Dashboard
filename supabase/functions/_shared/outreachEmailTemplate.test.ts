@@ -18,7 +18,7 @@ describe('outreach email template', () => {
 
   it('shows a visible logo on the dark branded header and preserves the attached-PDF copy', () => {
     const html = outreachEmailHtml(
-      'Hi Alex,\n\nA useful website observation.\n\nWe’ve attached a concise PDF outlining our findings and recommendations.\n\nWould a conversation help?',
+      'Hi Alex,\n\nWebsite review snapshot\nFinding: A useful website observation.\nWhy it matters: Visitors may miss useful information.\n\nWould a conversation help?\n\nWe’ve attached a concise PDF outlining our findings and recommendations.',
       'Business address',
       'https://project.supabase.co/functions/v1/unsubscribe?token=signed',
       true,
@@ -34,8 +34,10 @@ describe('outreach email template', () => {
     expect(html).toContain('DIGITAL SOLUTIONS')
     expect(html).toContain('background:#f5bf24')
     expect(html).toContain('We’ve attached a concise PDF outlining our findings and recommendations.')
-    expect(html.indexOf('We’ve attached a concise PDF')).toBeGreaterThan(html.indexOf('A useful website observation.'))
-    expect(html.indexOf('We’ve attached a concise PDF')).toBeLessThan(html.indexOf('Would a conversation help?'))
+    expect(html).toContain('Website review snapshot')
+    expect(html).toContain('<strong>Finding:</strong> A useful website observation.')
+    expect(html).toContain('<strong>Why it matters:</strong> Visitors may miss useful information.')
+    expect(html.indexOf('Would a conversation help?')).toBeLessThan(html.indexOf('We’ve attached a concise PDF'))
   })
 
   it('escapes the sender name in the branded header', () => {
@@ -67,11 +69,25 @@ describe('outreach email template', () => {
     expect(text).toContain('1 Main & Second Street')
   })
 
+  it('escapes text in the inline website review snapshot', () => {
+    const html = outreachEmailHtml(
+      'Website review snapshot\nFinding: <script>unsafe</script>\nWhy it matters: <img src=x onerror=alert(1)>',
+      'Business address',
+      'https://project.supabase.co/functions/v1/unsubscribe?token=signed',
+    )
+
+    expect(html).toContain('&lt;script&gt;unsafe&lt;/script&gt;')
+    expect(html).toContain('&lt;img src=x onerror=alert(1)&gt;')
+    expect(html).not.toContain('<script>unsafe</script>')
+    expect(html).not.toContain('<img src=x')
+  })
+
   it('uses the Arlotech outreach design for replies and escapes reply content', () => {
-    const html = replyEmailHtml('Thanks for getting back to us.\n\n<script>alert("unsafe")</script>')
+    const html = replyEmailHtml('Thanks for getting back to us.\n\n<script>alert("unsafe")</script>', true)
 
     expect(html).toContain('ARLOTECH')
     expect(html).toContain('max-width:600px')
+    expect(html).toContain('<img src="cid:arlotech-logo" width="36" height="36"')
     expect(html).toContain('Thanks for getting back to us.')
     expect(html).toContain('&lt;script&gt;')
     expect(html).not.toContain('<script>')

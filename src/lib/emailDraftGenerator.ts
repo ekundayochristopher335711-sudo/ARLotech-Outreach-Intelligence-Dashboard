@@ -303,11 +303,20 @@ export function generateProfessionalEmailDraft(input: {
   const selectedObservations = strategyObservation
     ? [strategyObservation, ...(length === 'detailed' ? observations.filter((item) => item !== strategyObservation).slice(0, 1) : [])]
     : []
+  const inlineReportSummary =
+    includeReport && !!analysis && !!prospect.website && followUpStage === 'none' && selectedObservations.length > 0
 
   if (selectedObservations.length) {
-    lines.push(`One area we noticed was ${selectedObservations[0].title.toLowerCase()}. ${selectedObservations[0].why}`)
-    if (industry) lines.push(industryImpactLine(industry, selectedObservations[0].title))
-    if (selectedObservations.length > 1) lines.push(selectedObservations[1].why)
+    if (inlineReportSummary) {
+      lines.push(
+        `Website review snapshot\nFinding: ${selectedObservations[0].title}\nWhy it matters: ${selectedObservations[0].why}`,
+        feedbackRequest(),
+      )
+    } else {
+      lines.push(`One area we noticed was ${selectedObservations[0].title.toLowerCase()}. ${selectedObservations[0].why}`)
+      if (industry) lines.push(industryImpactLine(industry, selectedObservations[0].title))
+      if (selectedObservations.length > 1) lines.push(selectedObservations[1].why)
+    }
     lines.push('')
   } else if (analysis && strategy !== 'cold_outreach') {
     lines.push('The review did not identify a clear issue worth calling out, so we do not want to invent one. If useful, we can discuss your website goals and see whether any small adjustments make sense.', '')
@@ -349,11 +358,7 @@ export function generateProfessionalEmailDraft(input: {
       : tone === 'consultative'
         ? 'Would you be open to a brief conversation about your priorities?'
         : 'Would it be helpful to talk this through?'
-  lines.push(
-    includeReport && analysis && prospect.website && followUpStage === 'none'
-      ? feedbackRequest()
-      : cta,
-  )
+  if (!inlineReportSummary) lines.push(cta)
   lines.push('', signoff(tone, signature))
 
   let body = lines.join('\n')

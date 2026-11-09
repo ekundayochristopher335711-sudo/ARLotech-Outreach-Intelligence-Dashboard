@@ -9,6 +9,7 @@ import { Card } from '@/components/ui/Card'
 import { exportRepliesPdf } from '@/lib/exportPdf'
 import { groupEmailThreads } from '@/lib/emailThreads'
 import { splitReplyText } from '@/lib/replyText'
+import { createInlineEmailLogo } from '@/lib/brandAssets'
 import { getCurrentUserId, supabase } from '@/lib/supabase'
 import type { EmailMessage, Prospect } from '@/types'
 
@@ -139,8 +140,9 @@ export function RepliesPage() {
           invoke: (name: string, options: { body: unknown }) => Promise<{ data: unknown; error: Error | null }>
         }
       }
+      const inlineLogo = await createInlineEmailLogo()
       const { data, error } = await functionClient.functions.invoke('send-reply', {
-        body: { messageId: input.messageId, body: input.body },
+        body: { messageId: input.messageId, body: input.body, inlineLogo },
       })
       if (error) {
         const detail = data && typeof data === 'object' && 'error' in data && typeof data.error === 'string'

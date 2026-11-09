@@ -255,7 +255,8 @@ export function createOutreachPreview(
     (typeof analysis.category_scores?.performance === 'number' && analysis.category_scores.performance >= 90
       ? 'It’s good to see that your website recorded positive performance results.'
       : positiveWebsiteAcknowledgement(name, category, positiveObservation)),
-    `One area worth reviewing is ${title.charAt(0).toLowerCase()}${title.slice(1)}. ${impact}`,
+    `Website review snapshot\nFinding: ${title}\nWhy it matters: ${impact}`,
+    feedbackRequest(),
     ...(category && !/additional website features may affect responsiveness/i.test(title)
       ? [industryImpactLine(category, title)]
       : []),
@@ -263,8 +264,6 @@ export function createOutreachPreview(
     industryWebsiteImprovementLine(category, name),
     '',
     'We’ve attached a concise PDF outlining our findings and recommendations.',
-    '',
-    feedbackRequest(),
     '',
     signOff,
   ].join('\n')
@@ -333,6 +332,9 @@ export function validateOutreachPreview(
     !normalizedDraftIdentity(preview.subject).includes(normalizedDraftIdentity(auditFindingEmailTopic(finding))) ||
     !normalizedDraftIdentity(preview.body).includes(normalizedDraftIdentity(title)) ||
     !normalizedDraftIdentity(preview.body).includes(normalizedDraftIdentity(impact)) ||
+    !/website review snapshot\s*\n\s*finding:/i.test(preview.body) ||
+    preview.body.indexOf('Would this be something you’d consider improving?') >
+      preview.body.indexOf('We’ve attached a concise PDF') ||
     containsExternalAuditReference(`${preview.subject}\n${preview.body}`) ||
     !/would this be something you’d consider improving\?/i.test(preview.body) ||
     !/\b(?:are|is|do|does|would|could)\b[^?]*\?/i.test(preview.body)
