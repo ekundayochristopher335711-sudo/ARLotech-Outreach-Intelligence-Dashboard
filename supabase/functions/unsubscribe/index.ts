@@ -12,6 +12,24 @@ const securityHeaders = {
   'X-Content-Type-Options': 'nosniff',
 }
 
+function escapeHtml(value: string) {
+  return value.replace(/[&<>"']/g, (character) => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;',
+  })[character]!)
+}
+
+function resubscribeForm(token: string) {
+  const action = `?token=${encodeURIComponent(token)}`
+  return `<form method="post" action="${escapeHtml(action)}">
+  <input type="hidden" name="confirm" value="subscribe">
+  <button type="submit">Subscribe again</button>
+</form>`
+}
+
 function page(title: string, message: string, form?: string) {
   return new Response(`<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -56,9 +74,10 @@ serve(async (request) => {
   const body = await request.text()
   if (body.length > 2048) return errorResponse('Invalid unsubscribe request.')
   const form = new URLSearchParams(body)
+  const action = form.get('confirm')
   const oneClick = form.get('List-Unsubscribe') === 'One-Click'
-  if (!oneClick && form.get('confirm') !== 'unsubscribe') {
-    return errorResponse('Confirm the unsubscribe request to continue.')
+  if (!oneClick && action !== 'unsubscribe' && action !== 'subscribe') {
+    return errorResponse('Confirm the subscription preference change to continue.')
   }
 
   try {
@@ -72,6 +91,28 @@ serve(async (request) => {
     const supabase = createClient(supabaseUrl, serviceRoleKey, {
       auth: { autoRefreshToken: false, persistSession: false },
     })
+    if (!oneClick && action === 'subscribe') {
+      const { error: deleteError } = await supabase
+        .from('suppression_list')
+        .delete()
+        .eq('user_id', userId)
+        .eq('normalized_email', email)
+        .eq('source', 'unsubscribe_link')
+      if (deleteError) throw new Error(`Could not restore subscription: ${deleteError.message}`)
+
+      const { data: remainingSuppression, error: lookupError } = await supabase
+        .from('suppression_list')
+        .select('id')
+        .eq('user_id', userId)
+        .eq('normalized_email', email)
+        .maybeSingle()
+      if (lookupError) throw new Error(`Could not verify subscription: ${lookupError.message}`)
+      if (remainingSuppression) {
+        return page('Unable to resubscribe', 'This email address has a separate suppression in place. Please contact Arlotech for help.')
+      }
+      return page('Subscribed', 'This email address can receive future Arlotech outreach again.')
+    }
+
     const { error } = await supabase.from('suppression_list').upsert({
       user_id: userId,
       email,
@@ -80,7 +121,11 @@ serve(async (request) => {
       source: 'unsubscribe_link',
     }, { onConflict: 'user_id,normalized_email', ignoreDuplicates: true })
     if (error) throw new Error(`Could not record unsubscribe: ${error.message}`)
-    return page('Unsubscribed', 'This email address has been removed from future Arlotech outreach.')
+    return page(
+      'Unsubscribed',
+      'This email address has been removed from future Arlotech outreach. If this was a mistake, you can subscribe again below.',
+      resubscribeForm(token),
+    )
   } catch (error) {
     console.error('Unsubscribe request failed:', error)
     const message = error instanceof Error && error.message === 'Invalid unsubscribe token.'

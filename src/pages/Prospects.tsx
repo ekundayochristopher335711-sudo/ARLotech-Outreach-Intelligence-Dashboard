@@ -241,6 +241,32 @@ export function ProspectsPage() {
     enabled: Boolean(session?.user.id),
   })
 
+  const {
+    data: suppressionEntries = [],
+    isLoading: isLoadingSuppressions,
+    error: suppressionError,
+  } = useQuery<Array<{ normalized_email: string; source: string }>>({
+    queryKey: ['/suppression-list', session?.user.id],
+    queryFn: async () => {
+      const userId = session?.user.id
+      if (!userId) throw new Error('You must be signed in to check email preferences.')
+      const { data, error } = await supabase
+        .from('suppression_list')
+        .select('normalized_email, source')
+        .eq('user_id', userId)
+      if (error) throw error
+      return data as Array<{ normalized_email: string; source: string }>
+    },
+    enabled: Boolean(session?.user.id),
+  })
+
+  const suppressionSources = new Map<string, string>(
+    suppressionEntries.map((entry: { normalized_email: string; source: string }) => [
+      entry.normalized_email.trim().toLowerCase(),
+      entry.source,
+    ]),
+  )
+
   const prospectRecords = [...((prospects ?? []) as Prospect[])].sort((a, b) =>
     a.business_name.localeCompare(b.business_name, undefined, { sensitivity: 'base', numeric: true }),
   )
@@ -1329,6 +1355,17 @@ export function ProspectsPage() {
             Could not load website analysis status: {analysesError.message}. Analysis filters and batch analysis are unavailable until this is resolved.
           </p>
         )}
+        {suppressionError && (
+          <p className="mb-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700" role="alert">
+            Could not load unsubscribe status: {suppressionError.message}. Outreach sending still checks the suppression list.
+          </p>
+        )}
+        {!suppressionError && !isLoadingSuppressions && suppressionEntries.length > 0 && (
+          <p className="mb-3 text-sm text-slate-500">
+            Contacts marked <span className="font-semibold text-red-700">Unsubscribed</span> or{' '}
+            <span className="font-semibold text-red-700">Suppressed</span> are excluded from outreach.
+          </p>
+        )}
         {filteredProspects.length > 0 && (
           <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
             <label className="flex items-center gap-2 text-sm text-slate-700">
@@ -1370,6 +1407,7 @@ export function ProspectsPage() {
         ) : filteredProspects.length > 0 ? (
           <ProspectTable
             prospects={filteredProspects}
+            suppressionSources={suppressionSources}
             showManualContactActions={websiteFilter === 'without-website'}
             analysisErrors={websiteFilter === 'failed-analysis' ? failedAnalysisErrors : undefined}
             selectedProspectIds={selectedProspectIds}

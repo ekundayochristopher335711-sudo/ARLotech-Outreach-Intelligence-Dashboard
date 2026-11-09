@@ -61,6 +61,28 @@ export function ProspectDetails() {
     enabled: !!id,
   })
 
+  const {
+    data: emailSuppression,
+    isLoading: suppressionLoading,
+    error: suppressionError,
+  } = useQuery({
+    queryKey: ['/prospect', id, 'email-suppression', prospect?.email?.trim().toLowerCase()],
+    queryFn: async () => {
+      const userId = await getCurrentUserId()
+      const normalizedEmail = prospect?.email?.trim().toLowerCase()
+      if (!normalizedEmail) return null
+      const { data, error } = await supabase
+        .from('suppression_list')
+        .select('source, reason, created_at')
+        .eq('user_id', userId)
+        .eq('normalized_email', normalizedEmail)
+        .maybeSingle()
+      if (error) throw error
+      return data
+    },
+    enabled: Boolean(prospect?.email?.trim()),
+  })
+
   const { data: websiteAnalyses = [], isLoading: analysesLoading, error: analysesError } = useQuery<WebsiteAnalysis[]>({
     queryKey: ['/prospect', id, 'website-analyses'],
     queryFn: async () => {
@@ -297,7 +319,26 @@ export function ProspectDetails() {
           <h3 className="text-sm font-semibold text-slate-700 mb-2">Status</h3>
           <div className="flex items-center gap-2">
             <Badge variant="default">{prospect.status}</Badge>
+            {emailSuppression && (
+              <Badge variant="error">
+                {emailSuppression.source === 'unsubscribe_link' ? 'Unsubscribed' : 'Suppressed'}
+              </Badge>
+            )}
           </div>
+          {suppressionLoading && <p className="mt-2 text-sm text-slate-500">Checking email preference…</p>}
+          {suppressionError && (
+            <p role="alert" className="mt-2 text-sm text-red-600">
+              Could not load unsubscribe status: {suppressionError.message}
+            </p>
+          )}
+          {emailSuppression && (
+            <p className="mt-2 text-sm text-slate-600">
+              {emailSuppression.reason}
+              {emailSuppression.created_at
+                ? ` · ${format(new Date(emailSuppression.created_at), 'MMM d, yyyy')}`
+                : ''}
+            </p>
+          )}
           <div className="mt-4 text-sm text-slate-500">
             <p className="flex items-center gap-2 mb-1">
               <Calendar className="h-4 w-4 text-slate-400" />

@@ -6,6 +6,7 @@ import { CheckCircle2, MapPin, Trash2 } from 'lucide-react'
 
 interface ProspectTableProps {
   prospects: Prospect[]
+  suppressionSources?: Map<string, string>
   compact?: boolean
   onMarkContacted?: (prospect: Prospect) => void
   onDelete?: (prospect: Prospect) => void
@@ -19,6 +20,7 @@ interface ProspectTableProps {
 
 export function ProspectTable({
   prospects,
+  suppressionSources,
   compact = false,
   onMarkContacted,
   onDelete,
@@ -32,7 +34,11 @@ export function ProspectTable({
   const navigate = useNavigate()
   return (
     <div className={`space-y-3 ${compact ? 'space-y-0 divide-y divide-slate-200' : ''}`}>
-      {prospects.map((prospect) => (
+      {prospects.map((prospect) => {
+        const suppressionSource = prospect.email
+          ? suppressionSources?.get(prospect.email.trim().toLowerCase())
+          : undefined
+        return (
         <div
           key={prospect.id}
           onClick={() => navigate(`/prospects/${prospect.id}`)}
@@ -90,6 +96,11 @@ export function ProspectTable({
             onClick={(event) => event.stopPropagation()}
           >
             <Badge variant="default">{prospect.status}</Badge>
+            {suppressionSource && (
+              <Badge variant="error">
+                {suppressionSource === 'unsubscribe_link' ? 'Unsubscribed' : 'Suppressed'}
+              </Badge>
+            )}
             {compact && (
               <span className="hidden text-xs text-slate-400 sm:inline">
                 {format(new Date(prospect.created_at), 'MMM d')}
@@ -151,7 +162,8 @@ export function ProspectTable({
             )}
           </div>
         </div>
-      ))}
+        )
+      })}
     </div>
   )
 }
