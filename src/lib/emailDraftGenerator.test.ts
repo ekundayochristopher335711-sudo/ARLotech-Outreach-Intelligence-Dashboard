@@ -185,6 +185,32 @@ describe('professional email draft generation', () => {
     expect(result.body).not.toMatch(/dequeuniversity|axe\/4\.14|learn how to make links distinguishable|link-in-text-block/i)
   })
 
+  it('omits external audit references from unrecognized AK Plumbing accessibility findings', () => {
+    const result = generateProfessionalEmailDraft({
+      prospect,
+      analysis: analysis({
+        findings: [{
+          id: 'focus-visibility-check',
+          category: 'accessibility',
+          classification: 'verified_issue',
+          title: 'Keyboard focus visibility',
+          evidence: 'Focus is difficult to see on some controls.',
+          explanation: 'Keyboard focus should remain visible to visitors. https://dequeuniversity.com/rules/axe/4.14/focus-visible',
+          priority: 'medium',
+        }],
+      }),
+    })
+
+    expect(result.body.toLowerCase()).toContain('keyboard focus visibility')
+    expect(result.body).not.toMatch(/dequeuniversity|axe\/4\.14|focus-visible/i)
+    expect(validateProfessionalEmailDraft(
+      result,
+      prospect,
+      true,
+      result.subjectSuggestions[0],
+    ).errors).toEqual([])
+  })
+
   it('blocks external accessibility references if they are reintroduced by an edit', () => {
     const draft = generateProfessionalEmailDraft({ prospect })
     const result = validateProfessionalEmailDraft({

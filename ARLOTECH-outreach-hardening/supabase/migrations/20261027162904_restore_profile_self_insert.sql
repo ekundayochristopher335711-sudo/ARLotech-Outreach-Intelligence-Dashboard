@@ -1,0 +1,5 @@
+CREATE POLICY profiles_self_insert
+  ON public.profiles
+  FOR INSERT
+  TO authenticated
+  WITH CHECK (auth.uid() = id);

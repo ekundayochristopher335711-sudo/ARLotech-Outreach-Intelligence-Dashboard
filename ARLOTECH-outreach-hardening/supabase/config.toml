@@ -1,0 +1,7 @@
+project_id = "vfgaqyatzyrsdjdsejie"
+
+[functions.resend-inbound]
+verify_jwt = false
+
+[functions.resend-events]
+verify_jwt = false

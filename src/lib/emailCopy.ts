@@ -108,7 +108,7 @@ export function emailFindingTitle(finding: EmailFinding) {
   if (matchingCopy && finding.classification !== 'observed_visual') return matchingCopy.title
 
   const title = cleanCustomerText(finding.title ?? '')
-  return title && !containsEmailJargon(title)
+  return title && !containsEmailJargon(title) && !containsExternalAuditReference(title)
     ? title
     : 'A website detail may be harder for visitors to use'
 }
@@ -116,13 +116,18 @@ export function emailFindingTitle(finding: EmailFinding) {
 export function emailFindingImpact(finding: EmailFinding) {
   const searchText = findingSearchText(finding)
   const impact = cleanCustomerText(finding.why_it_matters || finding.explanation || '')
-  if (finding.classification === 'observed_visual' && impact && !containsEmailJargon(impact)) {
+  if (
+    finding.classification === 'observed_visual' &&
+    impact &&
+    !containsEmailJargon(impact) &&
+    !containsExternalAuditReference(impact)
+  ) {
     return impact
   }
   const matchingCopy = findingCopies.find(([pattern]) => pattern.test(searchText))?.[1]
   if (matchingCopy) return matchingCopy.impact
 
-  if (impact && !containsEmailJargon(impact)) return impact
+  if (impact && !containsEmailJargon(impact) && !containsExternalAuditReference(impact)) return impact
 
   if (/performance/i.test(finding.category ?? '')) {
     return 'A frustrating page experience may cause potential customers to leave before they contact you.'
