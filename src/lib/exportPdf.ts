@@ -692,9 +692,8 @@ function buildConsultantWebsiteAnalysisPdf(
   const contactInvitation =
     'Reply to the email that included this report if you would like to discuss a practical next step.'
   report.addWebsiteContactCard(businessImpactParagraph, contactInvitation, [
-    'Email: outreach@arlotech.com.ng',
+    'Email: info@arlotech.com.ng',
     'Website: arlotech.com.ng',
-    'Phone: +2348166419332',
   ])
 
   return {

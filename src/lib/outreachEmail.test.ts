@@ -106,19 +106,19 @@ describe('outreach eligibility and previews', () => {
     const preview = createOutreachPreview(prospect(), audit)
     expect(getOutreachSuitability(audit)).toBe('Good Opportunity')
     expect(preview.selected_finding?.id).toBe('unused-javascript')
-    expect(preview.body).toMatch(/extra website features may slow down taps and clicks/i)
-    expect(preview.body).toContain('especially on a phone')
-    expect(preview.body).toContain('Our review found')
+    expect(preview.body).toContain('It’s good to see that your website recorded positive performance results.')
+    expect(preview.body).toContain('One area worth reviewing is how additional website features may affect responsiveness, particularly on mobile devices.')
+    expect(preview.body).toContain('Delays can create friction for visitors trying to call, book, or request a quote.')
     expect(preview.body).not.toMatch(/23 KiB|50 ms|PageSpeed|Lighthouse|JavaScript|score/i)
     expect(preview.subject).toBe('A website idea for AmigoDev: faster page loading')
-    expect(preview.internal_note).toContain('Extra website features may slow down taps and clicks')
-    expect(preview.body).toContain('Arlotech Digital Solutions')
-    expect(preview.body).toContain('A focused change may address this issue without a full redesign.')
-    expect(preview.body).toContain('Your website review is attached.')
-    expect(preview.body).toContain('audit findings and our recommendations')
+    expect(preview.internal_note).toContain('How additional website features may affect responsiveness')
+    expect(preview.body).toContain('At Arlotech Digital Solutions, we help technology organizations such as AmigoDev identify and address website issues through practical improvements, without necessarily requiring a complete redesign.')
+    expect(preview.body).toContain('We’ve attached a concise PDF outlining our findings and recommendations.')
     expect(preview.body).not.toContain("what's working well")
+    expect(preview.body).not.toMatch(/\b(?:product|products|services?|customers?)\b/i)
     expect(`${preview.subject}\n${preview.body}`).not.toContain('-')
-    expect(preview.body).toContain("We'd value your feedback:")
+    expect(preview.body).toContain('Would this be something you’d consider improving?')
+    expect(preview.body).toContain('ARLOTECH DIGITAL SOLUTIONS\narlotech.com.ng')
     expect(preview.body).not.toMatch(/\b(?:AI|Gemini|weighted technical)\b/i)
     expect(preview.body).not.toMatch(/\b(I|me|my)\b/i)
     expect(preview.has_website_report).toBe(true)
@@ -127,7 +127,7 @@ describe('outreach eligibility and previews', () => {
     const emailWordCount = preview.body.slice(0, signatureStart).trim().split(/\s+/).length
     expect(emailWordCount).toBeGreaterThanOrEqual(70)
     expect(emailWordCount).toBeLessThanOrEqual(150)
-    expect(preview.internal_note).toContain('Extra website features may slow down taps and clicks')
+    expect(preview.internal_note).toContain('How additional website features may affect responsiveness')
     expect(() => validateOutreachPreview(preview, prospect(), audit)).not.toThrow()
   })
 
@@ -168,7 +168,7 @@ describe('outreach eligibility and previews', () => {
     })
     const preview = createOutreachPreview(prospect(), audit)
 
-    expect(preview.body).toMatch(/service details may be harder for some visitors to follow/i)
+    expect(preview.body).toMatch(/details may be harder for some visitors to follow/i)
     expect(preview.body).toContain('visitors may have a harder time scanning the page')
     expect(preview.body).not.toMatch(/<li>|<script>|<template>|screen reader|dequeuniversity|axe\/4\.14|invalid markup/i)
     expect(() => validateOutreachPreview(preview, prospect(), audit)).not.toThrow()
@@ -267,6 +267,7 @@ describe('outreach eligibility and previews', () => {
 
     expect(preview.body).toContain('plumbing and heating')
     expect(preview.body).not.toContain('product or service')
+    expect(preview.body).not.toMatch(/\b(?:products?|services?|customers?)\b/i)
   })
 
   it('rejects stale previews and edits that remove the evidence or company signature', () => {
@@ -275,11 +276,11 @@ describe('outreach eligibility and previews', () => {
     expect(() => validateOutreachPreview(preview, prospect(), { ...audit, id: 'analysis-2' })).toThrow('audit changed')
     expect(() => validateOutreachPreview({
       ...preview,
-      body: preview.body.replace(/extra website features may slow down taps and clicks/i, 'a 23 KiB JavaScript issue'),
+      body: preview.body.replace(/how additional website features may affect responsiveness, particularly on mobile devices/i, 'a 23 KiB JavaScript issue'),
     }, prospect(), audit)).toThrow('contains technical language')
     expect(() => validateOutreachPreview({
       ...preview,
-      body: preview.body.replace('Our review found', 'I found'),
+      body: preview.body.replace('At Arlotech Digital Solutions,', 'I found'),
     }, prospect(), audit))
       .toThrow('company voice')
     expect(() => validateOutreachPreview({ ...preview, subject: 'A quick hello, AmigoDev' }, prospect(), audit))

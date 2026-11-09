@@ -54,7 +54,7 @@ describe('professional email draft generation', () => {
     expect(result.body).not.toMatch(/94\/100|92\/100|91\/100|2\.1:1|Lighthouse|PageSpeed|score/i)
     expect(result.body).toContain("It's good to see")
     expect(result.body).toContain('A focused change may address this issue without a full redesign.')
-    expect(result.body).toContain('Your website review is attached. The concise PDF outlines the audit findings and our recommendations.')
+    expect(result.body).toContain('We’ve attached a concise PDF outlining our findings and recommendations.')
     expect(result.body).not.toContain("what's working well")
     const signatureStart = result.body.indexOf('\n\nKind regards,\n')
     const auditWordCount = result.body.slice(0, signatureStart).trim().split(/\s+/).length
@@ -93,8 +93,8 @@ describe('professional email draft generation', () => {
     expect(result.body).toContain('Ekundayo Christopher')
     expect(result.body).toContain('Lead Web Developer')
     expect(result.body).toContain('arlotech.com.ng')
-    expect(result.body).toContain('outreach@arlotech.com.ng')
-    expect(result.body).toContain('+2348166419332')
+    expect(result.body).toContain('info@arlotech.com.ng')
+    expect(result.body).not.toContain('+2348166419332')
     expect(result.body).toContain('Lagos, Nigeria')
   })
 
@@ -117,8 +117,8 @@ describe('professional email draft generation', () => {
     })
 
     expect(result.body).toContain('main page content takes too long to appear')
-    expect(result.body).toContain('A longer wait can frustrate potential customers')
-    expect(result.body).toContain('homeowners looking for plumbing help understand whether your offering fits what they need')
+    expect(result.body).toContain('A longer wait can frustrate someone looking for help')
+    expect(result.body).toContain('homeowners looking for plumbing help understand how your plumbing and heating teams can help')
     expect(result.body).not.toMatch(/4\.8 s|Lighthouse|PageSpeed|LCP|score|guarantee|increase revenue/i)
   })
 
@@ -138,7 +138,7 @@ describe('professional email draft generation', () => {
       }),
     })
 
-    expect(result.body).toMatch(/service details may be harder for some visitors to follow/i)
+    expect(result.body).toMatch(/details may be harder for some visitors to follow/i)
     expect(result.body).toContain('visitors may have a harder time scanning the page')
     expect(result.body).not.toMatch(/<li>|<script>|<template>|screen reader|dequeuniversity|axe\/4\.14|invalid markup/i)
   })
@@ -160,7 +160,7 @@ describe('professional email draft generation', () => {
     })
 
     expect(result.body.toLowerCase()).toContain('some links may be unclear to visitors')
-    expect(result.body).toContain('Clear link wording can make it easier to find services or contact information.')
+    expect(result.body).toContain('Clear wording can make it easier to find information or reach your team.')
     expect(result.body).not.toMatch(/dequeuniversity|axe\/4\.14|Learn how to make links accessible|discernible name|screen reader/i)
   })
 
@@ -325,7 +325,7 @@ describe('professional email draft generation', () => {
     })
 
     expect(result.body).toContain('The review did not identify a clear issue worth calling out')
-    expect(result.body).toContain('Your website review is attached.')
+    expect(result.body).toContain('We’ve attached a concise PDF outlining our findings and recommendations.')
     expect(validateProfessionalEmailDraft(
       result,
       prospect,
@@ -555,7 +555,7 @@ describe('specialized outreach message types', () => {
     })
     const editedDraft = {
       ...generated,
-      body: generated.body.replace(/Your website review is attached[^\n]*/, ''),
+      body: generated.body.replace(/We’ve attached a concise PDF[^\n]*/, ''),
     }
 
     expect(validateProfessionalEmailDraft(

@@ -50,8 +50,8 @@ export const DEFAULT_OUTREACH_SIGNATURE: OutreachSignature = {
   jobTitle: 'Lead Web Developer',
   businessName: 'Arlotech Digital Solutions',
   website: 'arlotech.com.ng',
-  email: 'outreach@arlotech.com.ng',
-  phone: '+2348166419332',
+  email: 'info@arlotech.com.ng',
+  phone: '',
   socialLinks: '',
   location: 'Lagos, Nigeria',
 }
@@ -181,7 +181,6 @@ function signoff(tone: OutreachTone, signature: OutreachSignature) {
     signature.businessName.trim() || 'Arlotech Digital Solutions',
     signature.website.trim(),
     signature.email.trim(),
-    signature.phone.trim(),
     signature.socialLinks.trim(),
     signature.location.trim(),
   ].filter(Boolean)
@@ -338,7 +337,7 @@ export function generateProfessionalEmailDraft(input: {
   lines.push('')
 
   if (includeReport && analysis && prospect.website) {
-    lines.push('Your website review is attached. The concise PDF outlines the audit findings and our recommendations.', '')
+    lines.push('We’ve attached a concise PDF outlining our findings and recommendations.', '')
   }
 
   const cta = followUpStage === 'final'
@@ -463,7 +462,7 @@ export function validateProfessionalEmailDraft(
     }
   }
   const hasReportToAttach = draft.includesReportReference && hasMatchingAnalysis && !!prospect.website
-  if (/your website review is attached|we have attached|please see the attached/i.test(draft.body) && !hasReportToAttach) {
+  if (/your website review is attached|we[’']ve attached a concise pdf|we have attached|please see the attached/i.test(draft.body) && !hasReportToAttach) {
     errors.push('The email says a website report is attached, but no matching review is available to include.')
   }
   if (draft.includesReportReference && !hasMatchingAnalysis) {
@@ -471,7 +470,7 @@ export function validateProfessionalEmailDraft(
   }
   if (
     draft.includesReportReference &&
-    !/your website review is attached.*audit findings and our recommendations/i.test(draft.body)
+    !/we[’']ve attached a concise pdf outlining our findings and recommendations|your website review is attached again.*audit findings and our recommendations/i.test(draft.body)
   ) {
     errors.push('Describe the attached review accurately and mention its findings and recommendations.')
   }

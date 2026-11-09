@@ -101,7 +101,7 @@ async function notifyUser(
 
   const publicKey = Deno.env.get('VAPID_PUBLIC_KEY')
   const privateKey = Deno.env.get('VAPID_PRIVATE_KEY')
-  const subject = Deno.env.get('VAPID_SUBJECT') || 'mailto:outreach@arlotech.com.ng'
+  const subject = Deno.env.get('VAPID_SUBJECT') || 'mailto:info@arlotech.com.ng'
   if (!publicKey || !privateKey) {
     console.error('Browser push is subscribed but VAPID server keys are missing.')
     throw new Error('Browser push is not configured on the server.')

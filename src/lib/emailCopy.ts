@@ -16,11 +16,11 @@ type FindingCopy = {
 const findingCopies: Array<[RegExp, FindingCopy]> = [
   [/largest-contentful-paint|\blcp\b/i, {
     title: 'The main page content takes too long to appear',
-    impact: 'A longer wait can frustrate potential customers looking for help before they see what you offer. If the main information takes too long to appear, they may return to search results and contact a business that responds sooner.',
+    impact: 'A longer wait can frustrate someone looking for help. If the main information takes too long to appear, they may return to search results and contact someone else.',
   }],
   [/total-blocking-time|\btbt\b|forced-reflow|interaction-to-next-paint|\binp\b/i, {
     title: 'Buttons and links may take a moment to respond',
-    impact: 'A delayed response can make a page feel unreliable, especially when someone is trying to use it on a phone. Visitors may struggle to open service details or reach the information they need before giving up.',
+    impact: 'A delayed response can make a page feel unreliable, especially on a phone. Visitors may struggle to open a page or find the information they need.',
   }],
   [/cumulative-layout-shift|\bcls\b/i, {
     title: 'Page content may move while it loads',
@@ -28,51 +28,51 @@ const findingCopies: Array<[RegExp, FindingCopy]> = [
   }],
   [/render.blocking/i, {
     title: 'The page may take a moment to show its content',
-    impact: 'Some visitors may first see a blank or unfinished page while its content is being prepared. A person comparing local providers may leave before finding your services or contact details.',
+    impact: 'Some visitors may first see a blank or unfinished page while its content is being prepared. They may leave before finding the information they need.',
   }],
   [/unused.javascript|reduce unused javascript/i, {
-    title: 'Extra website features may slow down taps and clicks',
-    impact: 'Extra page work can make taps and clicks feel delayed, especially on a phone. Someone trying to call, book, or request a quote may give up if the page does not respond when they expect it to.',
+    title: 'How additional website features may affect responsiveness, particularly on mobile devices',
+    impact: 'Delays can create friction for visitors trying to call, book, or request a quote.',
   }],
   [/unused.css|reduce unused css/i, {
     title: 'Parts of the page may take longer to look ready',
-    impact: 'If the page styling takes longer to settle, visitors may briefly see a cluttered or unfinished layout. That first impression can make a capable local business feel less dependable.',
+    impact: 'If the page styling takes longer to settle, visitors may briefly see a cluttered or unfinished layout. That first impression may not reflect the quality of your work.',
   }],
   [/image-alt|image.*alt|content-alt/i, {
     title: 'Some visitors may miss details shown in important images',
-    impact: 'Visitors who cannot see an image rely on its written description to understand what it shows. Without one, they may miss important service or trust information and feel less sure about contacting you.',
+    impact: 'Visitors who cannot see an image rely on its written description to understand what it shows. Without one, they may miss important details and feel less sure about getting in touch.',
   }],
   [/link-name|link.*name|discernible.*link/i, {
     title: 'Some links may be unclear to visitors',
-    impact: 'When a link does not clearly explain where it leads, visitors may be unsure what to expect. Clear link wording can make it easier to find services or contact information.',
+    impact: 'When a link does not clearly explain where it leads, visitors may be unsure what to expect. Clear wording can make it easier to find information or reach your team.',
   }],
   [/link-in-text-block|link.*text.*block|distinguishable.*link/i, {
     title: 'Some links may be difficult to spot within the text',
-    impact: 'When links look too similar to the surrounding text, visitors may overlook useful service or contact information. Making links easy to spot can help people find the next step.',
+    impact: 'When links look too similar to the surrounding text, visitors may overlook useful information. Making links easy to spot can help people find the next step.',
   }],
   [/color-contrast|low contrast|\bcontrast\b/i, {
     title: 'Some text may be difficult for visitors to read',
-    impact: 'Text that blends into its background is harder to read on a phone or in bright light. Visitors can miss service details, opening information, or the next step for getting in touch.',
+    impact: 'Text that blends into its background is harder to read on a phone or in bright light. Visitors can miss key details, opening times, or the next step for getting in touch.',
   }],
   [/server-response-time|document-request-latency|time-to-first-byte/i, {
     title: 'The website may take too long to start loading',
-    impact: 'Before any service details appear, a visitor is waiting for the website to begin loading. A long pause at that moment can send someone with an urgent need to another provider.',
+    impact: 'Visitors must wait for the website to begin loading before they can see any details. A long pause can send someone with an urgent need to another website.',
   }],
   [/font-display/i, {
     title: 'Some text may be slow to appear',
-    impact: 'If words are slow to appear or keep changing, visitors must wait to understand the page. That extra effort can make it harder to quickly find your services or contact details.',
+    impact: 'If words are slow to appear or keep changing, visitors must wait to understand the page. That extra effort can make it harder to find information or contact your team.',
   }],
   [/document-title|html-title|meta-description|content-meta|canonical|crawlable|robots\.txt/i, {
-    title: 'Nearby customers may have trouble finding this page in search',
-    impact: 'People searching for a nearby service may be less likely to recognize this page as the right result. A clear, relevant search listing helps them understand what you offer before they choose whom to contact.',
+    title: 'People nearby may have trouble finding this page in search',
+    impact: 'People searching nearby may be less likely to recognize this page as the right result. A clear, relevant search listing helps them understand what is available before they choose whom to contact.',
   }],
   [/content-h1|h1|heading/i, {
-    title: 'The page may not clearly explain what the business offers',
-    impact: 'A visitor should be able to tell quickly what the business does and who it serves. If the main message is unclear, someone comparing providers may leave before checking whether you can help.',
+    title: 'The page may not clearly explain what you do',
+    impact: 'Visitors should be able to tell quickly what you do and whom you help. If the main message is unclear, someone comparing options may leave before checking whether you can help.',
   }],
   [/\blists?\b|list-structure|listitem/i, {
-    title: 'Service details may be harder for some visitors to follow',
-    impact: 'When services or steps are not grouped clearly, visitors may have a harder time scanning the page or following it with reading tools. That can make it less clear how to choose a service or get in touch.',
+    title: 'Details may be harder for some visitors to follow',
+    impact: 'When information or steps are not grouped clearly, visitors may have a harder time scanning the page or following it with reading tools. That can make the next step less clear.',
   }],
 ]
 
@@ -130,10 +130,10 @@ export function emailFindingImpact(finding: EmailFinding) {
   if (impact && !containsEmailJargon(impact) && !containsExternalAuditReference(impact)) return impact
 
   if (/performance/i.test(finding.category ?? '')) {
-    return 'A frustrating page experience may cause potential customers to leave before they contact you.'
+    return 'A frustrating page experience may cause visitors to leave before they get in touch.'
   }
   if (/seo/i.test(finding.category ?? '')) {
-    return 'This may make it harder for people searching for your service to understand or find the page.'
+    return 'This may make it harder for people looking for you to understand or find the page.'
   }
   if (/accessibility/i.test(finding.category ?? '')) {
     return 'Some visitors may find it harder to get the information or help they came for.'

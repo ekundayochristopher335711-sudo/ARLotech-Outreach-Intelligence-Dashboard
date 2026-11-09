@@ -399,6 +399,7 @@ serve(async (req) => {
                     ? [{
                         filename: inlineLogo.filename,
                         content: inlineLogo.content,
+                        content_type: 'image/png',
                         content_id: 'arlotech-logo',
                       }]
                     : []),

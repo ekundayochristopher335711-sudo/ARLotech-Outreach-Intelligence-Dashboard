@@ -118,7 +118,7 @@ Generate a separate signing secret with at least 32 random bytes. Keep the same 
 ```sh
 node -e "console.log(require('node:crypto').randomBytes(32).toString('base64url'))"
 npx supabase secrets set OUTREACH_UNSUBSCRIBE_SECRET="paste-the-generated-value-here"
-npx supabase secrets set RESEND_API_KEY=re_your_key RESEND_FROM_EMAIL="ArloTech <outreach@yourdomain.com>" OUTREACH_REPLY_TO_EMAIL="replies@your-inbound-domain.com" OUTREACH_POSTAL_ADDRESS="Your business postal address"
+npx supabase secrets set RESEND_API_KEY=re_your_key RESEND_FROM_EMAIL="ArloTech <outreach@yourdomain.com>" OUTREACH_REPLY_TO_EMAIL="info@arlotech.com.ng" OUTREACH_POSTAL_ADDRESS="Your business postal address"
 npx supabase functions deploy unsubscribe
 npx supabase functions deploy send-outreach
 ```
@@ -165,12 +165,12 @@ npx web-push generate-vapid-keys
 Save the output securely and configure the **same pair** in both places:
 
 - Set `VITE_VAPID_PUBLIC_KEY` in the local `.env` and Vercel project environment.
-- Set `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, and `VAPID_SUBJECT` as Supabase Edge Function secrets. `VAPID_SUBJECT` should be a contact URI such as `mailto:outreach@arlotech.com.ng`. Never put the private key in Vite variables or source control.
+- Set `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, and `VAPID_SUBJECT` as Supabase Edge Function secrets. `VAPID_SUBJECT` should be a contact URI such as `mailto:info@arlotech.com.ng`. Never put the private key in Vite variables or source control.
 
 Set the server-side values using the key pair you generated:
 
 ```sh
-npx supabase secrets set VAPID_PUBLIC_KEY=your_public_key VAPID_PRIVATE_KEY=your_private_key VAPID_SUBJECT="mailto:outreach@arlotech.com.ng"
+npx supabase secrets set VAPID_PUBLIC_KEY=your_public_key VAPID_PRIVATE_KEY=your_private_key VAPID_SUBJECT="mailto:info@arlotech.com.ng"
 ```
 
 Apply the migrations, deploy the updated receiver, and rebuild the frontend after configuring the public key:

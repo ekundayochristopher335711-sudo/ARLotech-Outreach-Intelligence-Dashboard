@@ -9,6 +9,7 @@ import {
 } from '@/lib/emailCopy'
 import {
   feedbackRequest,
+  industryWebsiteImprovementLine,
   industryImpactLine,
   normalizedDraftIdentity,
   positiveWebsiteAcknowledgement,
@@ -217,13 +218,13 @@ export function createOutreachPreview(
   const name = prospect.business_name.trim() || 'your business'
   const greetingName = firstName(prospect.contact_name)
   const category = prospect.business_category?.trim()
-  const signOff = 'Kind regards,\nArlotech Digital Solutions'
+  const signOff = 'Kind regards,\nARLOTECH DIGITAL SOLUTIONS\narlotech.com.ng'
   if (!analysis || !hasMatchingWebsiteAnalysis(prospect, analysis)) {
     return {
       prospect_id: prospect.id,
       analysis_id: null,
       subject: removeDraftHyphens(`A quick website observation for ${name}`),
-      body: `Hi ${greetingName},\n\nArlotech Digital Solutions designs and improves business websites. We would be glad to discuss your goals for ${name}'s website.\n\nWould a short conversation be useful?\n\nKind regards,\nArlotech Digital Solutions`,
+      body: `Hi ${greetingName},\n\n${industryWebsiteImprovementLine(category, name)}\n\nWould a short conversation be useful?\n\n${signOff}`,
       has_website_report: false,
       suitability: 'Incomplete Audit',
       internal_note: 'No matching website review is available; this general draft is not based on site-specific findings.',
@@ -251,13 +252,17 @@ export function createOutreachPreview(
   const body = [
     `Hi ${greetingName},`,
     '',
-    positiveWebsiteAcknowledgement(name, category, positiveObservation),
-    `Our review found ${title.toLowerCase()}. ${impact}`,
-    ...(category ? [industryImpactLine(category, title)] : []),
+    (typeof analysis.category_scores?.performance === 'number' && analysis.category_scores.performance >= 90
+      ? 'It’s good to see that your website recorded positive performance results.'
+      : positiveWebsiteAcknowledgement(name, category, positiveObservation)),
+    `One area worth reviewing is ${title.charAt(0).toLowerCase()}${title.slice(1)}. ${impact}`,
+    ...(category && !/additional website features may affect responsiveness/i.test(title)
+      ? [industryImpactLine(category, title)]
+      : []),
     '',
-    'Arlotech Digital Solutions designs and improves business websites. A focused change may address this issue without a full redesign.',
+    industryWebsiteImprovementLine(category, name),
     '',
-    "Your website review is attached. The concise PDF outlines the audit findings and our recommendations.",
+    'We’ve attached a concise PDF outlining our findings and recommendations.',
     '',
     feedbackRequest(),
     '',
@@ -297,7 +302,7 @@ export function validateOutreachPreview(
     throw new Error('The email is missing the correct business name or single conversational question, or contains technical language.')
   }
   if (!analysis || !hasMatchingWebsiteAnalysis(prospect, analysis)) {
-    if (preview.has_website_report || /your website review is attached|attachment/i.test(preview.body)) {
+    if (preview.has_website_report || /we’ve attached a concise pdf|attachment/i.test(preview.body)) {
       throw new Error('A matching website audit is required before attaching a report.')
     }
     return
@@ -322,14 +327,14 @@ export function validateOutreachPreview(
     !normalizedDraftIdentity(preview.subject).includes(normalizedDraftIdentity(prospect.business_name)) ||
     /\b(I|me|my)\b/i.test(preview.body) ||
     !preview.body.includes('Arlotech Digital Solutions') ||
-    !/a focused change may address this issue without a full redesign/i.test(preview.body) ||
-    !/your website review is attached/i.test(preview.body) ||
+    !/practical improvements, without necessarily requiring a complete redesign/i.test(preview.body) ||
+    !/we’ve attached a concise pdf outlining our findings and recommendations/i.test(preview.body) ||
     containsEmailJargon(`${preview.subject}\n${preview.body}`) ||
     !normalizedDraftIdentity(preview.subject).includes(normalizedDraftIdentity(auditFindingEmailTopic(finding))) ||
     !normalizedDraftIdentity(preview.body).includes(normalizedDraftIdentity(title)) ||
     !normalizedDraftIdentity(preview.body).includes(normalizedDraftIdentity(impact)) ||
     containsExternalAuditReference(`${preview.subject}\n${preview.body}`) ||
-    !/we'd value your feedback:/i.test(preview.body) ||
+    !/would this be something you’d consider improving\?/i.test(preview.body) ||
     !/\b(?:are|is|do|does|would|could)\b[^?]*\?/i.test(preview.body)
   ) {
     throw new Error('The edited email no longer matches the audit evidence or ArloTech company voice.')

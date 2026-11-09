@@ -21,14 +21,6 @@ export function outreachEmailHtml(
 ) {
   const paragraphs = message.trim().split(/\n\s*\n/).map((paragraph) => {
     const text = paragraph.trim()
-    if (/attached (?:a short|the short) website review/i.test(text)) {
-      return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:4px 0 22px;background:#f0fdfa;border:1px solid #99f6e4;border-radius:8px">
-  <tr><td style="padding:17px 19px;border-left:4px solid #0f766e;border-radius:8px">
-    <div style="color:#0f766e;font:700 14px/1.45 Arial,Helvetica,sans-serif">Your website review is attached</div>
-    <div style="margin-top:5px;color:#475569;font:13px/1.65 Arial,Helvetica,sans-serif">A concise report with more detail is included as a PDF attachment to this email.</div>
-  </td></tr>
-</table>`
-    }
     return `<p style="margin:0 0 18px;color:#26364a;font:16px/1.75 Arial,Helvetica,sans-serif;white-space:pre-line">${escapeHtml(text)}</p>`
   }).join('')
 
@@ -40,17 +32,17 @@ export function outreachEmailHtml(
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f1f5f9;padding:28px 14px">
       <tr><td align="center">
         <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="width:100%;max-width:560px;background:#ffffff;border-collapse:separate;border-spacing:0;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden">
-          <tr><td style="background:#ffffff;padding:22px 28px;border-bottom:1px solid #e8edf2">
+          <tr><td style="background:#10243a;padding:22px 28px;border-bottom:1px solid #1e3a56">
             <table role="presentation" cellpadding="0" cellspacing="0" border="0">
               <tr>
             ${includeInlineLogo
-              ? '<td valign="middle" style="padding-right:10px"><img src="cid:arlotech-logo" width="36" height="24" alt="Arlotech" style="display:block;width:36px!important;height:24px!important;max-width:36px;max-height:24px;object-fit:contain;border:0"></td>'
+              ? '<td valign="middle" style="padding-right:10px"><img src="cid:arlotech-logo" width="36" height="36" alt="Arlotech" style="display:block;width:36px!important;height:36px!important;max-width:36px;max-height:36px;object-fit:contain;border:0"></td>'
               : ''}
                 <td valign="middle">
-                  <div style="color:#10243a;font:700 15px/1.3 Arial,Helvetica,sans-serif;letter-spacing:1.2px">ARLOTECH</div>
-                  <div style="margin-top:3px;color:#64748b;font:10px/1.4 Arial,Helvetica,sans-serif;letter-spacing:1.5px">DIGITAL SOLUTIONS</div>
+                  <div style="color:#ffffff;font:700 15px/1.3 Arial,Helvetica,sans-serif;letter-spacing:1.2px">ARLOTECH</div>
+                  <div style="margin-top:3px;color:#cbd5e1;font:10px/1.4 Arial,Helvetica,sans-serif;letter-spacing:1.5px">DIGITAL SOLUTIONS</div>
                   ${senderName.trim()
-                    ? `<div style="margin-top:6px;color:#475569;font:12px/1.4 Arial,Helvetica,sans-serif">Sent by ${escapeHtml(senderName.trim())}</div>`
+                    ? `<div style="margin-top:6px;color:#e2e8f0;font:12px/1.4 Arial,Helvetica,sans-serif">Sent by ${escapeHtml(senderName.trim())}</div>`
                     : ''}
                 </td>
               </tr>
@@ -60,7 +52,7 @@ export function outreachEmailHtml(
           <tr><td style="padding:26px 28px 14px">${paragraphs}</td></tr>
           <tr><td style="padding:0 28px 24px">
             <div style="border-top:1px solid #e8edf2;padding-top:14px;color:#64748b;font:12px/1.7 Arial,Helvetica,sans-serif">
-              <a href="${escapeHtml(unsubscribeUrl)}" style="color:#475569;text-decoration:underline">Unsubscribe</a><br>
+              <a href="${escapeHtml(unsubscribeUrl)}" style="display:inline-block;padding:9px 14px;border-radius:6px;background:#10243a;color:#ffffff;font:700 12px/1.2 Arial,Helvetica,sans-serif;text-decoration:none">Unsubscribe</a><br><br>
               <span style="color:#475569">${escapeHtml(postalAddress.trim())}</span>
             </div>
           </td></tr>

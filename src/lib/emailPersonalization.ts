@@ -1,17 +1,17 @@
 import { containsEmailJargon, containsExternalAuditReference } from '@/lib/emailCopy'
 
 const serviceCategories: Array<[RegExp, string]> = [
-  [/plumb|heating|hvac|electric|cleaning|maintenance|construction|builder|contractor/i, 'services'],
-  [/law|legal|solicitor|attorney/i, 'legal services'],
+  [/plumb|heating|hvac|electric|cleaning|maintenance|construction|builder|contractor/i, 'work'],
+  [/law|legal|solicitor|attorney/i, 'legal guidance'],
   [/restaurant|food|cafe|hospitality/i, 'menu and dining options'],
-  [/real estate|property|estate agent/i, 'property listings and related services'],
-  [/photograph|photo|creative|design/i, 'creative services'],
+  [/real estate|property|estate agent/i, 'property listings'],
+  [/photograph|photo|creative|design/i, 'creative work'],
 ]
 
 const audienceCategories: Array<[RegExp, string]> = [
   [/plumb/i, 'homeowners looking for plumbing help'],
   [/heating|hvac/i, 'people looking for heating or cooling support'],
-  [/electric/i, 'people looking for electrical services'],
+  [/electric/i, 'people looking for electrical help'],
   [/law|legal|solicitor|attorney/i, 'people seeking legal guidance'],
   [/restaurant|food|cafe|hospitality/i, 'people deciding where to eat'],
   [/real estate|property|estate agent/i, 'people comparing properties'],
@@ -22,6 +22,17 @@ const audienceCategories: Array<[RegExp, string]> = [
 
 function normalizedCategory(category?: string | null) {
   return category?.trim().replace(/\s+/g, ' ') || ''
+}
+
+function categoryTeam(category: string) {
+  if (/plumb|heating|hvac/i.test(category)) return 'plumbing and heating teams'
+  if (/law|legal|solicitor|attorney/i.test(category)) return 'law firms'
+  if (/restaurant|food|cafe|hospitality/i.test(category)) return 'restaurants'
+  if (/real estate|property|estate agent/i.test(category)) return 'real estate agencies'
+  if (/construction|builder|contractor/i.test(category)) return 'construction teams'
+  if (/cleaning/i.test(category)) return 'cleaning teams'
+  if (/photograph|photo|creative|design/i.test(category)) return 'creative teams'
+  return `${category.toLowerCase()} organizations`
 }
 
 export function removeDraftHyphens(value: string) {
@@ -52,23 +63,24 @@ export function prospectOffering(category?: string | null) {
   if (!value) return 'product or service'
   const serviceCategory = serviceCategories.find(([pattern]) => pattern.test(value))
   if (serviceCategory) {
-    if (/law|legal|solicitor|attorney/i.test(value)) return 'legal services'
+    if (/law|legal|solicitor|attorney/i.test(value)) return 'legal guidance'
     if (/restaurant|food|cafe|hospitality/i.test(value)) return 'menu and dining options'
-    if (/real estate|property|estate agent/i.test(value)) return 'property listings and related services'
-    if (/photograph|photo|creative|design/i.test(value)) return 'creative services'
-    return `${value.toLowerCase()} services`
+    if (/real estate|property|estate agent/i.test(value)) return 'property listings'
+    if (/photograph|photo|creative|design/i.test(value)) return 'creative work'
+    return `${value.toLowerCase()} work`
   }
-  return `${value.toLowerCase()} products or services`
+  return `${value.toLowerCase()} work`
 }
 
 export function prospectAudience(category?: string | null) {
   const value = normalizedCategory(category)
   if (!value) return 'people looking for your product or service'
   return audienceCategories.find(([pattern]) => pattern.test(value))?.[1] ??
-    `people interested in your ${value.toLowerCase()} business`
+    `people looking for ${value.toLowerCase()}`
 }
 
 export function industryImpactLine(category: string | null | undefined, findingTitle: string) {
+  const value = normalizedCategory(category)
   const audience = prospectAudience(category)
   if (/search|find|visibility/i.test(findingTitle)) {
     return `A clearer search listing may help ${audience} recognize that the page is relevant before deciding where to go next.`
@@ -79,7 +91,9 @@ export function industryImpactLine(category: string | null | undefined, findingT
   if (/load|respond|slow|movement/i.test(findingTitle)) {
     return `A smoother page may help ${audience} reach the information they need without unnecessary delay.`
   }
-  return `Clearer information can help ${audience} understand whether your offering fits what they need.`
+  return value
+    ? `Clearer information can help ${audience} understand how your ${categoryTeam(value)} can help.`
+    : `Clearer information can help people understand whether your product or service fits what they need.`
 }
 
 export function positiveWebsiteAcknowledgement(
@@ -96,10 +110,23 @@ export function positiveWebsiteAcknowledgement(
   ) {
     return `It's good to see that the review noted ${safeTitle.charAt(0).toLowerCase()}${safeTitle.slice(1)} on ${businessName}'s website.`
   }
+  const value = normalizedCategory(category)
+  if (value) {
+    return `It's good to see ${businessName}'s website is already available to people looking for ${value.toLowerCase()}.`
+  }
   const offering = prospectOffering(category)
   return `It's good to see ${businessName} has an online presence for its ${offering}.`
 }
 
+export function industryWebsiteImprovementLine(category?: string | null, businessName?: string) {
+  const value = normalizedCategory(category)
+  const namedBusiness = businessName?.trim()
+  if (!value) {
+    return `At Arlotech Digital Solutions, we help businesses${namedBusiness ? ` such as ${namedBusiness}` : ''} identify and address these issues through practical website improvements, without necessarily requiring a complete redesign.`
+  }
+  return `At Arlotech Digital Solutions, we help ${categoryTeam(value)}${namedBusiness ? ` such as ${namedBusiness}` : ''} identify and address website issues through practical improvements, without necessarily requiring a complete redesign.`
+}
+
 export function feedbackRequest() {
-  return "We'd value your feedback: is this worth addressing, or is another website goal more important?"
+  return 'Would this be something you’d consider improving?'
 }
