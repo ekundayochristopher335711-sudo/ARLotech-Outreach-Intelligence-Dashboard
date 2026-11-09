@@ -31,7 +31,7 @@ const findingCopies: Array<[RegExp, FindingCopy]> = [
     impact: 'Some visitors may first see a blank or unfinished page while its content is being prepared. They may leave before finding the information they need.',
   }],
   [/unused.javascript|reduce unused javascript/i, {
-    title: 'How additional website features may affect responsiveness, particularly on mobile devices',
+    title: 'Additional website features may affect responsiveness, particularly on mobile devices',
     impact: 'Delays can create friction for visitors trying to call, book, or request a quote.',
   }],
   [/unused.css|reduce unused css/i, {

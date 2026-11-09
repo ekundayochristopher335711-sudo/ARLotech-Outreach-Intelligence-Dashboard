@@ -306,7 +306,7 @@ export function generateProfessionalEmailDraft(input: {
   if (selectedObservations.length) {
     if (inlineReportSummary) {
       lines.push(
-        `Website review snapshot\nFinding: ${selectedObservations[0].title}\nWhy it matters: ${selectedObservations[0].why}`,
+        `The review highlighted that ${selectedObservations[0].title.charAt(0).toLowerCase()}${selectedObservations[0].title.slice(1)}. ${selectedObservations[0].why}`,
         feedbackRequest(),
       )
     } else {

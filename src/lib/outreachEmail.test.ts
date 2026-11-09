@@ -108,13 +108,14 @@ describe('outreach eligibility and previews', () => {
     expect(preview.selected_finding?.id).toBe('unused-javascript')
     expect(preview.body).toContain("A review of AmigoDev's website highlighted one area that may be worth a closer look.")
     expect(preview.body).not.toMatch(/good to see|positive performance results/i)
-    expect(preview.body).toContain('Website review snapshot\nFinding: How additional website features may affect responsiveness, particularly on mobile devices')
-    expect(preview.body).toContain('Why it matters: Delays can create friction for visitors trying to call, book, or request a quote.')
+    expect(preview.body).toContain('The review highlighted that additional website features may affect responsiveness, particularly on mobile devices.')
+    expect(preview.body).toContain('Delays can create friction for visitors trying to call, book, or request a quote.')
+    expect(preview.body).not.toMatch(/Website review snapshot|Finding:|Why it matters:/)
     expect(preview.body.indexOf('Would you be open to discussing what might work best for your website?'))
       .toBeLessThan(preview.body.indexOf('The attached PDF'))
     expect(preview.body).not.toMatch(/23 KiB|50 ms|PageSpeed|Lighthouse|JavaScript|score/i)
     expect(preview.subject).toBe('A website idea for AmigoDev: faster page loading')
-    expect(preview.internal_note).toContain('How additional website features may affect responsiveness')
+    expect(preview.internal_note).toContain('Additional website features may affect responsiveness')
     expect(preview.body).toContain('Arlotech Digital Solutions designs and builds new websites, and improves existing ones with focused updates.')
     expect(preview.body).toContain('The attached PDF contains the website review and practical recommendations.')
     expect(preview.body).not.toContain("what's working well")
@@ -130,7 +131,7 @@ describe('outreach eligibility and previews', () => {
     const emailWordCount = preview.body.slice(0, signatureStart).trim().split(/\s+/).length
     expect(emailWordCount).toBeGreaterThanOrEqual(70)
     expect(emailWordCount).toBeLessThanOrEqual(150)
-    expect(preview.internal_note).toContain('How additional website features may affect responsiveness')
+    expect(preview.internal_note).toContain('Additional website features may affect responsiveness')
     expect(() => validateOutreachPreview(preview, prospect(), audit)).not.toThrow()
   })
 
@@ -174,7 +175,7 @@ describe('outreach eligibility and previews', () => {
     })
     const preview = createOutreachPreview(plumbingProspect, audit)
 
-    expect(preview.body).toContain('Some visitors may miss details shown in important images')
+    expect(preview.body).toContain('The review highlighted that some visitors may miss details shown in important images.')
     expect(preview.body).toContain('For a plumbing and heating business, descriptions on relevant installation or project photos')
     expect(preview.body).toContain('people looking for plumbing or heating support')
     expect(preview.body).not.toMatch(/boiler|specific installation|your image shows/i)
@@ -307,7 +308,7 @@ describe('outreach eligibility and previews', () => {
     expect(() => validateOutreachPreview(preview, prospect(), { ...audit, id: 'analysis-2' })).toThrow('audit changed')
     expect(() => validateOutreachPreview({
       ...preview,
-      body: preview.body.replace(/how additional website features may affect responsiveness, particularly on mobile devices/i, 'a 23 KiB JavaScript issue'),
+      body: preview.body.replace(/additional website features may affect responsiveness, particularly on mobile devices/i, 'a 23 KiB JavaScript issue'),
     }, prospect(), audit)).toThrow('contains technical language')
     expect(() => validateOutreachPreview({
       ...preview,

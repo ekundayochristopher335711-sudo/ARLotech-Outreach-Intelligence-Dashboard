@@ -249,7 +249,7 @@ export function createOutreachPreview(
     `Hi ${greetingName},`,
     '',
     `A review of ${name}'s website highlighted one area that may be worth a closer look.`,
-    `Website review snapshot\nFinding: ${title}\nWhy it matters: ${impact}`,
+    `The review highlighted that ${title.charAt(0).toLowerCase()}${title.slice(1)}. ${impact}`,
     feedbackRequest(),
     ...(category &&
       !/additional website features may affect responsiveness|important images/i.test(title)
@@ -327,7 +327,7 @@ export function validateOutreachPreview(
     !normalizedDraftIdentity(preview.subject).includes(normalizedDraftIdentity(auditFindingEmailTopic(finding))) ||
     !normalizedDraftIdentity(preview.body).includes(normalizedDraftIdentity(title)) ||
     !normalizedDraftIdentity(preview.body).includes(normalizedDraftIdentity(impact)) ||
-    !/website review snapshot\s*\n\s*finding:/i.test(preview.body) ||
+    /website review snapshot|finding:|why it matters:/i.test(preview.body) ||
     preview.body.indexOf('Would you be open to discussing what might work best for your website?') >
       preview.body.indexOf('The attached PDF') ||
     containsExternalAuditReference(`${preview.subject}\n${preview.body}`) ||
