@@ -34,6 +34,7 @@ const WebsiteIntelligencePage = lazy(() => import('@/pages/WebsiteIntelligence')
 const AnalyticsDashboard = lazy(() => import('@/pages/Analytics').then((module) => ({ default: module.AnalyticsDashboard })))
 const GrowthCenterPage = lazy(() => import('@/pages/GrowthCenter').then((module) => ({ default: module.GrowthCenterPage })))
 const SettingsPage = lazy(() => import('@/pages/Settings').then((module) => ({ default: module.SettingsPage })))
+const UnsubscribePage = lazy(() => import('@/pages/Unsubscribe').then((module) => ({ default: module.UnsubscribePage })))
 
 function PageLoading() {
   const blacksite = (() => { try { return localStorage.getItem('arlotech-login-mode') === 'blacksite' } catch { return false } })()
@@ -201,6 +202,14 @@ export default function App() {
     <AuthProvider>
       <BrowserRouter>
         <Routes>
+          <Route
+            path="/unsubscribe"
+            element={
+              <Suspense fallback={<PageLoading />}>
+                <UnsubscribePage />
+              </Suspense>
+            }
+          />
           <Route
             path="/login"
             element={

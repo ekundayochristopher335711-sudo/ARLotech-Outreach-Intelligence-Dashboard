@@ -1,10 +1,18 @@
 import { describe, expect, it } from 'vitest'
-import { createUnsubscribeToken, verifyUnsubscribeToken } from './unsubscribe'
+import {
+  createUnsubscribeToken,
+  UNSUBSCRIBE_CONFIRMATION_URL,
+  verifyUnsubscribeToken,
+} from './unsubscribe'
 
 const userId = 'c5b932f4-4f34-4e42-9c5e-e4d7f0c05c33'
 const secret = 'a-secure-random-test-secret-with-at-least-32-characters'
 
 describe('unsubscribe token', () => {
+  it('uses the public confirmation route for browser unsubscribe links', () => {
+    expect(UNSUBSCRIBE_CONFIRMATION_URL).toBe('https://aoid.vercel.app/unsubscribe')
+  })
+
   it('signs and verifies an account-scoped normalized recipient', async () => {
     const token = await createUnsubscribeToken(userId, ' Person@Example.com ', secret)
     expect(token).not.toContain('person@example.com')

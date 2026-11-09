@@ -1,6 +1,9 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-import { verifyUnsubscribeToken } from '../_shared/unsubscribe.ts'
+import {
+  UNSUBSCRIBE_CONFIRMATION_URL,
+  verifyUnsubscribeToken,
+} from '../_shared/unsubscribe.ts'
 
 const securityHeaders = {
   'Cache-Control': 'no-store',
@@ -38,12 +41,12 @@ serve(async (request) => {
   if (!token || token.length > 4096) return errorResponse('This unsubscribe link is invalid.')
 
   if (request.method === 'GET') {
-    const action = `/functions/v1/unsubscribe?token=${encodeURIComponent(token)}`
-    return page(
-      'Confirm unsubscribe',
-      'Select below to stop receiving outreach emails from Arlotech Digital Solutions.',
-      `<form method="post" action="${action}"><button type="submit" name="confirm" value="unsubscribe">Unsubscribe</button></form>`,
-    )
+    const confirmationUrl = new URL(UNSUBSCRIBE_CONFIRMATION_URL)
+    confirmationUrl.searchParams.set('token', token)
+    return new Response(null, {
+      status: 303,
+      headers: { ...securityHeaders, Location: confirmationUrl.toString() },
+    })
   }
 
   const contentType = request.headers.get('content-type')?.split(';')[0].trim().toLowerCase()

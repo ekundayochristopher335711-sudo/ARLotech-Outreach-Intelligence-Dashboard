@@ -1,7 +1,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { outreachEmailHtml, sentEmailBody } from '../_shared/outreachEmailTemplate.ts'
-import { createUnsubscribeToken } from '../_shared/unsubscribe.ts'
+import { createUnsubscribeToken, UNSUBSCRIBE_CONFIRMATION_URL } from '../_shared/unsubscribe.ts'
 import { formatSenderAddress, hasActionableWebsiteFinding, resolveReplyToAddress } from './eligibility.ts'
 
 const corsHeaders = {
@@ -370,9 +370,11 @@ serve(async (req) => {
       }
 
       const unsubscribeToken = await createUnsubscribeToken(userId, recipient, unsubscribeSecret)
-      const unsubscribeUrl = new URL('/functions/v1/unsubscribe', supabaseUrl)
-      unsubscribeUrl.searchParams.set('token', unsubscribeToken)
-      const unsubscribeLink = unsubscribeUrl.toString()
+      const unsubscribePageUrl = new URL(UNSUBSCRIBE_CONFIRMATION_URL)
+      unsubscribePageUrl.searchParams.set('token', unsubscribeToken)
+      const unsubscribeLink = unsubscribePageUrl.toString()
+      const oneClickUnsubscribeUrl = new URL('/functions/v1/unsubscribe', supabaseUrl)
+      oneClickUnsubscribeUrl.searchParams.set('token', unsubscribeToken)
       const sentBody = sentEmailBody(email.body, postalAddress, unsubscribeLink)
       const resendResponse = await fetch('https://api.resend.com/emails', {
         method: 'POST',
@@ -387,7 +389,7 @@ serve(async (req) => {
           to: [recipient],
           subject: email.subject.trim(),
           headers: {
-            'List-Unsubscribe': `<${unsubscribeLink}>`,
+            'List-Unsubscribe': `<${oneClickUnsubscribeUrl.toString()}>`,
             'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
           },
           text: sentBody,

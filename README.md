@@ -123,7 +123,7 @@ npx supabase functions deploy unsubscribe
 npx supabase functions deploy send-outreach
 ```
 
-The unsubscribe endpoint verifies signed, recipient-specific links and records the recipient in the sending account's suppression list. Opening the link shows a confirmation page; it does not unsubscribe until the recipient confirms. Email clients that support one-click unsubscribe can submit the signed link directly. The Edge Function uses Supabase's server-side `SUPABASE_SERVICE_ROLE_KEY`; never expose that key to the browser. Do not rotate `OUTREACH_UNSUBSCRIBE_SECRET` casually, because doing so invalidates links already sent.
+The unsubscribe endpoint verifies signed, recipient-specific links and records the recipient in the sending account's suppression list. Browser links open the public `https://aoid.vercel.app/unsubscribe` confirmation page and do not unsubscribe until the recipient confirms. Email clients that support one-click unsubscribe submit the signed link directly to the Supabase endpoint. The Edge Function uses Supabase's server-side `SUPABASE_SERVICE_ROLE_KEY`; never expose that key to the browser. Do not rotate `OUTREACH_UNSUBSCRIBE_SECRET` casually, because doing so invalidates links already sent.
 
 `OUTREACH_REPLY_TO_EMAIL` is added to new messages as their reply address. If it is not set, replies go to the email address in `RESEND_FROM_EMAIL`.
 
