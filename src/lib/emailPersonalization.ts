@@ -1,4 +1,8 @@
-import { containsEmailJargon, containsExternalAuditReference } from '@/lib/emailCopy'
+import {
+  containsEmailJargon,
+  containsExternalAuditReference,
+  emailFindingImpact,
+} from '@/lib/emailCopy'
 
 const serviceCategories: Array<[RegExp, string]> = [
   [/plumb|heating|hvac|electric|cleaning|maintenance|construction|builder|contractor/i, 'work'],
@@ -60,7 +64,7 @@ export function normalizedDraftIdentity(value: string) {
 
 export function prospectOffering(category?: string | null) {
   const value = normalizedCategory(category)
-  if (!value) return 'product or service'
+  if (!value) return 'work'
   const serviceCategory = serviceCategories.find(([pattern]) => pattern.test(value))
   if (serviceCategory) {
     if (/law|legal|solicitor|attorney/i.test(value)) return 'legal guidance'
@@ -74,9 +78,36 @@ export function prospectOffering(category?: string | null) {
 
 export function prospectAudience(category?: string | null) {
   const value = normalizedCategory(category)
-  if (!value) return 'people looking for your product or service'
+  if (!value) return 'people looking for your business'
+  if (/plumb|heating|hvac/i.test(value)) return 'people looking for plumbing or heating support'
   return audienceCategories.find(([pattern]) => pattern.test(value))?.[1] ??
     `people looking for ${value.toLowerCase()}`
+}
+
+export function personalizedEmailFindingImpact(
+  finding: Parameters<typeof emailFindingImpact>[0],
+  category?: string | null,
+) {
+  const searchText = `${finding.audit_id ?? ''} ${finding.id ?? ''} ${finding.title ?? ''}`
+  if (!/image-alt|image.*alt|content-alt/i.test(searchText)) return emailFindingImpact(finding)
+
+  const value = normalizedCategory(category)
+  if (!value) {
+    return 'Visitors who use screen readers rely on written descriptions to understand meaningful images. When a photo shows your work or services, a short description can help explain what it shows.'
+  }
+
+  const imageExample = /plumb|heating|hvac|electric|construction|builder|contractor/i.test(value)
+    ? 'relevant installation or project photos'
+    : /restaurant|food|cafe|hospitality/i.test(value)
+      ? 'relevant food or dining photos'
+      : /real estate|property|estate agent/i.test(value)
+        ? 'relevant property photos'
+        : /law|legal|solicitor|attorney/i.test(value)
+          ? 'relevant team or office photos'
+          : /photograph|photo|creative|design/i.test(value)
+            ? 'relevant portfolio photos'
+            : 'relevant images of your work'
+  return `Visitors who use screen readers rely on written descriptions to understand meaningful images. For a ${value.toLowerCase()} business, descriptions on ${imageExample} can help ${prospectAudience(value)} understand what the images show.`
 }
 
 export function industryImpactLine(category: string | null | undefined, findingTitle: string) {
@@ -93,7 +124,7 @@ export function industryImpactLine(category: string | null | undefined, findingT
   }
   return value
     ? `Clearer information can help ${audience} understand how your ${categoryTeam(value)} can help.`
-    : `Clearer information can help people understand whether your product or service fits what they need.`
+    : 'Clearer information can help people understand what your business offers and whether it fits what they need.'
 }
 
 export function positiveWebsiteAcknowledgement(
@@ -118,15 +149,10 @@ export function positiveWebsiteAcknowledgement(
   return `It's good to see ${businessName} has an online presence for its ${offering}.`
 }
 
-export function industryWebsiteImprovementLine(category?: string | null, businessName?: string) {
-  const value = normalizedCategory(category)
-  const namedBusiness = businessName?.trim()
-  if (!value) {
-    return `At Arlotech Digital Solutions, we help businesses${namedBusiness ? ` such as ${namedBusiness}` : ''} identify and address these issues through practical website improvements, without necessarily requiring a complete redesign.`
-  }
-  return `At Arlotech Digital Solutions, we help ${categoryTeam(value)}${namedBusiness ? ` such as ${namedBusiness}` : ''} identify and address website issues through practical improvements, without necessarily requiring a complete redesign.`
+export function industryWebsiteImprovementLine() {
+  return 'Arlotech Digital Solutions designs and builds new websites, and improves existing ones with focused updates.'
 }
 
 export function feedbackRequest() {
-  return 'Would this be something you’d consider improving?'
+  return 'Would you be open to discussing what might work best for your website?'
 }

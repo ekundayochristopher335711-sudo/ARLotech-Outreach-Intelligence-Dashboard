@@ -52,12 +52,13 @@ describe('professional email draft generation', () => {
     expect(result.body).toMatch(/some text may be difficult for visitors to read/i)
     expect(result.body).toContain('Website review snapshot')
     expect(result.body).toContain('Finding: Some text may be difficult for visitors to read')
-    expect(result.body.indexOf('Would this be something you’d consider improving?'))
-      .toBeLessThan(result.body.indexOf('We’ve attached a concise PDF'))
+    expect(result.body.indexOf('Would you be open to discussing what might work best for your website?'))
+      .toBeLessThan(result.body.indexOf('The attached PDF'))
     expect(result.body).not.toMatch(/94\/100|92\/100|91\/100|2\.1:1|Lighthouse|PageSpeed|score/i)
-    expect(result.body).toContain("It's good to see")
-    expect(result.body).toContain('A focused change may address this issue without a full redesign.')
-    expect(result.body).toContain('We’ve attached a concise PDF outlining our findings and recommendations.')
+    expect(result.body).toContain("A review of AK Plumbing and Heating's website highlighted one area that may be worth a closer look.")
+    expect(result.body).toContain('Arlotech Digital Solutions designs and builds new websites, and improves existing ones with focused updates.')
+    expect(result.body).toContain('The attached PDF contains the website review and practical recommendations.')
+    expect(result.body).not.toMatch(/it.s good to see|full redesign/i)
     expect(result.body).not.toContain("what's working well")
     const signatureStart = result.body.indexOf('\n\nKind regards,\n')
     const auditWordCount = result.body.slice(0, signatureStart).trim().split(/\s+/).length
@@ -72,7 +73,7 @@ describe('professional email draft generation', () => {
     expect(result.observationsUsed).toHaveLength(1)
   })
 
-  it('uses the verified positive observation and the complete default sender signature', () => {
+  it('does not open with an unrelated positive observation and includes the default sender signature', () => {
     const result = generateProfessionalEmailDraft({
       prospect,
       includeReport: true,
@@ -92,7 +93,8 @@ describe('professional email draft generation', () => {
       }),
     })
 
-    expect(result.body).toContain("It's good to see that the review noted the business phone number is easy to find on AK Plumbing and Heating's website.")
+    expect(result.body).toContain("A review of AK Plumbing and Heating's website highlighted one area that may be worth a closer look.")
+    expect(result.body).not.toContain('business phone number is easy to find')
     expect(result.body).toContain('Ekundayo Christopher')
     expect(result.body).toContain('Lead Web Developer')
     expect(result.body).toContain('arlotech.com.ng')
@@ -121,8 +123,36 @@ describe('professional email draft generation', () => {
 
     expect(result.body).toContain('main page content takes too long to appear')
     expect(result.body).toContain('A longer wait can frustrate someone looking for help')
-    expect(result.body).toContain('homeowners looking for plumbing help understand how your plumbing and heating teams can help')
+    expect(result.body).toContain('people looking for plumbing or heating support')
     expect(result.body).not.toMatch(/4\.8 s|Lighthouse|PageSpeed|LCP|score|guarantee|increase revenue/i)
+  })
+
+  it('personalizes image-description findings to the prospect category without inventing image details', () => {
+    const result = generateProfessionalEmailDraft({
+      prospect,
+      includeReport: true,
+      analysis: analysis({
+        findings: [{
+          id: 'image-alt',
+          audit_id: 'image-alt',
+          source: 'html_inspection',
+          classification: 'observed_issue',
+          title: 'Some images are missing alternative text',
+          evidence: 'Some images have no text descriptions.',
+        }],
+      }),
+    })
+
+    expect(result.body).toContain('For a plumbing and heating business, descriptions on relevant installation or project photos')
+    expect(result.body).toContain('people looking for plumbing or heating support')
+    expect(result.body).not.toMatch(/boiler|specific installation|your image shows/i)
+    expect(result.body).toContain('The attached PDF contains the website review and practical recommendations.')
+    expect(validateProfessionalEmailDraft(
+      result,
+      prospect,
+      true,
+      result.subjectSuggestions[0],
+    ).errors).toEqual([])
   })
 
   it('rewrites technical list-structure findings without exposing audit details', () => {
@@ -244,7 +274,7 @@ describe('professional email draft generation', () => {
 
     expect(result.body).toContain('mobile navigation overlaps the page heading')
     expect(result.body).toContain('Visitors may have difficulty reading the page heading.')
-    expect(result.body).toContain('A focused change may address this issue without a full redesign.')
+    expect(result.body).toContain('designs and builds new websites, and improves existing ones with focused updates')
     expect(result.body).not.toContain('In the saved mobile screenshot')
     expect(result.observationsUsed).toHaveLength(1)
   })
@@ -254,7 +284,7 @@ describe('professional email draft generation', () => {
 
     expect(result.body).toContain('We have not reviewed the site in enough detail')
     expect(result.body).toContain('plumbing and heating businesses')
-    expect(result.body).toContain('share a couple of ideas based on your goals')
+    expect(result.body).toContain('We would be glad to discuss your website goals and any updates you may be considering.')
     expect(result.body).not.toMatch(/attached|PageSpeed|Lighthouse|score|broken|defect|4\.8 s/i)
     expect(result.includesReportReference).toBe(false)
     expect(result.observationsUsed).toEqual([])
@@ -328,7 +358,7 @@ describe('professional email draft generation', () => {
     })
 
     expect(result.body).toContain('The review did not identify a clear issue worth calling out')
-    expect(result.body).toContain('We’ve attached a concise PDF outlining our findings and recommendations.')
+    expect(result.body).toContain('The attached PDF contains the website review and practical recommendations.')
     expect(validateProfessionalEmailDraft(
       result,
       prospect,
@@ -358,7 +388,7 @@ describe('professional email draft generation', () => {
     expect(() => generateProfessionalEmailDraft({
       prospect: { ...uncategorizedProspect, website: null },
     })).toThrow('Add a website link')
-    expect(websiteDraft.body).toContain('its product or service')
+    expect(websiteDraft.body).toContain('designs and builds new websites, and improves existing ones with focused updates')
     expect(websiteDraft.body).not.toMatch(/plumbing|heating|electrician|contractor/i)
   })
 
@@ -383,7 +413,7 @@ describe('professional email draft generation', () => {
       draft.subjectSuggestions[0],
     )
 
-    expect(draft.body).toContain('its product or service')
+    expect(draft.body).toContain('designs and builds new websites, and improves existing ones with focused updates')
     expect(validation.errors).toEqual([])
   })
 
@@ -454,7 +484,7 @@ describe('professional email draft generation', () => {
     expect(result.body).not.toContain('an individual accessibility check failed')
     expect(result.body).not.toContain('your website failed accessibility')
     expect(result.body).not.toContain('overall accessibility score')
-    expect(result.body).toContain('A focused change may address this issue without a full redesign.')
+    expect(result.body).toContain('designs and builds new websites, and improves existing ones with focused updates')
   })
 
   it('builds a contextual follow-up without claiming a previous conversation happened', () => {
@@ -487,8 +517,8 @@ describe('professional email draft generation', () => {
       true,
     )
 
-    expect(result.body).toContain('Your website review is attached again.')
-    expect(result.body).toContain('audit findings and our recommendations')
+    expect(result.body).toContain('The website review PDF is attached again')
+    expect(result.body).toContain('findings and practical recommendations')
   })
 
   it('supports direct edits through focused rewrite actions', () => {
@@ -524,7 +554,8 @@ describe('specialized outreach message types', () => {
     expect(result.body).toContain('briefly introduce Arlotech Digital Solutions')
     expect(result.body).toContain('couple of ideas for your online presence')
     expect(result.body).not.toContain('focused change may address this issue')
-    expect(result.body).toContain('share a couple of ideas based on your goals')
+    expect(result.body).toContain('designs and builds new websites, and improves existing ones with focused updates')
+    expect(result.body).not.toContain('share a couple of ideas based on your goals')
     expect(result.body).not.toMatch(/If this is not relevant|will not follow up/i)
     expect(result.observationsUsed).toEqual([])
   })
@@ -558,7 +589,7 @@ describe('specialized outreach message types', () => {
     })
     const editedDraft = {
       ...generated,
-      body: generated.body.replace(/We’ve attached a concise PDF[^\n]*/, ''),
+      body: generated.body.replace(/The attached PDF[^\n]*/, ''),
     }
 
     expect(validateProfessionalEmailDraft(

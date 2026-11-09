@@ -106,20 +106,21 @@ describe('outreach eligibility and previews', () => {
     const preview = createOutreachPreview(prospect(), audit)
     expect(getOutreachSuitability(audit)).toBe('Good Opportunity')
     expect(preview.selected_finding?.id).toBe('unused-javascript')
-    expect(preview.body).toContain('It’s good to see that your website recorded positive performance results.')
+    expect(preview.body).toContain("A review of AmigoDev's website highlighted one area that may be worth a closer look.")
+    expect(preview.body).not.toMatch(/good to see|positive performance results/i)
     expect(preview.body).toContain('Website review snapshot\nFinding: How additional website features may affect responsiveness, particularly on mobile devices')
     expect(preview.body).toContain('Why it matters: Delays can create friction for visitors trying to call, book, or request a quote.')
-    expect(preview.body.indexOf('Would this be something you’d consider improving?'))
-      .toBeLessThan(preview.body.indexOf('We’ve attached a concise PDF'))
+    expect(preview.body.indexOf('Would you be open to discussing what might work best for your website?'))
+      .toBeLessThan(preview.body.indexOf('The attached PDF'))
     expect(preview.body).not.toMatch(/23 KiB|50 ms|PageSpeed|Lighthouse|JavaScript|score/i)
     expect(preview.subject).toBe('A website idea for AmigoDev: faster page loading')
     expect(preview.internal_note).toContain('How additional website features may affect responsiveness')
-    expect(preview.body).toContain('At Arlotech Digital Solutions, we help technology organizations such as AmigoDev identify and address website issues through practical improvements, without necessarily requiring a complete redesign.')
-    expect(preview.body).toContain('We’ve attached a concise PDF outlining our findings and recommendations.')
+    expect(preview.body).toContain('Arlotech Digital Solutions designs and builds new websites, and improves existing ones with focused updates.')
+    expect(preview.body).toContain('The attached PDF contains the website review and practical recommendations.')
     expect(preview.body).not.toContain("what's working well")
     expect(preview.body).not.toMatch(/\b(?:product|products|services?|customers?)\b/i)
     expect(`${preview.subject}\n${preview.body}`).not.toContain('-')
-    expect(preview.body).toContain('Would this be something you’d consider improving?')
+    expect(preview.body).toContain('Would you be open to discussing what might work best for your website?')
     expect(preview.body).toContain('ARLOTECH DIGITAL SOLUTIONS\narlotech.com.ng')
     expect(preview.body).not.toMatch(/\b(?:AI|Gemini|weighted technical)\b/i)
     expect(preview.body).not.toMatch(/\b(I|me|my)\b/i)
@@ -151,6 +152,34 @@ describe('outreach eligibility and previews', () => {
     expect(preview.body).toMatch(/some text may be difficult for visitors to read/i)
     expect(preview.body).not.toMatch(/2\.1:1|#777|#fff/i)
     expect(() => validateOutreachPreview(preview, prospect(), audit)).not.toThrow()
+  })
+
+  it('uses the prospect industry to make an image-description finding concrete without inventing a specific image', () => {
+    const plumbingProspect = {
+      ...prospect(),
+      business_category: 'Plumbing and Heating',
+    }
+    const audit = analysis({
+      findings: [{
+        id: 'image-alt',
+        audit_id: 'image-alt',
+        source: 'lighthouse',
+        classification: 'verified_issue',
+        verified: true,
+        title: 'Image elements do not have alt attributes',
+        evidence: 'Some images are missing alternative text.',
+        priority: 'high',
+      }],
+      ai_analysis: { audit_completeness: { status: 'complete' }, optimization_opportunities: [] },
+    })
+    const preview = createOutreachPreview(plumbingProspect, audit)
+
+    expect(preview.body).toContain('Some visitors may miss details shown in important images')
+    expect(preview.body).toContain('For a plumbing and heating business, descriptions on relevant installation or project photos')
+    expect(preview.body).toContain('people looking for plumbing or heating support')
+    expect(preview.body).not.toMatch(/boiler|specific installation|your image shows/i)
+    expect(preview.body).toContain('The attached PDF contains the website review and practical recommendations.')
+    expect(() => validateOutreachPreview(preview, plumbingProspect, audit)).not.toThrow()
   })
 
   it('rewrites technical list-structure findings in plain customer language', () => {
@@ -263,11 +292,11 @@ describe('outreach eligibility and previews', () => {
     expect(() => validateOutreachPreview(websitePreview, uncategorizedLead)).not.toThrow()
   })
 
-  it('uses the supplied category instead of generic product or service wording', () => {
+  it('uses the same broad company service description across prospect categories', () => {
     const categorizedLead = { ...prospect(), business_category: 'Plumbing and Heating' }
     const preview = createOutreachPreview(categorizedLead, analysis())
 
-    expect(preview.body).toContain('plumbing and heating')
+    expect(preview.body).toContain('designs and builds new websites, and improves existing ones with focused updates')
     expect(preview.body).not.toContain('product or service')
     expect(preview.body).not.toMatch(/\b(?:products?|services?|customers?)\b/i)
   })
@@ -282,7 +311,10 @@ describe('outreach eligibility and previews', () => {
     }, prospect(), audit)).toThrow('contains technical language')
     expect(() => validateOutreachPreview({
       ...preview,
-      body: preview.body.replace('At Arlotech Digital Solutions,', 'I found'),
+      body: preview.body.replace(
+        'Arlotech Digital Solutions designs and builds new websites, and improves existing ones with focused updates.',
+        'I found an issue.',
+      ),
     }, prospect(), audit))
       .toThrow('company voice')
     expect(() => validateOutreachPreview({ ...preview, subject: 'A quick hello, AmigoDev' }, prospect(), audit))

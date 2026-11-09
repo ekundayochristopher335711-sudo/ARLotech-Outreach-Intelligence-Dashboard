@@ -9,7 +9,7 @@ import {
   feedbackRequest,
   industryImpactLine,
   normalizedDraftIdentity,
-  positiveWebsiteAcknowledgement,
+  personalizedEmailFindingImpact,
   prospectOffering,
   removeDraftHyphens,
 } from '@/lib/emailPersonalization'
@@ -122,15 +122,17 @@ function emailObservationImpact(finding: DraftFinding) {
   return emailFindingImpact(finding)
 }
 
-function firstName(value: string | null | undefined) {
-  return value?.trim().split(/\s+/)[0] || 'there'
+function firstName(value: string | null | undefined, businessName = '') {
+  const fallbackName = businessName.trim()
+  return value?.trim().split(/\s+/)[0] ||
+    (fallbackName && fallbackName !== 'your business' ? `${fallbackName} team` : 'there')
 }
 
 function wordCount(value: string) {
   return value.trim().split(/\s+/).filter(Boolean).length
 }
 
-function candidateObservations(analysis?: DraftAnalysis | null) {
+function candidateObservations(analysis?: DraftAnalysis | null, industry?: string) {
   if (!analysis) return []
   const findings = Array.isArray(analysis.findings) ? analysis.findings : []
   const confirmed = findings.filter((finding) =>
@@ -163,7 +165,9 @@ function candidateObservations(analysis?: DraftAnalysis | null) {
     : []
   return [...confirmed, ...opportunities, ...visual].slice(0, 5).map((finding) => ({
     title: emailObservationTitle(finding),
-    why: emailObservationImpact(finding),
+    why: industry
+      ? personalizedEmailFindingImpact(finding, industry)
+      : emailObservationImpact(finding),
     estimated: finding.classification === 'optimization_opportunity',
     visual: finding.classification === 'observed_visual',
   }))
@@ -237,22 +241,15 @@ export function generateProfessionalEmailDraft(input: {
     throw new Error('Add a website link to this prospect before generating an email draft.')
   }
   const name = prospect.business_name.trim() || 'your business'
-  const greetingName = firstName(prospect.contact_name)
+  const greetingName = firstName(prospect.contact_name, prospect.business_name)
   const signature: OutreachSignature = {
     ...DEFAULT_OUTREACH_SIGNATURE,
     ...input.signature,
   }
-  const observations = candidateObservations(analysis)
   const industry = prospect.business_category?.trim() || ''
+  const observations = candidateObservations(analysis, industry)
   const industryContext = industryContexts.find(([pattern]) => pattern.test(industry))?.[1]
   const offering = prospectOffering(industry)
-  const positiveObservation = Array.isArray(analysis?.positive_observations)
-    ? analysis.positive_observations.find((observation) =>
-        typeof observation?.title === 'string' &&
-        typeof observation.evidence === 'string' &&
-        observation.evidence.trim(),
-      )?.title
-    : undefined
 
   const lines = [`Hi ${greetingName},`, '']
   const topic = observations[0]?.title || 'website experience'
@@ -286,7 +283,7 @@ export function generateProfessionalEmailDraft(input: {
   } else if (strategy === 'cold_outreach') {
     lines.push(`We came across ${name}${industry ? ` while researching ${industry.toLowerCase()} businesses` : ''} and wanted to briefly introduce Arlotech Digital Solutions. We build and improve websites to help businesses present their ${offering} clearly online.`)
   } else if (prospect.website && analysis) {
-    lines.push(positiveWebsiteAcknowledgement(name, industry, positiveObservation))
+    lines.push(`A review of ${name}'s website highlighted one area that may be worth a closer look.`)
   } else {
     lines.push(`We came across ${name}${industry ? ` while looking at ${industry.toLowerCase()} businesses` : ''} and wanted to introduce Arlotech Digital Solutions.`)
   }
@@ -325,9 +322,9 @@ export function generateProfessionalEmailDraft(input: {
   }
 
   const valueLine = prospect.website && selectedObservations.length
-      ? 'Arlotech Digital Solutions designs and improves business websites. A focused change may address this issue without a full redesign.'
+      ? 'Arlotech Digital Solutions designs and builds new websites, and improves existing ones with focused updates.'
       : prospect.website
-        ? 'Arlotech Digital Solutions designs and improves business websites. We would be glad to share a couple of ideas based on your goals.'
+        ? 'Arlotech Digital Solutions designs and builds new websites, and improves existing ones with focused updates.'
       : `At Arlotech Digital Solutions, we design, develop and optimise business websites. We can help present your ${offering} clearly online and make it straightforward for interested people to get in touch.`
   lines.push(valueLine)
 
@@ -337,6 +334,8 @@ export function generateProfessionalEmailDraft(input: {
     lines.push('Any changes would depend on your goals; we cannot promise a particular increase in enquiries or sales.')
   } else if (strategy === 'personal_consultancy') {
     lines.push('We would be glad to understand your priorities first and suggest only changes that make sense for your business.')
+  } else if (!selectedObservations.length) {
+    lines.push('We would be glad to discuss your website goals and any updates you may be considering.')
   } else {
     lines.push('We would be happy to talk through the observation and whether any next step makes sense for your business.')
   }
@@ -346,7 +345,7 @@ export function generateProfessionalEmailDraft(input: {
   lines.push('')
 
   if (includeReport && analysis && prospect.website) {
-    lines.push('We’ve attached a concise PDF outlining our findings and recommendations.', '')
+    lines.push('The attached PDF contains the website review and practical recommendations.', '')
   }
 
   const cta = followUpStage === 'final'
@@ -461,13 +460,13 @@ export function validateProfessionalEmailDraft(
       prospect.website &&
       !isFollowUp &&
       draft.observationsUsed.length > 0 &&
-      !/a focused change may address this issue without a full redesign/i.test(draft.body)
+      !/designs and builds new websites, and improves existing ones with focused updates/i.test(draft.body)
     ) {
-      errors.push('Clarify that the audit does not automatically call for a complete redesign.')
+      errors.push('Include Arlotech’s offer to build new websites and improve existing ones.')
     }
   }
   const hasReportToAttach = draft.includesReportReference && hasMatchingAnalysis && !!prospect.website
-  if (/your website review is attached|we[’']ve attached a concise pdf|we have attached|please see the attached/i.test(draft.body) && !hasReportToAttach) {
+  if (/your website review is attached|the attached pdf|we[’']ve attached|i[’']ve attached|we have attached|please see the attached/i.test(draft.body) && !hasReportToAttach) {
     errors.push('The email says a website report is attached, but no matching review is available to include.')
   }
   if (draft.includesReportReference && !hasMatchingAnalysis) {
@@ -475,13 +474,13 @@ export function validateProfessionalEmailDraft(
   }
   if (
     draft.includesReportReference &&
-    !/we[’']ve attached a concise pdf outlining our findings and recommendations|your website review is attached again.*audit findings and our recommendations/i.test(draft.body)
+    !/the attached pdf contains the website review and practical recommendations|the website review pdf is attached again with the findings and practical recommendations/i.test(draft.body)
   ) {
     errors.push('Describe the attached review accurately and mention its findings and recommendations.')
   }
   if (draft.includesReportReference && !isFollowUp && !isContextualReply) {
-    if (!/it.s good to see/i.test(body)) {
-      errors.push('Open the audit-based email with a positive, evidence-based acknowledgement.')
+    if (!/a review of .+?s website highlighted one area that may be worth a closer look/i.test(body)) {
+      errors.push('Open the audit-based email with a clear, neutral introduction to the website finding.')
     }
   }
   if (draft.observationsUsed.some((observation) => !observation.trim())) {
@@ -553,18 +552,18 @@ export function generateFollowUpDraft(
     : stage === 'second'
       ? `We are checking once more in case a few practical changes to ${name}'s online presence may help visitors understand your ${offering}. If you would like to explore them, simply reply and we can arrange a brief conversation.`
       : `We will leave it here for now regarding ${name}. If improving how your business is presented online becomes a priority later, we would be happy to reconnect.`
-  const reassurance = 'We are not necessarily suggesting a complete redesign; focused changes may be enough.'
+  const servicesLine = 'Arlotech Digital Solutions designs and builds new websites, and improves existing ones with focused updates.'
   const cta = stage === 'final'
     ? '\n\nWould it be helpful to reconnect if this becomes a priority later?'
     : '\n\nWould a short conversation be useful?'
   const reportNote = includeReport && prospect.website
-    ? 'Your website review is attached again. The concise PDF outlines the audit findings and our recommendations.'
+    ? 'The website review PDF is attached again with the findings and practical recommendations.'
     : ''
   const body = removeDraftHyphens([
-    `Hi ${firstName(prospect.contact_name)},`,
+    `Hi ${firstName(prospect.contact_name, name)},`,
     '',
     followUpText,
-    reassurance,
+    servicesLine,
     reportNote,
     cta,
     '',

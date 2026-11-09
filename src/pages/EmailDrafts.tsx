@@ -625,7 +625,7 @@ export function EmailDraftsPage() {
         const body = reportOmitted
           ? preview.body
               .split(/\r?\n/)
-              .filter((line) => !/(?:your website review is attached|we have attached|please see the attached)/i.test(line))
+              .filter((line) => !/(?:your website review is attached|the attached pdf contains|we[’']ve attached|i[’']ve attached|we have attached|please see the attached)/i.test(line))
               .join('\n')
               .replace(/\n{3,}/g, '\n\n')
           : preview.body

@@ -4,7 +4,6 @@ import { auditFindingEmailTopic } from '@/lib/auditReportLanguage'
 import {
   containsEmailJargon,
   containsExternalAuditReference,
-  emailFindingImpact,
   emailFindingTitle,
 } from '@/lib/emailCopy'
 import {
@@ -12,7 +11,7 @@ import {
   industryWebsiteImprovementLine,
   industryImpactLine,
   normalizedDraftIdentity,
-  positiveWebsiteAcknowledgement,
+  personalizedEmailFindingImpact,
   removeDraftHyphens,
 } from '@/lib/emailPersonalization'
 import { rateLighthouseFinding } from '@/lib/websiteAudit'
@@ -69,8 +68,10 @@ export interface OutreachPreview {
 const MEANINGFUL_SAVINGS_MS = 50
 const MEANINGFUL_SAVINGS_BYTES = 20 * 1024
 
-function firstName(contactName: string | null | undefined) {
-  return contactName?.trim().split(/\s+/)[0] || 'there'
+function firstName(contactName: string | null | undefined, businessName: string) {
+  const fallbackName = businessName.trim()
+  return contactName?.trim().split(/\s+/)[0] ||
+    (fallbackName && fallbackName !== 'your business' ? `${fallbackName} team` : 'there')
 }
 
 export function hasMatchingWebsiteAnalysis(
@@ -201,10 +202,10 @@ export function getOutreachSuitability(analysis: OutreachAnalysis): OutreachSuit
   return 'Low Opportunity'
 }
 
-function observationText(finding: SelectedOutreachFinding) {
+function observationText(finding: SelectedOutreachFinding, category?: string | null) {
   return {
     title: emailFindingTitle(finding),
-    impact: emailFindingImpact(finding),
+    impact: personalizedEmailFindingImpact(finding, category),
   }
 }
 
@@ -216,7 +217,7 @@ export function createOutreachPreview(
     throw new Error('Add a website link to this prospect before generating an email draft.')
   }
   const name = prospect.business_name.trim() || 'your business'
-  const greetingName = firstName(prospect.contact_name)
+  const greetingName = firstName(prospect.contact_name, name)
   const category = prospect.business_category?.trim()
   const signOff = 'Kind regards,\nARLOTECH DIGITAL SOLUTIONS\narlotech.com.ng'
   if (!analysis || !hasMatchingWebsiteAnalysis(prospect, analysis)) {
@@ -224,7 +225,7 @@ export function createOutreachPreview(
       prospect_id: prospect.id,
       analysis_id: null,
       subject: removeDraftHyphens(`A quick website observation for ${name}`),
-      body: `Hi ${greetingName},\n\n${industryWebsiteImprovementLine(category, name)}\n\nWould a short conversation be useful?\n\n${signOff}`,
+      body: `Hi ${greetingName},\n\n${industryWebsiteImprovementLine()}\n\nWould a short conversation be useful?\n\n${signOff}`,
       has_website_report: false,
       suitability: 'Incomplete Audit',
       internal_note: 'No matching website review is available; this general draft is not based on site-specific findings.',
@@ -242,28 +243,22 @@ export function createOutreachPreview(
   const selectedFinding = selectOutreachFinding(analysis)
   if (!selectedFinding) throw new Error('No evidence-backed website finding is available for outreach.')
 
-  const { title, impact } = observationText(selectedFinding)
-  const positiveObservation = analysis.positive_observations?.find((observation) =>
-    typeof observation?.title === 'string' &&
-    typeof observation.evidence === 'string' &&
-    observation.evidence.trim(),
-  )?.title
+  const { title, impact } = observationText(selectedFinding, category)
   const internalNote = `We chose "${title}" because it is the clearest item supported by this website check.`
   const body = [
     `Hi ${greetingName},`,
     '',
-    (typeof analysis.category_scores?.performance === 'number' && analysis.category_scores.performance >= 90
-      ? 'It’s good to see that your website recorded positive performance results.'
-      : positiveWebsiteAcknowledgement(name, category, positiveObservation)),
+    `A review of ${name}'s website highlighted one area that may be worth a closer look.`,
     `Website review snapshot\nFinding: ${title}\nWhy it matters: ${impact}`,
     feedbackRequest(),
-    ...(category && !/additional website features may affect responsiveness/i.test(title)
+    ...(category &&
+      !/additional website features may affect responsiveness|important images/i.test(title)
       ? [industryImpactLine(category, title)]
       : []),
     '',
-    industryWebsiteImprovementLine(category, name),
+    industryWebsiteImprovementLine(),
     '',
-    'We’ve attached a concise PDF outlining our findings and recommendations.',
+    'The attached PDF contains the website review and practical recommendations.',
     '',
     signOff,
   ].join('\n')
@@ -321,22 +316,22 @@ export function validateOutreachPreview(
     throw new Error('The selected audit finding changed. Refresh the email preview before sending.')
   }
   const finding = currentPreview.selected_finding!
-  const { title, impact } = observationText(finding)
+  const { title, impact } = observationText(finding, prospect.business_category)
   if (
     !normalizedDraftIdentity(preview.subject).includes(normalizedDraftIdentity(prospect.business_name)) ||
     /\b(I|me|my)\b/i.test(preview.body) ||
     !preview.body.includes('Arlotech Digital Solutions') ||
-    !/practical improvements, without necessarily requiring a complete redesign/i.test(preview.body) ||
-    !/we’ve attached a concise pdf outlining our findings and recommendations/i.test(preview.body) ||
+    !/designs and builds new websites, and improves existing ones with focused updates/i.test(preview.body) ||
+    !/the attached pdf contains the website review and practical recommendations/i.test(preview.body) ||
     containsEmailJargon(`${preview.subject}\n${preview.body}`) ||
     !normalizedDraftIdentity(preview.subject).includes(normalizedDraftIdentity(auditFindingEmailTopic(finding))) ||
     !normalizedDraftIdentity(preview.body).includes(normalizedDraftIdentity(title)) ||
     !normalizedDraftIdentity(preview.body).includes(normalizedDraftIdentity(impact)) ||
     !/website review snapshot\s*\n\s*finding:/i.test(preview.body) ||
-    preview.body.indexOf('Would this be something you’d consider improving?') >
-      preview.body.indexOf('We’ve attached a concise PDF') ||
+    preview.body.indexOf('Would you be open to discussing what might work best for your website?') >
+      preview.body.indexOf('The attached PDF') ||
     containsExternalAuditReference(`${preview.subject}\n${preview.body}`) ||
-    !/would this be something you’d consider improving\?/i.test(preview.body) ||
+    !/would you be open to discussing what might work best for your website\?/i.test(preview.body) ||
     !/\b(?:are|is|do|does|would|could)\b[^?]*\?/i.test(preview.body)
   ) {
     throw new Error('The edited email no longer matches the audit evidence or ArloTech company voice.')
