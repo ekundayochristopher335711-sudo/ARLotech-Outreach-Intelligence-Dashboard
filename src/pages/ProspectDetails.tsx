@@ -92,7 +92,7 @@ export function ProspectDetails() {
       for (let from = 0; ; from += pageSize) {
         const { data, error } = await supabase
           .from('website_analyses')
-          .select('id, user_id, prospect_id, website_url, overall_score, performance_score, accessibility_score, seo_score, best_practices_score, category_scores, findings, positive_observations, ai_analysis, analysis_status, error_message, analysis_provider, analyzed_at, created_at, updated_at')
+          .select('id, user_id, prospect_id, website_url, overall_score, performance_score, accessibility_score, seo_score, best_practices_score, category_scores, findings, positive_observations, analysis_details, analysis_status, error_message, analysis_provider, analyzed_at, created_at, updated_at')
           .eq('user_id', userId)
           .eq('prospect_id', id)
           .order('analyzed_at', { ascending: false, nullsFirst: false })
@@ -374,15 +374,9 @@ export function ProspectDetails() {
           </Card>
         ) : (
           websiteAnalyses.map((analysis: WebsiteAnalysis, index: number) => {
-            const aiAnalysis = asRecord(analysis.ai_analysis)
-            const summary = asString(aiAnalysis?.summary)
+            const analysisDetails = asRecord(analysis.analysis_details)
             const categoryScores = asRecord(analysis.category_scores)
-            const recommendations = Array.isArray(aiAnalysis?.recommendations)
-              ? aiAnalysis.recommendations.filter((item): item is string => typeof item === 'string')
-              : []
-            const opportunities = asRecordArray(aiAnalysis?.optimization_opportunities)
-            const visualAudit = asRecord(aiAnalysis?.visual_audit)
-            const visualObservations = asRecordArray(visualAudit?.observations)
+            const opportunities = asRecordArray(analysisDetails?.optimization_opportunities)
 
             return (
               <details key={analysis.id} open={index === 0} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -419,12 +413,6 @@ export function ProspectDetails() {
                       ))}
                     </div>
                   )}
-                  {summary && (
-                    <div>
-                      <h3 className="text-sm font-semibold text-slate-700">Assessment</h3>
-                      <p className="mt-1 whitespace-pre-wrap text-sm text-slate-600">{summary}</p>
-                    </div>
-                  )}
                   <div>
                     <h3 className="text-sm font-semibold text-slate-700">Findings ({analysis.findings.length})</h3>
                     {analysis.findings.length ? (
@@ -445,26 +433,6 @@ export function ProspectDetails() {
                       <h3 className="text-sm font-semibold text-slate-700">Potential improvements to review</h3>
                       <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-slate-600">
                         {opportunities.map((item, itemIndex) => (
-                          <li key={String(item.id ?? itemIndex)}>
-                            {[asString(item.title), asString(item.evidence)].filter(Boolean).join(' — ')}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                  {recommendations.length > 0 && (
-                    <div>
-                      <h3 className="text-sm font-semibold text-slate-700">Recommendations</h3>
-                      <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-slate-600">
-                        {recommendations.map((recommendation, itemIndex) => <li key={itemIndex}>{recommendation}</li>)}
-                      </ul>
-                    </div>
-                  )}
-                  {visualObservations.length > 0 && (
-                    <div>
-                      <h3 className="text-sm font-semibold text-slate-700">Visual observations</h3>
-                      <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-slate-600">
-                        {visualObservations.map((item: Record<string, unknown>, itemIndex: number) => (
                           <li key={String(item.id ?? itemIndex)}>
                             {[asString(item.title), asString(item.evidence)].filter(Boolean).join(' — ')}
                           </li>

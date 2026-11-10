@@ -80,10 +80,7 @@ export const AnalysisStatusSchema = z.enum([
 export const AnalysisProviderSchema = z.enum([
   'custom',
   'pagespeed_insights',
-  'pagespeed+gemini',
-  'gemini',
-  'pagespeed+openai',
-  'openai',
+  'pagespeed',
   'lighthouse',
 ])
 

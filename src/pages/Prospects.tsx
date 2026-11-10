@@ -930,6 +930,9 @@ export function ProspectsPage() {
       if (isText) {
         const text = await file.text()
         const leads = await extractLeadsFromText(text)
+        if (leads.length === 0) {
+          throw new Error('No Google Maps businesses with website links were found. Use CSV import or add prospects manually.')
+        }
         await completeImport(await importLeadsInternal(leads as any, queryClient, userId))
       } else {
         await completeImport(await importCsv(file))
@@ -960,7 +963,7 @@ export function ProspectsPage() {
     try {
       const leads = await extractLeadsFromText(text, clipboardWebsiteLinks)
       if (leads.length === 0) {
-        setImportFailure('No business prospects were found in that text.')
+        setImportFailure('No Google Maps businesses with website links were found. Use CSV import or add prospects manually.')
         return
       }
 

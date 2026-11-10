@@ -24,7 +24,7 @@ The reply-rate figure is calculated as inbound replies divided by successfully s
 
 1. **Prioritize warm intent.** Review inbound replies before sending more cold outreach. Update each prospect's status as soon as the conversation changes.
 2. **Clear due follow-ups.** Work the due queue daily. Personalize each follow-up to the last interaction; do not send an automatic sequence merely because a reminder is due.
-3. **Lead with one verified observation.** In audit-based outreach, use one high-confidence finding and explain its practical business impact. Do not turn an estimate or AI suggestion into a confirmed defect.
+3. **Lead with one verified observation.** In audit-based outreach, use one high-confidence finding and explain its practical business impact. Do not present an estimate as a confirmed defect.
 4. **Offer one low-friction next step.** Ask for a short conversation or permission to share a preview. Avoid stacking multiple competing calls to action.
 5. **Make the value concrete.** Connect the proposed website change to a visitor action such as calling, requesting a quote, booking, or purchasing. Avoid promising rankings, revenue, or guaranteed results.
 6. **Keep the send safeguards.** Respect do-not-contact flags, suppressions, verified sender configuration, postal-address/opt-out requirements, and the server-side send limits. Review messages before sending.

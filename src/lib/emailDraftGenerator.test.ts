@@ -26,7 +26,7 @@ function analysis(overrides: Record<string, unknown> = {}) {
     },
     findings: [],
     positive_observations: [],
-    ai_analysis: {},
+    analysis_details: {},
     ...overrides,
   }
 }
@@ -252,31 +252,6 @@ describe('professional email draft generation', () => {
     }, prospect, false, draft.subjectSuggestions[0])
 
     expect(result.errors).toContain('Remove external accessibility audit references from the customer-facing email.')
-  })
-
-  it('uses the saved visual observation without pitching a redesign', () => {
-    const result = generateProfessionalEmailDraft({
-      prospect,
-      strategy: 'website_redesign',
-      analysis: analysis({
-        ai_analysis: {
-          visual_audit: {
-            observations: [{
-              title: 'Mobile navigation overlaps the page heading',
-              evidence: 'In the saved mobile screenshot, the navigation covers part of the heading.',
-              why_it_matters: 'Visitors may have difficulty reading the page heading.',
-              recommended_fix: 'Review spacing at the captured screen size.',
-            }],
-          },
-        },
-      }),
-    })
-
-    expect(result.body).toContain('mobile navigation overlaps the page heading')
-    expect(result.body).toContain('Visitors may have difficulty reading the page heading.')
-    expect(result.body).toContain('designs and builds new websites, and improves existing ones with focused updates')
-    expect(result.body).not.toContain('In the saved mobile screenshot')
-    expect(result.observationsUsed).toHaveLength(1)
   })
 
   it('creates a useful introduction when no analysis exists without inventing findings or an attachment', () => {

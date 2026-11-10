@@ -66,7 +66,7 @@ export interface WebsiteAnalysis {
     potential_benefit: string
     priority: string
   }>
-  ai_analysis: Record<string, unknown> | null
+  analysis_details: Record<string, unknown> | null
   analysis_status: string
   error_message: string | null
   analysis_provider: string | null

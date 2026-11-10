@@ -30,7 +30,7 @@ type AuditFinding = {
 
 type OutreachAnalysis = Pick<WebsiteAnalysis, 'id' | 'website_url' | 'findings' | 'overall_score'> & {
   category_scores?: Record<string, number | null> | null
-  ai_analysis?: Record<string, unknown> | null
+  analysis_details?: Record<string, unknown> | null
 }
 
 export type OutreachSuitability =
@@ -76,7 +76,7 @@ export function hasMatchingWebsiteAnalysis(
 }
 
 function auditCompleteness(analysis: OutreachAnalysis) {
-  const completeness = analysis.ai_analysis?.audit_completeness
+  const completeness = analysis.analysis_details?.audit_completeness
   return completeness && typeof completeness === 'object'
     ? completeness as { status?: string; missing_categories?: string[] }
     : null
@@ -107,8 +107,8 @@ function candidateFindings(analysis: OutreachAnalysis): SelectedOutreachFinding[
         classification: classification as SelectedOutreachFinding['classification'],
       }]
     })
-  const opportunities = Array.isArray(analysis.ai_analysis?.optimization_opportunities)
-    ? analysis.ai_analysis.optimization_opportunities as AuditFinding[]
+  const opportunities = Array.isArray(analysis.analysis_details?.optimization_opportunities)
+    ? analysis.analysis_details.optimization_opportunities as AuditFinding[]
     : []
   const validOpportunities = opportunities.flatMap((finding) => {
     if (

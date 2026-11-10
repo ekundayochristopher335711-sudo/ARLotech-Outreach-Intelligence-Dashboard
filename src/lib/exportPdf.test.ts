@@ -115,24 +115,14 @@ describe('website audit PDF', () => {
       analyzed_at: '2026-10-27T12:00:00.000Z',
       category_scores: { performance: 90, seo: 90, accessibility: 90, 'best-practices': 90 },
       findings,
-      ai_analysis: {
-        visual_audit: {
+      analysis_details: {
+        screenshot_review: {
           status: 'completed',
           pages: [{
             page_url: 'https://example.com/services',
             page_label: 'Services',
             viewport: 'mobile',
             image_path: 'user-id/analysis-id/1-mobile.jpg',
-          }],
-          observations: [{
-            page_url: 'https://example.com/services',
-            viewport: 'mobile',
-            title: 'Heading clipped on mobile',
-            evidence: 'The final word in the heading is cut off at the right edge.',
-            why_it_matters: 'Visitors may not see the complete heading.',
-            severity: 'medium',
-            confidence: 0.88,
-            recommended_fix: 'Check the heading container width at this viewport.',
           }],
         },
       },
@@ -280,7 +270,7 @@ describe('website audit PDF', () => {
       },
       findings: [],
       positive_observations: [],
-      ai_analysis: {
+      analysis_details: {
         audit_completeness: {
           status: 'partial',
           completeness_percent: 75,
@@ -299,7 +289,7 @@ describe('website audit PDF', () => {
           opportunity_ms: 50,
           affected_resources: ['https://www.amigodev.com.ng/app.js'],
         }],
-        visual_audit: {
+        screenshot_review: {
           status: 'partial',
           discovered_page_count: 2,
           pages: [{
@@ -310,7 +300,6 @@ describe('website audit PDF', () => {
             inspection_status: 'failed',
             error: 'The audit Edge Function returned BOOT_ERROR.',
           }],
-          observations: [],
         },
       },
     })
@@ -409,7 +398,7 @@ describe('website audit PDF', () => {
       overall_score: 100,
       findings: [],
       positive_observations: [],
-      ai_analysis: {},
+      analysis_details: {},
     })
     const report = pdfText(base64)
     const pages = pdfPages(base64)

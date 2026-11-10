@@ -40,7 +40,7 @@ function analysis(overrides: Record<string, unknown> = {}) {
         severity: 'high',
       },
     ],
-    ai_analysis: {
+    analysis_details: {
       audit_completeness: { status: 'complete' },
       optimization_opportunities: [
         {
@@ -96,7 +96,7 @@ describe('outreach eligibility and previews', () => {
           priority: 'high',
         },
       ],
-      ai_analysis: { audit_completeness: { status: 'complete' }, optimization_opportunities: [] },
+      analysis_details: { audit_completeness: { status: 'complete' }, optimization_opportunities: [] },
     })
     expect(selectOutreachFinding(record)?.id).toBe('a11y')
   })
@@ -123,7 +123,7 @@ describe('outreach eligibility and previews', () => {
     expect(`${preview.subject}\n${preview.body}`).not.toContain('-')
     expect(preview.body).toContain('Would you be open to discussing what might work best for your website?')
     expect(preview.body).toContain('ARLOTECH DIGITAL SOLUTIONS\narlotech.com.ng')
-    expect(preview.body).not.toMatch(/\b(?:AI|Gemini|weighted technical)\b/i)
+    expect(preview.body).not.toMatch(/\bweighted technical\b/i)
     expect(preview.body).not.toMatch(/\b(I|me|my)\b/i)
     expect(preview.has_website_report).toBe(true)
     expect(preview.body.split('?')).toHaveLength(2)
@@ -146,7 +146,7 @@ describe('outreach eligibility and previews', () => {
         evidence: 'Some text has a contrast ratio of 2.1:1.',
         priority: 'high',
       }],
-      ai_analysis: { audit_completeness: { status: 'complete' }, optimization_opportunities: [] },
+      analysis_details: { audit_completeness: { status: 'complete' }, optimization_opportunities: [] },
     })
     const preview = createOutreachPreview(prospect(), audit)
     expect(preview.subject).toBe('A website idea for AmigoDev: easier to read text')
@@ -171,7 +171,7 @@ describe('outreach eligibility and previews', () => {
         evidence: 'Some images are missing alternative text.',
         priority: 'high',
       }],
-      ai_analysis: { audit_completeness: { status: 'complete' }, optimization_opportunities: [] },
+      analysis_details: { audit_completeness: { status: 'complete' }, optimization_opportunities: [] },
     })
     const preview = createOutreachPreview(plumbingProspect, audit)
 
@@ -196,7 +196,7 @@ describe('outreach eligibility and previews', () => {
         category: 'accessibility',
         priority: 'medium',
       }],
-      ai_analysis: { audit_completeness: { status: 'complete' }, optimization_opportunities: [] },
+      analysis_details: { audit_completeness: { status: 'complete' }, optimization_opportunities: [] },
     })
     const preview = createOutreachPreview(prospect(), audit)
 
@@ -219,7 +219,7 @@ describe('outreach eligibility and previews', () => {
         category: 'accessibility',
         priority: 'medium',
       }],
-      ai_analysis: { audit_completeness: { status: 'complete' }, optimization_opportunities: [] },
+      analysis_details: { audit_completeness: { status: 'complete' }, optimization_opportunities: [] },
     })
     const original = createOutreachPreview(prospect(), audit)
     expect(original.body.toLowerCase()).toContain('some links may be difficult to spot within the text')
@@ -235,7 +235,7 @@ describe('outreach eligibility and previews', () => {
   it('withholds outreach when only positive results or diagnostics exist', () => {
     const audit = analysis({
       findings: [],
-      ai_analysis: {
+      analysis_details: {
         audit_completeness: { status: 'complete' },
         diagnostics: [{
           id: 'dependency-tree',
@@ -261,7 +261,7 @@ describe('outreach eligibility and previews', () => {
         evidence: '2.7 s',
         display_value: '2.7 s',
       }],
-      ai_analysis: { audit_completeness: { status: 'complete' }, optimization_opportunities: [] },
+      analysis_details: { audit_completeness: { status: 'complete' }, optimization_opportunities: [] },
     })
 
     expect(getOutreachSuitability(audit)).toBe('No Opportunity')
@@ -272,7 +272,7 @@ describe('outreach eligibility and previews', () => {
     const audit = analysis({
       category_scores: { performance: 100, seo: null, accessibility: 100, 'best-practices': 100 },
       findings: [],
-      ai_analysis: { audit_completeness: { status: 'partial' }, optimization_opportunities: [] },
+      analysis_details: { audit_completeness: { status: 'partial' }, optimization_opportunities: [] },
     })
     expect(getOutreachSuitability(audit)).toBe('Incomplete Audit')
     expect(() => createOutreachPreview(prospect(), audit)).toThrow('audit is incomplete')

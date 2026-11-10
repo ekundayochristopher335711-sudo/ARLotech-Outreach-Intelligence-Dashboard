@@ -1,4 +1,3 @@
-import { supabase } from '@/lib/supabase'
 import {
   extractGoogleMapsWebsitesFromText,
   type GoogleMapsWebsite,
@@ -28,23 +27,8 @@ export async function extractLeadsFromText(
   text: string,
   clipboardWebsiteLinks: GoogleMapsWebsite[] = [],
 ): Promise<ExtractedLead[]> {
-  const { data, error } = await (supabase as any).functions.invoke('extract-leads', { body: { text } })
-  if (error) {
-    let detail = error.message || 'extract-leads failed'
-    try {
-      const ctx = (error as any)?.context
-      if (ctx && typeof ctx.text === 'function') {
-        const body = await ctx.text()
-        if (body) detail = `${detail} — ${body}`
-      }
-    } catch { /* ignore */ }
-    throw new Error(detail)
-  }
-  if (data?.error) throw new Error(data.error)
-  const leads = Array.isArray(data?.leads) ? data.leads : Array.isArray(data) ? data : []
-  const extractedLeads = leads as ExtractedLead[]
   const websiteLinks = [...extractGoogleMapsWebsitesFromText(text), ...clipboardWebsiteLinks]
-
+  const extractedLeads: ExtractedLead[] = []
   for (const websiteLink of websiteLinks) {
     const normalizedListingName = normalizeBusinessName(websiteLink.business_name)
     const matchingLead = extractedLeads.find((lead) => {

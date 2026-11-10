@@ -5,8 +5,6 @@ import {
   assessLighthouseMetric,
   classifyLighthouseAudits,
   extractCategoryScores,
-  sanitizeRecommendationList,
-  sanitizeVisualObservations,
   scoreToPercent,
   rateCategoryScore,
   summarizePageInspectionCoverage,
@@ -145,56 +143,6 @@ describe('Lighthouse evidence and score handling', () => {
     })
   })
 
-  it('sanitizes AI suggestions and ties visual observations to captured screenshots', () => {
-    expect(sanitizeRecommendationList([
-      '  Review the measured LCP issue  ',
-      null,
-      42,
-      'x'.repeat(700),
-    ])).toEqual(['Review the measured LCP issue', 'x'.repeat(600)])
-
-    const screenshots = [{ page_url: 'https://example.com/', viewport: 'mobile' as const }]
-    const observations = sanitizeVisualObservations([
-      {
-        page_url: 'https://example.com/',
-        viewport: 'mobile',
-        title: '  Clipped heading  ',
-        evidence: 'The heading is clipped at the right edge.',
-        why_it_matters: 'Visitors may not see the complete heading.',
-        severity: 'medium',
-        confidence: 0.876,
-        recommended_fix: 'Check the mobile container width.',
-      },
-      {
-        page_url: 'https://example.com/other',
-        viewport: 'mobile',
-        title: 'Uncaptured page',
-        evidence: 'No screenshot exists.',
-        severity: 'high',
-        confidence: 0.9,
-      },
-      {
-        page_url: 'https://example.com/',
-        viewport: 'mobile',
-        title: 'Bad confidence',
-        evidence: 'Confidence is outside the expected range.',
-        severity: 'high',
-        confidence: 1.2,
-      },
-    ], screenshots)
-
-    expect(observations).toEqual([{
-      page_url: 'https://example.com/',
-      viewport: 'mobile',
-      title: 'Clipped heading',
-      evidence: 'The heading is clipped at the right edge.',
-      why_it_matters: 'Visitors may not see the complete heading.',
-      severity: 'medium',
-      confidence: 0.88,
-      recommended_fix: 'Check the mobile container width.',
-    }])
-  })
-
   it('only emits positive observations tied to measured scores or extracted HTML', () => {
     const categories = extractCategoryScores(pagespeedFixture())
     const observations = buildEvidenceBasedPositiveObservations({
@@ -228,7 +176,6 @@ describe('Lighthouse evidence and score handling', () => {
     expect(observations.map(({ id }) => id)).toContain('positive-title-present')
     expect(observations.map(({ id }) => id)).toContain('positive-metric-speed-index')
     expect(observations.find(({ id }) => id === 'positive-metric-speed-index')?.title).toBe('Speed Index — Good')
-    expect(observations.some(({ evidence }) => evidence === 'AI-generated')).toBe(false)
     expect(observations.every(({ evidence }) => evidence.length > 0)).toBe(true)
   })
 })

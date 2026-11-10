@@ -69,7 +69,7 @@ interface PdfFinding {
 }
 
 interface NormalizedPdfFinding extends PdfFinding {
-  sourceLabel: 'Measured' | 'Page inspection' | 'Tool-assisted suggestion' | 'Unverified'
+  sourceLabel: 'Measured' | 'Page inspection' | 'Unverified'
   dedupeKey: string
 }
 
@@ -328,9 +328,6 @@ function findingSource(finding: PdfFinding): NormalizedPdfFinding['sourceLabel']
     finding.id?.startsWith('content-') ||
     finding.id?.startsWith('html-')
   ) return 'Page inspection'
-  if (finding.source === 'ai' || finding.id?.startsWith('ai-') || finding.evidence === 'AI-generated') {
-    return 'Tool-assisted suggestion'
-  }
   return 'Unverified'
 }
 
@@ -342,7 +339,7 @@ function normalizePdfFindings(findings: PdfFinding[]) {
     const normalized = { ...finding, dedupeKey, sourceLabel: findingSource(finding) }
     const existing = unique.get(dedupeKey)
     const sourceRank = (source: NormalizedPdfFinding['sourceLabel']) =>
-      source === 'Measured' ? 3 : source === 'Page inspection' ? 2 : source === 'Unverified' ? 1 : 0
+      source === 'Measured' ? 3 : source === 'Page inspection' ? 2 : 1
     if (!existing || sourceRank(normalized.sourceLabel) > sourceRank(existing.sourceLabel)) {
       unique.set(dedupeKey, normalized)
     }
@@ -432,7 +429,7 @@ function buildWebsiteAnalysisPdf(
     (finding) => finding.sourceLabel === 'Measured' && finding.assessment_rating === 'Good',
   )
   const unverifiedFindings = uniqueFindings.filter(
-    (finding) => finding.sourceLabel === 'Tool-assisted suggestion' || finding.sourceLabel === 'Unverified',
+    (finding) => finding.sourceLabel === 'Unverified',
   )
   const findings = measuredFindings
     .sort((left, right) => {
@@ -455,15 +452,12 @@ function buildWebsiteAnalysisPdf(
   const positives: Array<string | { id?: string; title?: string | null; evidence?: string | null }> = Array.isArray(rec.positive_observations)
     ? rec.positive_observations
     : []
-  const aiAnalysis = rec.ai_analysis && typeof rec.ai_analysis === 'object' ? rec.ai_analysis : {}
-  const auditCompleteness = aiAnalysis.audit_completeness && typeof aiAnalysis.audit_completeness === 'object'
-    ? aiAnalysis.audit_completeness
+  const analysisDetails = rec.analysis_details && typeof rec.analysis_details === 'object' ? rec.analysis_details : {}
+  const auditCompleteness = analysisDetails.audit_completeness && typeof analysisDetails.audit_completeness === 'object'
+    ? analysisDetails.audit_completeness
     : null
-  const aiRecommendations: string[] = Array.isArray(aiAnalysis.recommendations)
-    ? aiAnalysis.recommendations.filter((item: unknown): item is string => typeof item === 'string' && !!item.trim())
-    : []
-  const optimizationOpportunities: PdfFinding[] = Array.isArray(aiAnalysis.optimization_opportunities)
-    ? aiAnalysis.optimization_opportunities.filter((item: unknown): item is PdfFinding => {
+  const optimizationOpportunities: PdfFinding[] = Array.isArray(analysisDetails.optimization_opportunities)
+    ? analysisDetails.optimization_opportunities.filter((item: unknown): item is PdfFinding => {
         if (!item || typeof item !== 'object') return false
         const finding = item as Record<string, unknown>
         return finding.classification === 'optimization_opportunity' &&
@@ -471,18 +465,17 @@ function buildWebsiteAnalysisPdf(
           typeof finding.evidence === 'string'
       })
     : []
-  const visualAudit = aiAnalysis.visual_audit && typeof aiAnalysis.visual_audit === 'object'
-    ? aiAnalysis.visual_audit
+  const screenshotReview = analysisDetails.screenshot_review && typeof analysisDetails.screenshot_review === 'object'
+    ? analysisDetails.screenshot_review
     : null
-  const visualPages = Array.isArray(visualAudit?.pages) ? visualAudit.pages : []
-  const visualObservations = Array.isArray(visualAudit?.observations) ? visualAudit.observations : []
+  const visualPages = Array.isArray(screenshotReview?.pages) ? screenshotReview.pages : []
 
   report.addSection('Executive summary')
   report.addMetricCards([
     ['Website health score', score === null ? 'Not available' : `${score} / 100`],
     ['Confirmed review findings', primaryFindings.length],
     ['Estimated opportunities', optimizationOpportunities.length],
-    ['Additional ideas to validate', additionalRecommendations.length + aiRecommendations.length],
+    ['Additional ideas to validate', additionalRecommendations.length],
   ])
   const executiveLead = score === null
     ? 'This review did not produce a complete overall score. The observations below are presented individually so the business can assess them without relying on an incomplete rating.'
@@ -493,7 +486,7 @@ function buildWebsiteAnalysisPdf(
         : 'The measured results indicate several areas worth prioritizing. A staged improvement plan can address the most important issues before considering broader changes.'
   report.addParagraph(executiveLead, { size: 9, color: NAVY, bold: true })
   report.addParagraph(
-    `Prepared for ${verifiedBusinessName || hostname}. This report separates measured findings from tool-assisted suggestions and estimated opportunities. Recommendations should be confirmed against the live website and the business goals before implementation.`,
+    `Prepared for ${verifiedBusinessName || hostname}. This report separates measured findings from estimated opportunities. Recommendations should be confirmed against the live website and the business goals before implementation.`,
     { size: 8.2 },
   )
   if (primaryFindings.length > 0) {
@@ -502,7 +495,7 @@ function buildWebsiteAnalysisPdf(
       report.addParagraph(`${index + 1}. ${auditFindingTitle(finding)} — ${finding.assessment_rating || 'Review recommended'}`, { size: 8 })
     })
   } else {
-    report.addParagraph('No confirmed non-Good findings were recorded in this assessment. The report still includes measured strengths and any separately classified suggestions.', { size: 8.2 })
+    report.addParagraph('No confirmed non-Good findings were recorded in this assessment. The report still includes measured strengths and estimated opportunities.', { size: 8.2 })
   }
 
   report.addSection('Assessment at a glance')
@@ -573,7 +566,7 @@ function buildWebsiteAnalysisPdf(
       ].filter(Boolean)
       report.addParagraph(metadata.join('  |  '), { size: 7.5, color: TEAL })
       const evidence = finding.display_value || finding.evidence
-      if (evidence && evidence !== 'AI-generated') report.addParagraph(`What we found: ${evidence}`, { size: 8 })
+      if (evidence) report.addParagraph(`What we found: ${evidence}`, { size: 8 })
       report.addParagraph(`Why it matters: ${auditFindingWhy(finding)}`, { size: 8 })
       const opportunity = formatOpportunity(finding)
       if (opportunity) {
@@ -629,19 +622,12 @@ function buildWebsiteAnalysisPdf(
     })
   }
 
-  if (additionalRecommendations.length > 0 || aiRecommendations.length > 0) {
-    report.addSection(`Additional ideas to consider (${additionalRecommendations.length + aiRecommendations.length})`)
+  if (additionalRecommendations.length > 0) {
+    report.addSection(`Additional ideas to consider (${additionalRecommendations.length})`)
     report.addParagraph(
-      'These are ideas from our website review tools, not measured findings or required changes. We recommend checking each one against the fully loaded website, its settings, and your business goals before acting.',
+      'These are suggestions from the website review tools, not measured findings or required changes. We recommend checking each one against the fully loaded website, its settings, and your business goals before acting.',
       { size: 8, color: MUTED },
     )
-    aiRecommendations.forEach((suggestion) => {
-      const clientSuggestion = clientFriendlyAuditText(suggestion)
-      report.addParagraph(
-        /^we recommend\b/i.test(clientSuggestion) ? clientSuggestion : `We recommend reviewing this suggestion: ${clientSuggestion}`,
-        { size: 8, bold: true },
-      )
-    })
     additionalRecommendations.forEach((finding) => {
       report.addParagraph(`What we found: ${auditFindingTitle(finding)}`, { size: 8, bold: true })
       report.addParagraph(`Why it may matter: ${auditFindingWhy(finding)}`, { size: 7.5, color: MUTED, indent: 3 })
@@ -649,13 +635,13 @@ function buildWebsiteAnalysisPdf(
     })
   }
 
-  if (visualAudit) {
-    report.addSection(`Visual review to validate (${visualObservations.length} observations)`)
+  if (screenshotReview) {
+    report.addSection('Screenshots for manual review')
     report.addParagraph(
-      'We reviewed screenshots of the first page load. These tool-assisted observations are not measured problems and should be confirmed by a person. We did not test menus, forms, or other controls.',
+      'These initial-load screenshots are provided for manual review and are not automatically checked for visual defects. Menus, forms, and other controls were not tested.',
       { size: 8, color: MUTED },
     )
-    if (visualAudit.discovered_page_count === 1) {
+    if (screenshotReview.discovered_page_count === 1) {
       report.addParagraph(
         'We did not find links to other pages in the initial HTML. Pages added later by JavaScript may need a separate browser review.',
         { size: 7.5, color: MUTED },
@@ -680,7 +666,7 @@ function buildWebsiteAnalysisPdf(
             report.doc.addImage(screenshotData, 'JPEG', LEFT, report.y, CONTENT_WIDTH, imageHeight, undefined, 'FAST')
             report.y += imageHeight + 5
           } catch {
-            report.addParagraph('The saved screenshot could not be embedded in this PDF; its visual observations are listed below.', { size: 7.5, color: MUTED })
+            report.addParagraph('The saved screenshot could not be embedded in this PDF.', { size: 7.5, color: MUTED })
           }
         } else if (page.image_path) {
           report.addParagraph('A screenshot is saved for this page, but it could not be retrieved for embedding in this PDF.', { size: 7.5, color: MUTED })
@@ -688,38 +674,7 @@ function buildWebsiteAnalysisPdf(
         if (page.error) report.addParagraph(`Capture note: ${page.error}`, { size: 7.5, color: MUTED })
       })
     }
-    if (visualObservations.length === 0) {
-      report.addParagraph(visualPages.some((page: any) => typeof page.image_path === 'string')
-        ? 'We did not identify clear visual problems in the saved screenshots. This does not confirm that every screen size or control works correctly.'
-        : 'No visual observations are available because no screenshot was saved. The page appearance was not assessed.')
-    } else {
-      visualObservations.forEach((observation: any, index: number) => {
-        report.ensureSpace(15)
-        report.addParagraph(`${index + 1}. ${clientFriendlyAuditText(observation.title || 'Visual observation')}`, {
-          bold: true,
-          color: NAVY,
-          size: 9,
-        })
-        report.addParagraph(
-          `${observation.viewport || 'unknown screen size'} | ${observation.severity || 'unrated'} priority | ${Math.round((observation.confidence || 0) * 100)}% confidence from our tools`,
-          { size: 7.5, color: TEAL },
-        )
-        report.addParagraph(`What we noticed: ${clientFriendlyAuditText(observation.evidence || 'No visual evidence summary was returned.')}`, { size: 8 })
-        report.addParagraph(
-          `Why it may matter: ${observation.why_it_matters
-            ? clientFriendlyAuditText(observation.why_it_matters)
-            : 'If confirmed, this may affect how visitors see or use this part of the page.'}`,
-          { size: 8 },
-        )
-        if (observation.page_url) report.addParagraph(`Page: ${observation.page_url}`, { size: 7.5, color: MUTED })
-        report.addParagraph(
-          `What we recommend: ${observation.recommended_fix
-            ? clientFriendlyAuditText(observation.recommended_fix)
-            : 'We recommend confirming this observation on the live page before making changes.'}`,
-          { size: 8, bold: true },
-        )
-      })
-    }
+    if (visualPages.length === 0) report.addParagraph('No screenshots were available for this review.')
   }
 
   const goodCategoryHighlights = categoryScores.flatMap(([category, value]) =>
@@ -733,7 +688,6 @@ function buildWebsiteAnalysisPdf(
   const otherPositiveHighlights = positives
     .filter((item): item is { id?: string; title?: string | null; evidence?: string | null } =>
       !!item && typeof item === 'object' &&
-      item.evidence !== 'AI-generated' &&
       !item.id?.startsWith('positive-score-') &&
       !item.id?.startsWith('positive-metric-'),
     )

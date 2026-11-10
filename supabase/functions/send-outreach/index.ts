@@ -242,7 +242,7 @@ serve(async (req) => {
     const { data: analyses, error: analysisError } = websiteProspectIds.length
       ? await supabase
           .from('website_analyses')
-          .select('prospect_id, website_url, findings, ai_analysis')
+          .select('prospect_id, website_url, findings, analysis_details')
           .eq('user_id', userId)
           .eq('analysis_status', 'completed')
           .in('prospect_id', websiteProspectIds)
@@ -252,7 +252,7 @@ serve(async (req) => {
     const analysesByProspect = new Map<string, Array<{
       website_url: string
       findings: unknown
-      ai_analysis: { optimization_opportunities?: unknown } | null
+      analysis_details: { optimization_opportunities?: unknown } | null
     }>>()
     for (const analysis of analyses ?? []) {
       if (analysis.prospect_id && analysis.website_url) {

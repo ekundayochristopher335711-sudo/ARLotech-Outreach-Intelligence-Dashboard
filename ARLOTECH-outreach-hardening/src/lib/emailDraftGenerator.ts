@@ -69,14 +69,11 @@ type DraftFinding = {
 }
 
 type DraftAnalysis = Omit<
-  Pick<WebsiteAnalysis, 'website_url' | 'overall_score' | 'category_scores' | 'findings' | 'positive_observations' | 'ai_analysis'>,
-  'findings' | 'ai_analysis'
+  Pick<WebsiteAnalysis, 'website_url' | 'overall_score' | 'category_scores' | 'findings' | 'positive_observations' | 'analysis_details'>,
+  'findings' | 'analysis_details'
 > & {
   findings: DraftFinding[]
-  ai_analysis: (Record<string, any> & {
-    visual_audit?: {
-      observations?: DraftFinding[]
-    }
+  analysis_details: (Record<string, any> & {
     optimization_opportunities?: DraftFinding[]
   }) | null
 }
@@ -129,24 +126,18 @@ function candidateObservations(analysis?: DraftAnalysis | null) {
     }
     return rank(right) - rank(left)
   })
-  const opportunities = Array.isArray(analysis.ai_analysis?.optimization_opportunities)
-    ? analysis.ai_analysis.optimization_opportunities.filter((finding: any) =>
+  const opportunities = Array.isArray(analysis.analysis_details?.optimization_opportunities)
+    ? analysis.analysis_details.optimization_opportunities.filter((finding: any) =>
         finding?.classification === 'optimization_opportunity' &&
         typeof finding.title === 'string' &&
         typeof finding.evidence === 'string',
       )
     : []
-  const visual = Array.isArray(analysis.ai_analysis?.visual_audit?.observations)
-    ? analysis.ai_analysis.visual_audit.observations.filter((finding) =>
-        finding && typeof finding.title === 'string' && typeof finding.evidence === 'string',
-      ).map((finding) => ({ ...finding, classification: 'observed_visual' }))
-    : []
-  return [...confirmed, ...opportunities, ...visual].slice(0, 5).map((finding) => ({
-    title: finding.classification === 'observed_visual' ? finding.title || 'Visual observation' : auditFindingTitle(finding),
+  return [...confirmed, ...opportunities].slice(0, 5).map((finding) => ({
+    title: auditFindingTitle(finding),
     why: finding.why_it_matters || auditFindingWhy(finding),
     evidence: (finding.display_value || finding.evidence || '').trim(),
     estimated: finding.classification === 'optimization_opportunity',
-    visual: finding.classification === 'observed_visual',
   }))
 }
 
@@ -297,7 +288,7 @@ export function generateProfessionalEmailDraft(input: {
     : (strategy === 'technical_improvement' || strategy === 'seo_performance')
       ? observations.find((item) => /speed|performance|load|javascript|css|blocking|response|accessibility|contrast|seo|search/i.test(item.title))
     : strategy === 'website_redesign'
-      ? observations.find((item) => item.visual)
+      ? undefined
       : strategy === 'business_growth'
         ? observations.find((item) => /contact|form|navigation|heading|service|booking|link/i.test(item.title))
         : observations[0]
@@ -313,7 +304,7 @@ export function generateProfessionalEmailDraft(input: {
       lines.push(`We noticed ${observation.title.toLowerCase()}: ${evidencePhrase}. ${observation.why}`)
     }
     lines.push('')
-  } else if (strategy === 'website_redesign' && !observations.some((item) => item.visual)) {
+  } else if (strategy === 'website_redesign') {
     lines.push('We do not have a verified visual observation to support a redesign recommendation, so we would be glad to discuss your goals before suggesting changes.', '')
   } else if (analysis && strengths.length && !['no_website', 'cold_outreach'].includes(strategy)) {
     lines.push('We did not identify a confirmed issue that warrants a problem-focused message, so we would be happy to discuss optional refinements if they are relevant to your plans.', '')

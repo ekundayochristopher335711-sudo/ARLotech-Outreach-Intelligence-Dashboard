@@ -25,7 +25,7 @@ function analysis(overrides: Record<string, unknown> = {}) {
     },
     findings: [],
     positive_observations: [],
-    ai_analysis: {},
+    analysis_details: {},
     ...overrides,
   }
 }
@@ -78,28 +78,26 @@ describe('professional email draft generation', () => {
     expect(result.body).not.toMatch(/guarantee|increase revenue/i)
   })
 
-  it('only recommends redesign when the saved visual review contains an observation', () => {
+  it('does not infer visual problems from saved screenshots', () => {
     const result = generateProfessionalEmailDraft({
       prospect,
       strategy: 'website_redesign',
       analysis: analysis({
-        ai_analysis: {
-          visual_audit: {
-            observations: [{
-              title: 'Mobile navigation overlaps the page heading',
-              evidence: 'In the saved mobile screenshot, the navigation covers part of the heading.',
-              why_it_matters: 'Visitors may have difficulty reading the page heading.',
-              recommended_fix: 'Review spacing at the captured screen size.',
+        analysis_details: {
+          screenshot_review: {
+            pages: [{
+              page_url: 'https://akplumbing.example',
+              viewport: 'mobile',
+              image_path: 'user-id/analysis-id/0-mobile.jpg',
             }],
           },
         },
       }),
     })
 
-    expect(result.body).toContain('mobile navigation overlaps the page heading')
-    expect(result.body).toContain('In the saved mobile screenshot')
-    expect(result.body).toContain('visual or structural update')
-    expect(result.observationsUsed).toHaveLength(1)
+    expect(result.body).toContain('We do not have a verified visual observation')
+    expect(result.body).not.toContain('mobile navigation overlaps')
+    expect(result.observationsUsed).toEqual([])
   })
 
   it('creates a useful introduction when no analysis exists without inventing findings or an attachment', () => {

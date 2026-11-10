@@ -74,7 +74,7 @@ interface PdfFinding {
 }
 
 interface NormalizedPdfFinding extends PdfFinding {
-  sourceLabel: 'Measured' | 'Page inspection' | 'Tool-assisted suggestion' | 'Unverified'
+  sourceLabel: 'Measured' | 'Page inspection' | 'Unverified'
   dedupeKey: string
 }
 
@@ -477,9 +477,6 @@ function findingSource(finding: PdfFinding): NormalizedPdfFinding['sourceLabel']
     finding.id?.startsWith('content-') ||
     finding.id?.startsWith('html-')
   ) return 'Page inspection'
-  if (finding.source === 'ai' || finding.id?.startsWith('ai-') || finding.evidence === 'AI-generated') {
-    return 'Tool-assisted suggestion'
-  }
   return 'Unverified'
 }
 
@@ -503,7 +500,7 @@ function normalizePdfFindings(findings: PdfFinding[]) {
     const normalized = { ...finding, dedupeKey, sourceLabel: findingSource(finding) }
     const existing = unique.get(dedupeKey)
     const sourceRank = (source: NormalizedPdfFinding['sourceLabel']) =>
-      source === 'Measured' ? 3 : source === 'Page inspection' ? 2 : source === 'Unverified' ? 1 : 0
+      source === 'Measured' ? 3 : source === 'Page inspection' ? 2 : 1
     if (!existing || sourceRank(normalized.sourceLabel) > sourceRank(existing.sourceLabel)) {
       unique.set(dedupeKey, normalized)
     }
@@ -560,31 +557,6 @@ function buildConsultantWebsiteAnalysisPdf(
         rank: priorityRank * 4 + ratingRank,
       }
     })
-  const aiAnalysis = rec.ai_analysis && typeof rec.ai_analysis === 'object' ? rec.ai_analysis : {}
-  const visualAudit = aiAnalysis.visual_audit && typeof aiAnalysis.visual_audit === 'object'
-    ? aiAnalysis.visual_audit
-    : null
-  const seenVisualViewports = new Set<string>()
-  const visualCandidates = Array.isArray(visualAudit?.observations)
-    ? visualAudit.observations.flatMap((observation: any) => {
-        const confidence = typeof observation?.confidence === 'number' ? observation.confidence : 0
-        const severity = typeof observation?.severity === 'string' ? observation.severity.toLowerCase() : ''
-        if (confidence < 0.75 || !['high', 'medium'].includes(severity)) return []
-        const viewportKey = observation.viewport === 'mobile' ? 'mobile' : 'desktop'
-        if (seenVisualViewports.has(viewportKey)) return []
-        seenVisualViewports.add(viewportKey)
-        return [{
-          title: viewportKey === 'mobile'
-            ? 'The page may be difficult to use on a phone'
-            : 'The page may look uneven on a larger screen',
-          impact: viewportKey === 'mobile'
-            ? 'A display problem on phones could hide important details or make it harder for customers to contact you.'
-            : 'A display problem on larger screens could make the business look less professional to customers comparing local options.',
-          support: 'responsive layout and mobile usability improvements',
-          rank: (severity === 'high' ? 12 : 8) + confidence,
-        }]
-      })
-    : []
   const selectedTitles = new Set<string>()
   const selectedImpacts = new Set<string>()
   const selectedFacts: Array<{ title: string; impact: string }> = []
@@ -595,7 +567,7 @@ function buildConsultantWebsiteAnalysisPdf(
     const shared = [...leftWords].filter((word) => rightWords.has(word)).length
     return shared / new Set([...leftWords, ...rightWords]).size
   }
-  const topFindings = [...measuredCandidates, ...visualCandidates]
+  const topFindings = measuredCandidates
     .sort((left, right) => right.rank - left.rank)
     .filter((finding) => {
       const titleKey = finding.title.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
@@ -615,7 +587,7 @@ function buildConsultantWebsiteAnalysisPdf(
     'Website review',
     `Reviewed ${displayDate(rec.analyzed_at)}  |  Arlotech Digital Solutions`,
     'WEBSITE REVIEW',
-    3,
+    12,
     logo,
   )
   const scoreSummary = topFindings.length === 0
@@ -678,6 +650,29 @@ function buildConsultantWebsiteAnalysisPdf(
       report.addWebsiteIssueCard(index + 1, finding.title, finding.impact)
     })
   }
+  const visualAudit = rec.analysis_details?.visual_audit
+  report.addSection('AI visual design assessment')
+  if (visualAudit?.status === 'completed' || visualAudit?.status === 'partial') {
+    report.addParagraph(`Visual design score: ${visualAudit.visual_score ?? 'Not available'}/100 (${visualAudit.status} screenshot coverage).`, { bold: true, color: NAVY })
+    report.addParagraph(visualAudit.score_explanation || visualAudit.assessment?.summary || 'Visual assessment explanation was not recorded.')
+    const visualFindings = Array.isArray(visualAudit.findings) ? visualAudit.findings : []
+    if (!visualFindings.length) {
+      report.addParagraph('No significant visual issues were identified in the screenshots that were available.', { color: NAVY })
+    } else {
+      visualFindings.forEach((finding: Record<string, any>, index: number) => {
+        report.ensureSpace(22)
+        report.addParagraph(`${index + 1}. ${finding.title || 'Visual observation'} — ${String(finding.severity || 'informational').toUpperCase()} | ${finding.device || 'device not recorded'} | ${finding.page_label || 'Page not recorded'}`, { bold: true, color: NAVY })
+        report.addParagraph(`Observation: ${finding.observation || 'Not recorded'}`)
+        report.addParagraph(`Evidence: ${finding.evidence || 'Not recorded'}`)
+        report.addParagraph(`Visitor impact: ${finding.user_impact || 'Not recorded'}`)
+        report.addParagraph(`Recommended improvement: ${finding.recommendation || 'Not recorded'}`)
+      })
+    }
+  } else {
+    report.addParagraph(visualAudit?.status === 'failed'
+      ? `AI visual assessment could not be completed: ${visualAudit.error || 'No error details were recorded.'}`
+      : 'AI visual assessment was not available for this audit. No visual score or findings have been inferred.')
+  }
   const relevantSupport = [...new Set(topFindings.map((finding) => finding.support).filter(Boolean))]
   report.addSection('Relevant Arlotech support')
   report.addParagraph(
@@ -702,7 +697,7 @@ function buildConsultantWebsiteAnalysisPdf(
   }
 }
 
-export async function exportWebsiteAnalysisPdf(analysis: Record<string, any>, _screenshotImages: Record<string, string> = {}) {
+export async function exportWebsiteAnalysisPdf(analysis: Record<string, any>) {
   const logo = await loadPdfBrandLogo()
   const { report, filename } = buildConsultantWebsiteAnalysisPdf(analysis, null, logo)
   report.finish(filename)
@@ -716,7 +711,6 @@ export async function createWebsiteAnalysisPdfBase64(
     contactName?: string
     email?: string | null
   } | null,
-  _screenshotImages: Record<string, string> = {},
 ) {
   const logo = await loadPdfBrandLogo()
   return buildConsultantWebsiteAnalysisPdf(analysis, preparedFor, logo).report.toBase64()

@@ -44,24 +44,14 @@ describe('website audit PDF', () => {
       category_scores: { performance: 90, seo: 80 },
       overall_score: 85,
       findings,
-      ai_analysis: {
-        visual_audit: {
+      analysis_details: {
+        screenshot_review: {
           status: 'completed',
           pages: [{
             page_url: 'https://example.com/services',
             page_label: 'Services',
             viewport: 'mobile',
             image_path: 'user-id/analysis-id/1-mobile.jpg',
-          }],
-          observations: [{
-            page_url: 'https://example.com/services',
-            viewport: 'mobile',
-            title: 'Heading clipped on mobile',
-            evidence: 'The final word in the heading is cut off at the right edge.',
-            why_it_matters: 'Visitors may not see the complete heading.',
-            severity: 'medium',
-            confidence: 0.88,
-            recommended_fix: 'Check the heading container width at this viewport.',
           }],
         },
       },
@@ -74,12 +64,9 @@ describe('website audit PDF', () => {
     expect(report).toContain('Prepared for: example.com')
     expect(report).not.toContain('Unverified CRM Name')
     expect(report).toContain('9. Measured finding 9')
-    expect(report).toContain('VISUAL REVIEW TO VALIDATE (1 OBSERVATIONS)')
-    expect(report).toContain('Heading clipped on mobile')
-    expect(report).toContain('Why it may matter: Visitors may not see the complete heading')
-    expect(report).toContain('tool-assisted observations')
-    expect(report).not.toMatch(/\bAI\b|Gemini/)
-    expect(report).toContain('We did not test menus, forms, or other controls')
+    expect(report).toContain('SCREENSHOTS FOR MANUAL REVIEW')
+    expect(report).not.toContain('Heading clipped on mobile')
+    expect(report).toMatch(/Menus, forms, and other\s+controls were not tested/)
   })
 
   it('uses a business name as the recipient only when explicitly verified', () => {
@@ -105,7 +92,7 @@ describe('website audit PDF', () => {
       },
       findings: [],
       positive_observations: [],
-      ai_analysis: {
+      analysis_details: {
         audit_completeness: {
           status: 'partial',
           completeness_percent: 75,
@@ -124,7 +111,7 @@ describe('website audit PDF', () => {
           opportunity_ms: 50,
           affected_resources: ['https://www.amigodev.com.ng/app.js'],
         }],
-        visual_audit: {
+        screenshot_review: {
           status: 'partial',
           discovered_page_count: 2,
           pages: [{
@@ -135,7 +122,6 @@ describe('website audit PDF', () => {
             inspection_status: 'failed',
             error: 'The audit Edge Function returned BOOT_ERROR.',
           }],
-          observations: [],
         },
       },
     }))
@@ -237,7 +223,7 @@ describe('website audit PDF', () => {
       category_scores: { performance: 72, seo: 81, accessibility: 76, 'best-practices': 88 },
       findings: [],
       positive_observations: [],
-      ai_analysis: {},
+      analysis_details: {},
     }))
     expect(report).toContain('EXECUTIVE SUMMARY')
     expect(report).toContain('A PRACTICAL IMPROVEMENT PLAN')

@@ -51,13 +51,13 @@ Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` in Vercel for each environm
 
 ## Current scope
 
-The dashboard reads Supabase metrics and activity. The prospect list supports search, manual creation, and CSV import. CSV files must include a `business_name` header; supported optional headers are `contact_name`, `email`, `website`, `business_category`, `city`, `country`, `phone`, `linkedin_url`, `notes`, `source`, `status`, and `do_not_contact`.
+The dashboard reads Supabase metrics and activity. The prospect list supports search, manual creation, CSV import, and extracting businesses with website links from pasted Google Maps listings. CSV files must include a `business_name` header; supported optional headers are `contact_name`, `email`, `website`, `business_category`, `city`, `country`, `phone`, `linkedin_url`, `notes`, `source`, `status`, and `do_not_contact`.
 
-Campaigns can be created, filtered, updated, and deleted. Email drafts can be created, edited, associated with prospects or campaigns, and deleted. The Email Drafts page has two sending workflows: manually compose a one-off email, or generate personalized drafts for one or more selected prospects, review/edit them, then send. Generated messages are saved as drafts before sending. All sends use the authenticated Resend function and are recorded in email history. Replies and analytics use the email activity records stored in Supabase. Follow-up reminders can be scheduled and their statuses managed, but reminders do not trigger automatic email. Account profile details can be updated in Settings.
+Campaigns can be created, filtered, updated, and deleted. Email drafts can be created, edited, associated with prospects or campaigns, and deleted. The Email Drafts page has two sending workflows: manually compose a one-off email, or build locally generated personalized drafts for one or more selected prospects, review/edit them, then send. Generated messages are saved as drafts before sending. All sends use the authenticated Resend function and are recorded in email history. Replies and analytics use the email activity records stored in Supabase. Follow-up reminders can be scheduled and their statuses managed, but reminders do not trigger automatic email. Account profile details can be updated in Settings.
 
 Outreach batches are sent individually through the `send-outreach` Supabase Edge Function and Resend. The function checks ownership, do-not-contact status, suppressions, and completed website audits; it accepts up to 10 emails per request and sends to 50 recipients per rolling 24 hours. The dashboard can select up to 50 prospects and processes sends in sequential requests of at most 10, retaining sent results so a failed remainder can be retried without resending successful recipients. Previously contacted prospects are labeled and require confirmation before resending. Draft generation requires a website link but does not require an email address, category, or completed audit; sending still requires a valid recipient and a matching audit with an evidence-backed finding. Review and confirm every message before sending. Email sending does not guarantee inbox placement or replace applicable marketing/privacy compliance.
 
-AI website analysis and outreach generation require their respective server-side secrets. Replies sent to your configured Resend receiving domain are recorded by the `resend-inbound` Edge Function. Automatic follow-up sending is not implemented.
+Replies sent to your configured Resend receiving domain are recorded by the `resend-inbound` Edge Function. Automatic follow-up sending is not implemented.
 
 
 ## Website Intelligence integrations
@@ -66,9 +66,9 @@ The Website Intelligence page orchestrates three Supabase Edge Functions:
 
 - `pagespeed-insights` — calls the Google PageSpeed Insights API (Lighthouse) for performance, accessibility, SEO and best-practices scores plus audit details.
 - `extract-content` — fetches the target page server-side and extracts title, meta, headings, text, links, images, schema.org, etc. For client-rendered pages, contact extraction also checks a small number of bounded same-origin JavaScript bundles for embedded email and telephone links.
-- `gemini-analysis` — the existing Supabase function endpoint now sends extracted content + PageSpeed data to OpenAI and returns an AI summary, recommendations and observations. Its historical function name is retained so existing clients keep working.
+- `analyze-website-visuals` — after screenshots are saved, sends their image data to the OpenAI Responses API for a separate, evidence-based visual assessment. It requires server-side `OPENAI_API_KEY` and `OPENAI_VISION_MODEL` secrets; screenshots are not sent if no stored images are available.
 
-The combined report is stored in the `website_analyses` Supabase table.
+The PageSpeed scores, extracted page details, and measured findings are stored in the `website_analyses` Supabase table.
 
 After a successful analysis linked to a prospect, valid website-extracted email and phone values replace saved values. If the website yields no email or phone, the saved value is retained. The current extractor does not infer a person's name.
 
@@ -76,39 +76,28 @@ Customer-facing PDFs use the official Arlotech Digital Solutions logo without an
 
 The displayed ArloTech composite score is the rounded arithmetic mean of available Lighthouse category scores; it is not an official Lighthouse score. Prospect business names default to unverified and appear as the report recipient only after an account user verifies them in the prospect record.
 
-Website Intelligence can also run an optional visual review. It uses PageSpeed's rendered screenshots for the homepage (desktop and mobile where available) and up to three same-origin pages discovered first inside navigation landmarks, then from other page links if no navigation links are available (mobile). If the initial HTML contains no page links, JavaScript-rendered navigation may require a browser-based crawler and will not be discovered by this bounded pass. Screenshots are saved in a private, user-scoped Supabase Storage bucket, and OpenAI returns AI-assisted visual observations for human review. A PageSpeed timeout can leave an individual viewport screenshot unavailable while preserving other audit results. This is a bounded initial-load crawl; it does not click menus, submit forms, test interactive states, or guarantee that visual observations are correct. It makes additional PageSpeed requests. The **Re-analyze all websites** action refreshes the primary-page technical and content analysis without running this optional multi-page visual review; use an individual website analysis when detailed visual screenshots are needed. Bulk analysis progress survives refresh, can be paused between groups of three sites and resumed later, and can be closed from the completed progress panel.
+Website Intelligence can also save PageSpeed screenshots from the homepage (desktop and mobile where available) and up to three same-origin pages. If the initial HTML contains no page links, JavaScript-rendered navigation may require a browser-based crawler and will not be discovered by this bounded pass. Screenshots are saved in a private, user-scoped Supabase Storage bucket and sent to the configured OpenAI vision model for a separate visual assessment. Do not use this feature on screenshots containing information you do not want sent to OpenAI. Visual findings are model-generated suggestions that should be checked by a person; static screenshots cannot verify menus, forms, or other interactive states. Missing configuration or a failed visual assessment does not discard the technical audit or screenshots. This optional review makes additional PageSpeed requests. The **Re-analyze all websites** action refreshes the primary-page technical and content analysis without running this optional multi-page screenshot review. Bulk analysis progress survives refresh, can be paused between groups of three sites and resumed later, and can be closed from the completed progress panel.
 
-Before deploying the visual review, apply the pending migrations and redeploy the updated `extract-content` and `gemini-analysis` functions. Migration `20261027220000_create_visual_audit_screenshots.sql` creates the private screenshot bucket.
+Before deploying screenshot review, apply the pending migrations and deploy the `extract-content` function. Migration `20261027220000_create_visual_audit_screenshots.sql` creates the private screenshot bucket.
 
 ### Configure secrets (server-side, never exposed to the browser)
 
 ```sh
 npx supabase secrets set PAGESPEED_API_KEY=your-google-pagespeed-key
-npx supabase secrets set OPENAI_API_KEY=your-openai-api-key
+npx supabase secrets set OPENAI_API_KEY=your-server-side-openai-api-key
+npx supabase secrets set OPENAI_VISION_MODEL=gpt-4.1-mini
 ```
 
-The AI functions use `gpt-6-luna` by default. To choose another model available to your OpenAI API account, set `OPENAI_MODEL` as a Supabase secret. Never put the OpenAI key in a `VITE_` variable or browser code.
+The PageSpeed key is only used server-side and must never be placed in a `VITE_` variable or browser code.
 
 ### Deploy the functions
 
 ```sh
 npx supabase functions deploy pagespeed-insights
 npx supabase functions deploy extract-content
-npx supabase functions deploy gemini-analysis
+npx supabase functions deploy analyze-website-visuals
 ```
 
-The existing `gemini-analysis` function name is retained for compatibility; it now calls OpenAI. The frontend invokes it via `supabase.functions.invoke(...)` and stores the resulting report in Supabase.
-
-### Prospect extraction and AI outreach drafting
-
-Pasting business listings into the prospect importer and generating AI-assisted outreach drafts use the `extract-leads` and `gemini-outreach` Edge Functions. Both now call OpenAI using the same server-side key; the outreach function name is retained for compatibility. Deploy both functions:
-
-```sh
-npx supabase functions deploy extract-leads
-npx supabase functions deploy gemini-outreach
-```
-
-Set `OPENAI_API_KEY` once for the linked Supabase project. The API is billed by OpenAI based on model usage; ChatGPT subscriptions are separate from API billing.
 
 ## Resend outreach
 
@@ -199,4 +188,4 @@ See [`docs/CONVERSION-OPTIMIZATION-UPDATE.md`](docs/CONVERSION-OPTIMIZATION-UPDA
 
 ## Growth Center and next-step implementation
 
-The additive Growth Center is available at `/growth-center`. See `docs/GROWTH-CENTER-UPDATE.md` for what is implemented and what remains provider/schema dependent. For GitHub Copilot, use the project-specific implementation brief in `docs/COPILOT-IMPLEMENTATION-BRIEF.md`; it instructs Copilot to inspect this exact codebase and preserve its existing architecture, UI, data and security boundaries.
+The additive Growth Center is available at `/growth-center`. See `docs/GROWTH-CENTER-UPDATE.md` for what is implemented and what remains provider/schema dependent.

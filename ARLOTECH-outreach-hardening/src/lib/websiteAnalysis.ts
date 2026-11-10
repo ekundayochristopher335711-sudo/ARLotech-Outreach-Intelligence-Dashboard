@@ -5,8 +5,8 @@ import {
   formatVisualCaptureError,
   MAX_VISUAL_REVIEW_PAGES,
   selectVisualReviewPages,
+  type ScreenshotReview,
   type StoredVisualPage,
-  type VisualAudit,
   type VisualScreenshot,
 } from '@/lib/visualReview'
 import {
@@ -14,9 +14,6 @@ import {
   calculateTechnicalHealthScore,
   classifyLighthouseAudits,
   extractCategoryScores,
-  sanitizePlainText,
-  sanitizeRecommendationList,
-  sanitizeVisualObservations,
   summarizePageInspectionCoverage,
 } from '@/lib/websiteAudit'
 import { mapWithConcurrency } from '@/lib/mapWithConcurrency'
@@ -64,30 +61,6 @@ export interface PageSpeedResult {
   loadingExperience?: any
   originLoadingExperience?: any
 }
-export interface GeminiResult {
-  text: string
-  parsed: {
-    summary?: string
-    score_explanation?: string
-    recommendations?: string[]
-    seo_notes?: string[]
-    content_notes?: string[]
-    positive_observations?: string[]
-    visual_observations?: Array<{
-      page_url: string
-      viewport: 'desktop' | 'mobile'
-      title: string
-      evidence: string
-      why_it_matters?: string
-      severity: 'high' | 'medium' | 'low'
-      confidence: number
-      recommended_fix?: string
-    }>
-  } | null
-  model: string
-  error?: string
-}
-
 export async function extractContent(url: string): Promise<ExtractedContent> {
   const { data, error } = await (supabase as any).functions.invoke('extract-content', { body: { url } })
   if (error) {
@@ -122,34 +95,6 @@ export async function runPageSpeed(url: string, strategy: 'mobile' | 'desktop' =
   }
   if (data?.error) throw new Error(data.error)
   return data as PageSpeedResult
-}
-
-export async function generateGeminiAnalysis(payload: {
-  url: string
-  content: ExtractedContent
-  pagespeed: PageSpeedResult
-  visualScreenshots?: VisualScreenshot[]
-}): Promise<GeminiResult> {
-  const { fullPageScreenshot: _fullPageScreenshot, ...lighthouseResult } = payload.pagespeed.lighthouseResult
-  const { data, error } = await (supabase as any).functions.invoke('gemini-analysis', {
-    body: {
-      ...payload,
-      pagespeed: { ...payload.pagespeed, lighthouseResult },
-    },
-  })
-  if (error) {
-    let detail = error.message || 'gemini-analysis failed'
-    try {
-      const ctx = (error as any)?.context
-      if (ctx && typeof ctx.text === 'function') {
-        const body = await ctx.text()
-        if (body) detail = `${detail} — ${body}`
-      }
-    } catch { /* ignore */ }
-    throw new Error(detail)
-  }
-  if (data?.error) throw new Error(data.error)
-  return data as GeminiResult
 }
 
 export async function analyzeWebsite(
@@ -425,48 +370,11 @@ export async function analyzeWebsite(
     limitations,
   }
 
-  let gemini: GeminiResult = {
-    text: '',
-    parsed: null,
-    model: 'unavailable',
-  }
-  try {
-    const visualScreenshots = visualPages.flatMap((page) => page.screenshot ? [page.screenshot] : [])
-    gemini = await generateGeminiAnalysis({
-      url,
-      content,
-      pagespeed: { ...pagespeed, lighthouseResult: { ...pagespeed.lighthouseResult, fullPageScreenshot: undefined } },
-      ...(visualScreenshots.length ? { visualScreenshots } : {}),
-    })
-  } catch (error) {
-    const detail = error instanceof Error ? error.message : 'Gemini analysis failed.'
-    console.warn('AI analysis unavailable; saving measured audit data without AI analysis:', detail)
-    gemini = { text: '', parsed: null, model: 'unavailable', error: detail }
-  }
-
   const scoreExplanation = overall === null
     ? `A technical health score is unavailable because Lighthouse did not return valid scores for every required category${missingCategories.length ? ` (${missingCategories.join(', ')})` : ''}.`
     : `Technical health score: ${overall}/100, calculated from Lighthouse category scores using Performance 30%, SEO 25%, Accessibility 25%, and Best Practices 20%.`
-  const parsedGemini = gemini.parsed && typeof gemini.parsed === 'object'
-    ? {
-        summary: sanitizePlainText(gemini.parsed.summary, 1200),
-        recommendations: sanitizeRecommendationList(gemini.parsed.recommendations),
-        visual_observations: sanitizeVisualObservations(
-          gemini.parsed.visual_observations,
-          visualPages.flatMap((page) => page.screenshot
-            ? [{ page_url: page.page_url, viewport: page.viewport }]
-            : []),
-        ),
-      }
-    : null
-  gemini = { ...gemini, parsed: parsedGemini }
-  const aiSummary = {
-    ...(parsedGemini?.summary ? { summary: parsedGemini.summary } : {}),
+  const analysisDetails = {
     score_explanation: scoreExplanation,
-    recommendations: parsedGemini?.recommendations ?? [],
-    text: gemini.text.slice(0, 6000),
-    model: gemini.model,
-    ...(gemini.error ? { error: gemini.error } : {}),
     technical_score: {
       methodology: 'Weighted Lighthouse category score',
       weights: { performance: 30, seo: 25, accessibility: 25, 'best-practices': 20 },
@@ -512,10 +420,10 @@ export async function analyzeWebsite(
       category_scores: categoryScores,
       findings,
       positive_observations: positiveObservations,
-      ai_analysis: aiSummary,
+      analysis_details: analysisDetails,
       analysis_status: 'completed',
       error_message: null,
-      analysis_provider: gemini.model === 'unavailable' ? 'pagespeed' : 'pagespeed+gemini',
+      analysis_provider: 'pagespeed',
       analyzed_at: new Date().toISOString(),
     })
     .select()
@@ -562,39 +470,14 @@ export async function analyzeWebsite(
         ...(!uploadError && page.error ? { error: page.error } : {}),
       }
     }))
-    const savedPageViewports = new Set(
-      savedPages.filter((page) => page.image_path).map((page) => `${page.page_url}|${page.viewport}`),
-    )
-    const observations = (parsedGemini?.visual_observations ?? [])
-      .filter((observation) =>
-        savedPageViewports.has(`${observation.page_url}|${observation.viewport}`) &&
-        typeof observation.title === 'string' &&
-        observation.title.trim().length > 0 &&
-        typeof observation.evidence === 'string' &&
-        ['high', 'medium', 'low'].includes(observation.severity) &&
-        Number.isFinite(observation.confidence) &&
-        observation.confidence >= 0 &&
-        observation.confidence <= 1,
-      )
-      .slice(0, 15)
-      .map((observation) => ({
-        ...observation,
-        title: observation.title.trim().slice(0, 200),
-        evidence: observation.evidence.trim().slice(0, 800),
-        confidence: Math.round(observation.confidence * 100) / 100,
-        recommended_fix: typeof observation.recommended_fix === 'string'
-          ? observation.recommended_fix.trim().slice(0, 500)
-          : undefined,
-      }))
     const successfulScreenshots = savedPages.filter((page) => page.image_path).length
-    const visualAudit: VisualAudit = {
+    const screenshotReview: ScreenshotReview = {
       status: successfulScreenshots === 0
         ? 'unavailable'
         : savedPages.some((page) => !page.image_path)
           ? 'partial'
           : 'completed',
       pages: savedPages,
-      observations,
       discovered_page_count: discoveredPageCount,
       requested_viewport_count: requestedViewports,
       inspected_viewport_count: inspectedViewports,
@@ -603,16 +486,16 @@ export async function analyzeWebsite(
     const { data: updatedRecord, error: updateError } = await supabase
       .from('website_analyses')
       .update({
-        ai_analysis: {
-          ...aiSummary,
+        analysis_details: {
+          ...analysisDetails,
           audit_completeness: {
             ...auditCompleteness,
             saved_screenshot_count: successfulScreenshots,
-            status: visualAudit.status === 'completed' && auditCompleteness.status === 'complete'
+            status: screenshotReview.status === 'completed' && auditCompleteness.status === 'complete'
               ? 'complete'
               : 'partial',
           },
-          visual_audit: visualAudit,
+          screenshot_review: screenshotReview,
         },
       })
       .eq('id', data.id)
@@ -625,7 +508,6 @@ export async function analyzeWebsite(
       record: updatedRecord,
       content,
       pagespeed: pagespeedSummary,
-      gemini,
       overallScore: overall,
       seoScore,
       perfScore,
@@ -637,7 +519,6 @@ export async function analyzeWebsite(
     record: data,
     content,
     pagespeed: pagespeedSummary,
-    gemini,
     overallScore: overall,
     seoScore,
     perfScore,

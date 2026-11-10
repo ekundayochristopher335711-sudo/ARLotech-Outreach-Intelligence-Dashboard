@@ -91,43 +91,13 @@ export function WebsiteIntelligencePage() {
     navigator.clipboard.writeText(JSON.stringify(analysis, null, 2)).then(() => toast.success('Report copied'))
   }
   const handleDownloadReport = async (analysis: any) => {
-    const visualPages = Array.isArray(analysis?.ai_analysis?.visual_audit?.pages)
-      ? analysis.ai_analysis.visual_audit.pages
-      : []
-    const screenshotImages: Record<string, string> = {}
-    await Promise.all(visualPages.filter((page: any) => typeof page.image_path === 'string').map(async (page: any) => {
-      try {
-        const { data, error } = await supabase.storage
-          .from('website-audit-screenshots')
-          .createSignedUrl(page.image_path, 300)
-        if (error || !data?.signedUrl) return
-        const response = await fetch(data.signedUrl)
-        if (!response.ok) return
-        const bitmap = await createImageBitmap(await response.blob())
-        try {
-          const canvas = document.createElement('canvas')
-          canvas.width = bitmap.width
-          canvas.height = bitmap.height
-          const context = canvas.getContext('2d')
-          if (!context) return
-          context.drawImage(bitmap, 0, 0)
-          screenshotImages[page.image_path] = canvas.toDataURL('image/jpeg', 0.86)
-        } finally {
-          bitmap.close()
-        }
-      } catch {
-        // Keep the text report available if an optional screenshot cannot be retrieved.
-      }
-    }))
     try {
-      await exportWebsiteAnalysisPdf(analysis, screenshotImages)
+      await exportWebsiteAnalysisPdf(analysis)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Could not download the website report.')
       return
     }
-    toast.success(Object.keys(screenshotImages).length
-      ? 'Website report downloaded with saved screenshots'
-      : 'Website report downloaded')
+    toast.success('Website report downloaded')
   }
   const selectedFindings: any[] = Array.isArray(selected?.findings) ? selected.findings : []
   const selectedProblemFindings = selectedFindings.filter((finding) => rateLighthouseFinding(finding) !== 'Good')
@@ -257,41 +227,30 @@ export function WebsiteIntelligencePage() {
           </div>
           <p className="text-xs text-slate-500">SEO means search engine optimization: how easily search engines can find and understand your pages. Scores come from Lighthouse/PageSpeed.</p>
 
-          {lastResult.openai?.parsed?.summary && (
-            <div>
-              <h3 className="text-sm font-semibold text-slate-700 mb-1">Our assessment</h3>
-              <p className="text-sm text-slate-600">{clientFriendlyAuditText(lastResult.openai.parsed.summary)}</p>
-            </div>
-          )}
-          {lastResult.record?.ai_analysis?.score_explanation && (
+          {lastResult.record?.analysis_details?.score_explanation && (
             <div>
               <h3 className="text-sm font-semibold text-slate-700 mb-1">How we calculated the score</h3>
-              <p className="text-sm text-slate-600">{clientFriendlyAuditText(lastResult.record.ai_analysis.score_explanation)}</p>
+              <p className="text-sm text-slate-600">{clientFriendlyAuditText(lastResult.record.analysis_details.score_explanation)}</p>
             </div>
           )}
-          {lastResult.record?.ai_analysis?.audit_completeness && (
+          {lastResult.record?.analysis_details?.audit_completeness && (
             <div className="rounded-lg border border-slate-200 p-3">
               <h3 className="text-sm font-semibold text-slate-700">What we reviewed</h3>
               <p className="mt-1 text-xs text-slate-600">
-                {lastResult.record.ai_analysis.audit_completeness.completeness_percent}% coverage ·
-                {' '}{lastResult.record.ai_analysis.audit_completeness.inspected_viewport_count}/
-                {lastResult.record.ai_analysis.audit_completeness.requested_viewport_count} PageSpeed viewports inspected.
+                {lastResult.record.analysis_details.audit_completeness.completeness_percent}% coverage ·
+                {' '}{lastResult.record.analysis_details.audit_completeness.inspected_viewport_count}/
+                {lastResult.record.analysis_details.audit_completeness.requested_viewport_count} PageSpeed viewports inspected.
               </p>
-              {lastResult.record.ai_analysis.audit_completeness.limitations?.length > 0 && (
+              {lastResult.record.analysis_details.audit_completeness.limitations?.length > 0 && (
                 <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-slate-500">
-                  {lastResult.record.ai_analysis.audit_completeness.limitations.slice(0, 4).map((item: string, index: number) => (
+                  {lastResult.record.analysis_details.audit_completeness.limitations.slice(0, 4).map((item: string, index: number) => (
                     <li key={index}>{clientFriendlyAuditText(item)}</li>
                   ))}
                 </ul>
               )}
-              {lastResult.record?.ai_analysis?.error && (
-                <p role="status" className="text-sm text-amber-700">
-                  Our review tools could not prepare a summary: {lastResult.record.ai_analysis.error}
-                </p>
-              )}
             </div>
           )}
-          <VisualReviewPanel audit={lastResult.record?.ai_analysis?.visual_audit} />
+          <VisualReviewPanel audit={lastResult.record?.analysis_details?.screenshot_review} visualAudit={lastResult.record?.analysis_details?.visual_audit} />
           {lastResult.record?.findings?.length > 0 && (
             <div>
               <h3 className="text-sm font-semibold text-slate-700 mb-2">What we found ({lastResult.record.findings.length})</h3>
@@ -314,11 +273,11 @@ export function WebsiteIntelligencePage() {
               </ul>
             </div>
           )}
-          {lastResult.record?.ai_analysis?.optimization_opportunities?.length > 0 && (
+          {lastResult.record?.analysis_details?.optimization_opportunities?.length > 0 && (
             <div>
               <h3 className="text-sm font-semibold text-slate-700 mb-2">Possible improvements to review (estimated, not confirmed problems)</h3>
               <ul className="list-disc space-y-1 pl-5 text-sm text-slate-600">
-                {lastResult.record.ai_analysis.optimization_opportunities.map((item: any) => (
+                {lastResult.record.analysis_details.optimization_opportunities.map((item: any) => (
                   <li key={item.id} className="rounded-lg border border-slate-200 p-3">
                     <p className="font-medium text-slate-800">{auditFindingTitle(item)}</p>
                     <p className="mt-1 text-xs text-slate-600"><strong>What we found:</strong> {clientFriendlyAuditText(item.evidence || 'PageSpeed identified a possible improvement; see the estimate below.')}</p>
@@ -329,16 +288,6 @@ export function WebsiteIntelligencePage() {
               </ul>
             </div>
           )}
-          {lastResult.openai?.parsed?.recommendations?.length ? (
-            <div>
-              <h3 className="text-sm font-semibold text-slate-700 mb-1">Additional ideas from our review tools (not measured findings)</h3>
-              <ul className="list-disc pl-5 text-sm text-slate-600 space-y-1">
-                {lastResult.openai.parsed.recommendations.map((r: string, i: number) => (
-                  <li key={i}>{clientFriendlyAuditText(r)}</li>
-                ))}
-              </ul>
-            </div>
-          ) : null}
           {lastResult.record?.positive_observations?.length ? (
             <div>
               <h3 className="text-sm font-semibold text-slate-700 mb-1">Evidence-based positive observations</h3>
@@ -403,7 +352,7 @@ export function WebsiteIntelligencePage() {
               {analysis.overall_score !== null && (
                 <div className="mb-3">
                   <div className="flex justify-between text-sm text-slate-600 mb-1">
-                    <span>{analysis.ai_analysis?.technical_score?.methodology ? 'Overall website score' : 'Earlier saved score (calculation unverified)'}</span>
+                    <span>{analysis.analysis_details?.technical_score?.methodology ? 'Overall website score' : 'Earlier saved score (calculation unverified)'}</span>
                     <span>{analysis.overall_score}/100</span>
                   </div>
                   <div className="h-2 rounded-full bg-slate-100">
@@ -504,7 +453,7 @@ export function WebsiteIntelligencePage() {
             {selected.overall_score !== null && (
               <div className="mb-4">
                 <div className="flex justify-between text-sm text-slate-600 mb-1">
-                  <span>{selected.ai_analysis?.technical_score?.methodology ? 'Overall website score' : 'Earlier saved score (calculation unverified)'}</span>
+                  <span>{selected.analysis_details?.technical_score?.methodology ? 'Overall website score' : 'Earlier saved score (calculation unverified)'}</span>
                   <span>{selected.overall_score}/100</span>
                 </div>
                 <div className="h-2 rounded-full bg-slate-100">
@@ -534,27 +483,21 @@ export function WebsiteIntelligencePage() {
               </div>
             )}
 
-            <VisualReviewPanel audit={selected.ai_analysis?.visual_audit} />
-            {selected.ai_analysis?.summary && (
-              <div className="mb-4">
-                <h3 className="mb-1 text-sm font-semibold text-slate-700">Our assessment</h3>
-                <p className="text-sm text-slate-600">{clientFriendlyAuditText(selected.ai_analysis.summary)}</p>
-              </div>
+            <VisualReviewPanel audit={selected.analysis_details?.screenshot_review} visualAudit={selected.analysis_details?.visual_audit} />
+            {selected.analysis_details?.score_explanation && (
+              <p className="mb-4 text-sm text-slate-600">{clientFriendlyAuditText(selected.analysis_details.score_explanation)}</p>
             )}
-            {selected.ai_analysis?.score_explanation && (
-              <p className="mb-4 text-sm text-slate-600">{clientFriendlyAuditText(selected.ai_analysis.score_explanation)}</p>
-            )}
-            {selected.ai_analysis?.audit_completeness && (
+            {selected.analysis_details?.audit_completeness && (
               <div className="mb-4 rounded-lg border border-slate-200 p-3">
                 <h3 className="text-sm font-semibold text-slate-700">What we reviewed</h3>
                 <p className="mt-1 text-xs text-slate-600">
-                  {selected.ai_analysis.audit_completeness.completeness_percent}% coverage ·
-                  {' '}{selected.ai_analysis.audit_completeness.inspected_viewport_count}/
-                  {selected.ai_analysis.audit_completeness.requested_viewport_count} PageSpeed viewports inspected.
+                  {selected.analysis_details.audit_completeness.completeness_percent}% coverage ·
+                  {' '}{selected.analysis_details.audit_completeness.inspected_viewport_count}/
+                  {selected.analysis_details.audit_completeness.requested_viewport_count} PageSpeed viewports inspected.
                 </p>
-                {selected.ai_analysis.audit_completeness.limitations?.length > 0 && (
+                {selected.analysis_details.audit_completeness.limitations?.length > 0 && (
                   <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-slate-500">
-                    {selected.ai_analysis.audit_completeness.limitations.map((item: string, index: number) =>                     <li key={index}>{clientFriendlyAuditText(item)}</li>)}
+                    {selected.analysis_details.audit_completeness.limitations.map((item: string, index: number) => <li key={index}>{clientFriendlyAuditText(item)}</li>)}
                   </ul>
                 )}
               </div>
@@ -580,11 +523,11 @@ export function WebsiteIntelligencePage() {
               </div>
             </div>
 
-            {selected.ai_analysis?.optimization_opportunities?.length ? (
+            {selected.analysis_details?.optimization_opportunities?.length ? (
               <div className="mb-4">
                 <h3 className="text-sm font-semibold text-slate-700 mb-2">Possible improvements to review (estimated, not confirmed problems)</h3>
                 <ul className="space-y-2">
-                  {selected.ai_analysis.optimization_opportunities.map((item: any) => (
+                  {selected.analysis_details.optimization_opportunities.map((item: any) => (
                     <li key={item.id} className="rounded-lg border border-slate-200 p-3">
                       <p className="text-sm font-medium text-slate-800">{auditFindingTitle(item)}</p>
                       <p className="mt-1 text-xs text-slate-600"><strong>What we found:</strong> {item.evidence}</p>
@@ -595,24 +538,16 @@ export function WebsiteIntelligencePage() {
                 </ul>
               </div>
             ) : null}
-            {selected.ai_analysis?.diagnostics?.length ? (
+            {selected.analysis_details?.diagnostics?.length ? (
               <div className="mb-4">
                 <h3 className="text-sm font-semibold text-slate-700 mb-2">Other Lighthouse checks (not scored problems)</h3>
                 <ul className="space-y-1 text-sm text-slate-600">
-                  {selected.ai_analysis.diagnostics.map((item: any) => (
+                  {selected.analysis_details.diagnostics.map((item: any) => (
                     <li key={item.id}>
                       <strong>{auditFindingTitle(item)}:</strong> {clientFriendlyAuditText(item.evidence)}
                       <p className="mt-1 text-xs text-slate-500">{auditFindingWhy(item)}</p>
                     </li>
                   ))}
-                </ul>
-              </div>
-            ) : null}
-            {selected.ai_analysis?.recommendations?.length ? (
-              <div className="mb-4">
-                <h3 className="text-sm font-semibold text-slate-700 mb-2">Additional ideas from our review tools (not measured findings)</h3>
-                <ul className="list-disc space-y-1 pl-5 text-sm text-slate-600">
-                  {selected.ai_analysis.recommendations.map((item: string, index: number) => <li key={index}>{clientFriendlyAuditText(item)}</li>)}
                 </ul>
               </div>
             ) : null}

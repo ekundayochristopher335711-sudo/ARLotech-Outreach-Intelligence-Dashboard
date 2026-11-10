@@ -24,11 +24,11 @@ The generated message remains editable before saving or sending. Operators shoul
 
 Website audit reports now start with an executive summary, a compact score/findings snapshot, and a prioritized reading of the results. They include a practical three-step improvement plan and a clear Arlotech next step without presenting the report as a quotation or guaranteeing results.
 
-Where saved visual-review screenshots are available, the download flow and website-report email attachment retrieve short-lived signed URLs, convert the images to JPEG, and embed them in the PDF. If a screenshot cannot be retrieved, the report still generates and retains the text observations.
+Where a saved visual review is available, the PDF includes its visual score, assessment, and evidence-backed findings separately from the Lighthouse technical results. Visual findings are model-generated and should be reviewed by a person. Screenshots cannot verify interactive controls.
 
 ## Safety and data behavior
 
-- No database schema or migration was changed.
-- Existing report findings remain separated into measured, page-inspection, tool-assisted, and unverified categories.
+- The database schema stores visual assessment data separately under `analysis_details.visual_audit`; it does not change the Lighthouse technical score.
+- Visual assessment findings are presented separately from measured and page-inspection findings.
 - Email drafts remain editable and are not automatically sent by generation.
-- Screenshot URLs are short-lived and are not stored in the report data.
+- Screenshot URLs are short-lived and are not stored in the report data. The screenshots are sent to the configured vision provider when visual analysis runs.

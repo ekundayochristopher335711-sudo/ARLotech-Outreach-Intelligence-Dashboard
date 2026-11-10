@@ -663,7 +663,7 @@ export type Database = {
       website_analyses: {
         Row: {
           accessibility_score: number | null
-          ai_analysis: Json | null
+          analysis_details: Json | null
           analysis_provider: string | null
           analysis_status: string
           analyzed_at: string | null
@@ -684,7 +684,7 @@ export type Database = {
         }
         Insert: {
           accessibility_score?: number | null
-          ai_analysis?: Json | null
+          analysis_details?: Json | null
           analysis_provider?: string | null
           analysis_status?: string
           analyzed_at?: string | null
@@ -705,7 +705,7 @@ export type Database = {
         }
         Update: {
           accessibility_score?: number | null
-          ai_analysis?: Json | null
+          analysis_details?: Json | null
           analysis_provider?: string | null
           analysis_status?: string
           analyzed_at?: string | null

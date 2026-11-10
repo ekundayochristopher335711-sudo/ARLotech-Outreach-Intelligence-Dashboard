@@ -1,8 +1,7 @@
 import { useEffect, useId, useState } from 'react'
 import { Badge } from '@/components/ui/Badge'
 import { supabase } from '@/lib/supabase'
-import type { VisualAudit } from '@/lib/visualReview'
-import { clientFriendlyAuditText } from '@/lib/auditReportLanguage'
+import type { ScreenshotReview } from '@/lib/visualReview'
 
 interface VisualPageView {
   page_url: string
@@ -13,10 +12,10 @@ interface VisualPageView {
   error?: string
 }
 
-export function VisualReviewPanel({ audit }: { audit?: VisualAudit | null }) {
+export function VisualReviewPanel({ audit }: { audit?: ScreenshotReview | null }) {
   const headingId = useId()
   const [loadedAudit, setLoadedAudit] = useState<{
-    audit: VisualAudit
+    audit: ScreenshotReview
     pages: VisualPageView[]
     error: string | null
   } | null>(null)
@@ -77,13 +76,13 @@ export function VisualReviewPanel({ audit }: { audit?: VisualAudit | null }) {
       <div>
         <div className="flex flex-wrap items-center gap-2">
           <h3 id={headingId} className="text-sm font-semibold text-slate-800">
-            Visual review
+            Screenshots for manual review
           </h3>
           <Badge variant="default">Website review tools</Badge>
           <span className="text-xs text-slate-500">{statusLabel}</span>
         </div>
         <p className="mt-1 text-xs text-slate-500">
-          We reviewed screenshots from the first page load only. We did not test menus, forms, or other controls.
+          These initial-load screenshots are not automatically checked for visual defects. Menus, forms, and other controls were not tested.
         </p>
         {typeof inspectionCount === 'number' && typeof requestedCount === 'number' && (
           <p className="mt-1 text-xs text-slate-500">
@@ -141,37 +140,8 @@ export function VisualReviewPanel({ audit }: { audit?: VisualAudit | null }) {
         </div>
       )}
 
-      {audit.observations.length > 0 ? (
-        <div className="space-y-2">
-          <h4 className="text-sm font-semibold text-slate-700">Visual observations to validate</h4>
-          {audit.observations.map((observation, index) => (
-            <article key={`${observation.page_url}|${observation.viewport}|${index}`} className="rounded-lg border border-amber-200 bg-amber-50/50 p-3">
-              <div className="flex flex-wrap items-center gap-2">
-                <p className="text-sm font-medium text-slate-800">{clientFriendlyAuditText(observation.title)}</p>
-                <Badge variant="default">{observation.severity}</Badge>
-                <span className="text-xs text-slate-500">
-                  {observation.viewport} · {Math.round(observation.confidence * 100)}% confidence from our tools
-                </span>
-              </div>
-              <p className="mt-1 text-sm text-slate-600"><strong>What we noticed:</strong> {clientFriendlyAuditText(observation.evidence)}</p>
-              <p className="mt-1 text-sm text-slate-600"><strong>Why it may matter:</strong> {observation.why_it_matters
-                ? clientFriendlyAuditText(observation.why_it_matters)
-                : 'If confirmed, this may affect how visitors see or use this part of the page.'}</p>
-              <p className="mt-1 text-xs text-slate-500">{observation.page_url}</p>
-              <p className="mt-2 text-sm text-slate-700"><strong>What we recommend:</strong> {observation.recommended_fix
-                ? clientFriendlyAuditText(observation.recommended_fix)
-                : 'We recommend confirming this observation on the live page before making changes.'}</p>
-            </article>
-          ))}
-        </div>
-      ) : pages.some((page) => page.image_url) ? (
-        <p className="text-sm text-slate-500">
-          No clear visual defects were identified in the screenshots. This does not confirm that all layouts or interactive states work correctly.
-        </p>
-      ) : (
-        <p className="text-sm text-slate-500">
-          No visual observations are available because no screenshot could be loaded. The page appearance was not assessed.
-        </p>
+      {pages.length === 0 && !isLoading && !error && (
+        <p className="text-sm text-slate-500">No screenshots are available for this review.</p>
       )}
     </section>
   )

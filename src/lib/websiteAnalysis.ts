@@ -4,10 +4,9 @@ import {
   extractPageSpeedScreenshot,
   formatVisualCaptureError,
   MAX_VISUAL_REVIEW_PAGES,
-  selectUniqueScreenshots,
   selectVisualReviewPages,
+  type ScreenshotReview,
   type StoredVisualPage,
-  type VisualAudit,
   type VisualScreenshot,
 } from '@/lib/visualReview'
 import {
@@ -15,9 +14,6 @@ import {
   calculateTechnicalHealthScore,
   classifyLighthouseAudits,
   extractCategoryScores,
-  sanitizePlainText,
-  sanitizeRecommendationList,
-  sanitizeVisualObservations,
   summarizePageInspectionCoverage,
 } from '@/lib/websiteAudit'
 import { mapWithConcurrency } from '@/lib/mapWithConcurrency'
@@ -90,45 +86,6 @@ export interface PageSpeedResult {
   loadingExperience?: any
   originLoadingExperience?: any
 }
-export interface OpenAIUsage {
-  prompt_tokens: number | null
-  completion_tokens: number | null
-  total_tokens: number | null
-}
-
-export interface OpenAIStageTwo {
-  conclusion?: string | null
-  targeted_screenshots?: number | null
-}
-
-export interface OpenAIResult {
-  text: string
-  parsed: {
-    summary?: string
-    score_explanation?: string
-    recommendations?: string[]
-    seo_notes?: string[]
-    content_notes?: string[]
-    positive_observations?: string[]
-    visual_observations?: Array<{
-      page_url: string
-      viewport: 'desktop' | 'mobile'
-      title: string
-      evidence: string
-      why_it_matters?: string
-      severity: 'high' | 'medium' | 'low'
-      confidence: number
-      recommended_fix?: string
-    }>
-    duplicate_screenshots_skipped?: number | null
-    stage_two?: OpenAIStageTwo | null
-  } | null
-  model: string
-  usage: OpenAIUsage | null
-  duration_ms: number | null
-  error?: string
-}
-
 export async function extractContent(url: string): Promise<ExtractedContent> {
   const { data, error } = await (supabase as any).functions.invoke('extract-content', { body: { url } })
   if (error) {
@@ -163,34 +120,6 @@ export async function runPageSpeed(url: string, strategy: 'mobile' | 'desktop' =
   }
   if (data?.error) throw new Error(data.error)
   return data as PageSpeedResult
-}
-
-export async function generateOpenAIAnalysis(payload: {
-  url: string
-  content: ExtractedContent
-  pagespeed: PageSpeedResult
-  visualScreenshots?: VisualScreenshot[]
-}): Promise<OpenAIResult> {
-  const { fullPageScreenshot: _fullPageScreenshot, ...lighthouseResult } = payload.pagespeed.lighthouseResult
-  const { data, error } = await (supabase as any).functions.invoke('gemini-analysis', {
-    body: {
-      ...payload,
-      pagespeed: { ...payload.pagespeed, lighthouseResult },
-    },
-  })
-  if (error) {
-    let detail = error.message || 'OpenAI analysis failed'
-    try {
-      const ctx = (error as any)?.context
-      if (ctx && typeof ctx.text === 'function') {
-        const body = await ctx.text()
-        if (body) detail = `${detail} — ${body}`
-      }
-    } catch { /* ignore */ }
-    throw new Error(detail)
-  }
-  if (data?.error) throw new Error(data.error)
-  return data as OpenAIResult
 }
 
 export async function analyzeWebsite(
@@ -436,7 +365,7 @@ export async function analyzeWebsite(
   const inspectionCoverage = summarizePageInspectionCoverage(
     discoveredPageUrls,
     lighthousePageResults,
-    includeVisualReview ? 2 : 1,
+    1,
   )
   const inspectedViewports = inspectionCoverage.inspected_viewport_count
   const requestedViewports = inspectionCoverage.requested_viewport_count
@@ -448,10 +377,6 @@ export async function analyzeWebsite(
     ...(contentExtractionError ? [`HTML extraction failed: ${contentExtractionError}`] : []),
     ...(desktopError && pagespeed.strategy === 'mobile'
       ? ['Desktop PageSpeed failed; the primary technical scores are from the mobile run.']
-      : []),
-    ...(!includeVisualReview ? ['Only the primary page was assessed; multi-page visual review was not requested.'] : []),
-    ...(includeVisualReview && discoveredPageCount > 0
-      ? [`Visual review was limited to ${discoveredPageCount} same-origin page(s) and initial-load screenshots.`]
       : []),
     'Sitemap and robots.txt availability, broken links, JavaScript-rendered states, and interactive controls were not independently tested.',
   ]
@@ -466,51 +391,11 @@ export async function analyzeWebsite(
     limitations,
   }
 
-  let openai: OpenAIResult = {
-    text: '',
-    parsed: null,
-    model: 'unavailable',
-    usage: null,
-    duration_ms: null,
-  }
-  try {
-    const allVisualScreenshots = visualPages.flatMap((page) => page.screenshot ? [page.screenshot] : [])
-    const { selected: visualScreenshots, skipped: duplicateVisualScreenshots } = selectUniqueScreenshots(allVisualScreenshots)
-    openai = await generateOpenAIAnalysis({
-      url,
-      content,
-      pagespeed: { ...pagespeed, lighthouseResult: { ...pagespeed.lighthouseResult, fullPageScreenshot: undefined } },
-      ...(visualScreenshots.length ? { visualScreenshots } : {}),
-    })
-  } catch (error) {
-    const detail = error instanceof Error ? error.message : 'OpenAI analysis failed.'
-    console.warn('AI analysis unavailable; saving measured audit data without AI analysis:', detail)
-    openai = { text: '', parsed: null, model: 'unavailable', usage: null, duration_ms: null, error: detail }
-  }
-
   const scoreExplanation = overall === null
     ? `A technical health score is unavailable because Lighthouse did not return valid scores for every required category${missingCategories.length ? ` (${missingCategories.join(', ')})` : ''}.`
     : `Technical health score: ${overall}/100, calculated from Lighthouse category scores using Performance 30%, SEO 25%, Accessibility 25%, and Best Practices 20%.`
-  const parsedOpenAI = openai.parsed && typeof openai.parsed === 'object'
-    ? {
-        summary: sanitizePlainText(openai.parsed.summary, 1200),
-        recommendations: sanitizeRecommendationList(openai.parsed.recommendations),
-        visual_observations: sanitizeVisualObservations(
-          openai.parsed.visual_observations,
-          visualPages.flatMap((page) => page.screenshot
-            ? [{ page_url: page.page_url, viewport: page.viewport }]
-            : []),
-        ),
-      }
-    : null
-  openai = { ...openai, parsed: parsedOpenAI }
-  const aiSummary = {
-    ...(parsedOpenAI?.summary ? { summary: parsedOpenAI.summary } : {}),
+  const analysisDetails = {
     score_explanation: scoreExplanation,
-    recommendations: parsedOpenAI?.recommendations ?? [],
-    text: openai.text.slice(0, 6000),
-    model: openai.model,
-    ...(openai.error ? { error: openai.error } : {}),
     technical_score: {
       methodology: 'Weighted Lighthouse category score',
       weights: { performance: 30, seo: 25, accessibility: 25, 'best-practices': 20 },
@@ -540,17 +425,6 @@ export async function analyzeWebsite(
     optimization_opportunities: optimizationOpportunities,
     diagnostics,
     lighthouse_page_results: lighthousePageResults,
-    ...(openai.usage ? {
-      openai_usage: {
-        model: openai.model,
-        prompt_tokens: openai.usage.prompt_tokens,
-        completion_tokens: openai.usage.completion_tokens,
-        total_tokens: openai.usage.total_tokens,
-        duration_ms: openai.duration_ms,
-        duplicate_screenshots_skipped: openai.parsed?.duplicate_screenshots_skipped ?? 0,
-        stage_two: openai.parsed?.stage_two ?? null,
-      }
-    } : {}),
   }
 
   const { data, error } = await supabase
@@ -567,10 +441,10 @@ export async function analyzeWebsite(
       category_scores: categoryScores,
       findings,
       positive_observations: positiveObservations,
-      ai_analysis: aiSummary,
+      analysis_details: analysisDetails,
       analysis_status: 'completed',
       error_message: null,
-      analysis_provider: openai.model === 'unavailable' ? 'pagespeed' : 'pagespeed+openai',
+      analysis_provider: 'pagespeed',
       analyzed_at: new Date().toISOString(),
     })
     .select()
@@ -626,39 +500,14 @@ export async function analyzeWebsite(
         ...(!uploadError && page.error ? { error: page.error } : {}),
       }
     }))
-    const savedPageViewports = new Set(
-      savedPages.filter((page) => page.image_path).map((page) => `${page.page_url}|${page.viewport}`),
-    )
-    const observations = (parsedOpenAI?.visual_observations ?? [])
-      .filter((observation) =>
-        savedPageViewports.has(`${observation.page_url}|${observation.viewport}`) &&
-        typeof observation.title === 'string' &&
-        observation.title.trim().length > 0 &&
-        typeof observation.evidence === 'string' &&
-        ['high', 'medium', 'low'].includes(observation.severity) &&
-        Number.isFinite(observation.confidence) &&
-        observation.confidence >= 0 &&
-        observation.confidence <= 1,
-      )
-      .slice(0, 15)
-      .map((observation) => ({
-        ...observation,
-        title: observation.title.trim().slice(0, 200),
-        evidence: observation.evidence.trim().slice(0, 800),
-        confidence: Math.round(observation.confidence * 100) / 100,
-        recommended_fix: typeof observation.recommended_fix === 'string'
-          ? observation.recommended_fix.trim().slice(0, 500)
-          : undefined,
-      }))
     const successfulScreenshots = savedPages.filter((page) => page.image_path).length
-    const visualAudit: VisualAudit = {
+    const screenshotReview: ScreenshotReview = {
       status: successfulScreenshots === 0
         ? 'unavailable'
         : savedPages.some((page) => !page.image_path)
           ? 'partial'
           : 'completed',
       pages: savedPages,
-      observations,
       discovered_page_count: discoveredPageCount,
       requested_viewport_count: requestedViewports,
       inspected_viewport_count: inspectedViewports,
@@ -667,16 +516,16 @@ export async function analyzeWebsite(
     const { data: updatedRecord, error: updateError } = await supabase
       .from('website_analyses')
       .update({
-        ai_analysis: {
-          ...aiSummary,
+        analysis_details: {
+          ...analysisDetails,
           audit_completeness: {
             ...auditCompleteness,
             saved_screenshot_count: successfulScreenshots,
-            status: visualAudit.status === 'completed' && auditCompleteness.status === 'complete'
+            status: screenshotReview.status === 'completed' && auditCompleteness.status === 'complete'
               ? 'complete'
               : 'partial',
           },
-          visual_audit: visualAudit,
+          screenshot_review: screenshotReview,
         },
       })
       .eq('id', data.id)
@@ -685,11 +534,63 @@ export async function analyzeWebsite(
       .single()
     if (updateError) throw updateError
 
+    // The screenshots are already persisted before the vision function is invoked.
+    // Visual failures do not discard a successful technical audit.
+    let finalRecord = updatedRecord
+    const storedScreenshotCount = savedPages.filter((page) => page.image_path).length
+    if (storedScreenshotCount > 0) {
+      const { data: visualResult, error: visualError } = await supabase.functions.invoke<{
+        visual_audit?: Record<string, unknown>
+        error?: string
+      }>('analyze-website-visuals', {
+        body: { audit_id: data.id },
+      })
+      if (visualError || visualResult?.error) {
+        const currentDetails = (updatedRecord.analysis_details || {}) as Record<string, unknown>
+        const { data: statusRecord, error: statusUpdateError } = await supabase
+          .from('website_analyses')
+          .update({
+            analysis_details: {
+              ...currentDetails,
+              visual_audit: {
+                status: 'failed',
+                error: visualResult?.error || visualError?.message || 'AI visual analysis failed.',
+                analyzed_at: new Date().toISOString(),
+                analysis_version: '1.0',
+              },
+            },
+          })
+          .eq('id', data.id)
+          .eq('user_id', userId)
+          .select()
+          .single()
+        if (statusUpdateError) {
+          throw new Error(
+            `Visual analysis failed and its failure status could not be saved: ${statusUpdateError.message}`,
+          )
+        }
+        if (!statusRecord) throw new Error('Visual analysis failed and its failure status was not saved.')
+        finalRecord = statusRecord
+      } else {
+        if (!visualResult?.visual_audit) {
+          throw new Error('The visual analysis function returned no visual audit.')
+        }
+        const { data: refreshed, error: refreshError } = await supabase
+          .from('website_analyses')
+          .select('*')
+          .eq('id', data.id)
+          .eq('user_id', userId)
+          .single()
+        if (refreshError) throw refreshError
+        if (!refreshed) throw new Error('The completed visual audit could not be reloaded.')
+        finalRecord = refreshed
+      }
+    }
+
     return {
-      record: updatedRecord,
+      record: finalRecord,
       content,
       pagespeed: pagespeedSummary,
-      openai,
       overallScore: overall,
       seoScore,
       perfScore,
@@ -702,7 +603,6 @@ export async function analyzeWebsite(
     record: data,
     content,
     pagespeed: pagespeedSummary,
-    openai,
     overallScore: overall,
     seoScore,
     perfScore,

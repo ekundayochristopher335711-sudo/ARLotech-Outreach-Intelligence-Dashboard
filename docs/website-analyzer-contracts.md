@@ -1,6 +1,6 @@
 # Website Analyzer Edge Function Contracts
 
-These contracts match the canonical `website_analyses` schema. All functions are invoked from the authenticated browser through Supabase and must receive the caller's Supabase JWT. Server-side code must never expose `PAGESPEED_API_KEY` or `GEMINI_API_KEY`.
+These contracts match the canonical `website_analyses` schema. All functions are invoked from the authenticated browser through Supabase and must receive the caller's Supabase JWT. Server-side code must never expose `PAGESPEED_API_KEY`.
 
 ## 1. `pagespeed-insights`
 
@@ -85,31 +85,29 @@ These contracts match the canonical `website_analyses` schema. All functions are
 }
 ```
 
-## 3. `gemini-analysis`
+## 3. `analyze-website-visuals`
+
+The function accepts an authenticated user's audit ID, verifies ownership, reads the saved screenshot objects from the private bucket, and submits screenshot image data to the configured OpenAI vision model. The API key remains a Supabase Edge Function secret.
 
 **Request**
 ```json
-{
-  "url": "https://example.com",
-  "content": { "...": "ExtractedContent from extract-content" },
-  "pagespeed": { "...": "PageSpeedResult from pagespeed-insights" },
-  "model": "gemini-2.0-flash"
-}
+{ "audit_id": "uuid" }
 ```
 
 **Response**
 ```json
 {
-  "text": "raw model output",
-  "parsed": {
-    "summary": "short overall summary",
-    "score_explanation": "why the score is what it is",
-    "recommendations": ["actionable recommendation 1"],
-    "seo_notes": ["seo-specific note 1"],
-    "content_notes": ["content-specific note 1"],
-    "positive_observations": ["positive 1"]
-  },
-  "model": "gemini-2.0-flash"
+  "visual_audit": {
+    "status": "completed",
+    "visual_score": 86,
+    "score_explanation": "A concise explanation based only on visible screenshot evidence.",
+    "assessment": { "summary": "A concise visual summary." },
+    "findings": [],
+    "model": "gpt-4.1-mini",
+    "analyzed_at": "2026-11-10T00:00:00.000Z",
+    "analysis_version": "1.0",
+    "screenshot_coverage": { "available": 2, "inspected": 2, "pages": [] }
+  }
 }
 ```
 
@@ -140,12 +138,18 @@ These contracts match the canonical `website_analyses` schema. All functions are
     }
   ],
   "positive_observations": [
-    { "id": "pos-0", "title": "positive observation", "evidence": "AI-generated", "potential_benefit": "", "priority": "low" }
+    { "id": "pos-0", "title": "positive observation", "evidence": "measured or extracted evidence", "potential_benefit": "", "priority": "low" }
   ],
-  "ai_analysis": { "summary": "...", "recommendations": ["..."] },
+  "analysis_details": {
+    "score_explanation": "weighted Lighthouse category score",
+    "optimization_opportunities": [],
+    "diagnostics": [],
+    "screenshot_review": { "status": "completed", "pages": [] },
+    "visual_audit": { "status": "completed", "visual_score": 86, "findings": [] }
+  },
   "analysis_status": "completed",
   "error_message": null,
-  "analysis_provider": "pagespeed+gemini",
+  "analysis_provider": "pagespeed",
   "analyzed_at": "2026-01-01T00:00:00.000Z"
 }
 ```
@@ -153,8 +157,9 @@ These contracts match the canonical `website_analyses` schema. All functions are
 ## Security requirements
 
 - Edge Functions must verify the Supabase JWT before calling external APIs.
-- `PAGESPEED_API_KEY` and `GEMINI_API_KEY` must remain server-side only.
+- `PAGESPEED_API_KEY` must remain server-side only.
+- `OPENAI_API_KEY` and `OPENAI_VISION_MODEL` are Supabase Edge Function secrets, not frontend variables. Stored screenshots are transmitted to the configured vision provider for analysis.
 - URLs must be validated server-side, including blocking localhost, private IP ranges, internal hostnames, and cloud metadata addresses.
 - Redirects must be revalidated against the same blocklist.
-- PageSpeed and Gemini responses must be validated before persistence.
+- PageSpeed responses must be validated before persistence.
 - Database writes must respect RLS ownership checks.

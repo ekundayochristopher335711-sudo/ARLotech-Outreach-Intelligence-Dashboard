@@ -12,7 +12,7 @@ interface WebsiteFinding {
 
 interface WebsiteAnalysis {
   findings?: unknown
-  ai_analysis?: {
+  analysis_details?: {
     optimization_opportunities?: unknown
   } | null
 }
@@ -72,7 +72,7 @@ export function hasActionableWebsiteFinding(analysis: WebsiteAnalysis | null | u
   })
   if (verifiedFindings) return true
 
-  const opportunities = analysis.ai_analysis?.optimization_opportunities
+  const opportunities = analysis.analysis_details?.optimization_opportunities
   return Array.isArray(opportunities) && opportunities.some((finding: WebsiteFinding) =>
     finding?.classification === 'optimization_opportunity' &&
     !!finding.title?.trim() &&

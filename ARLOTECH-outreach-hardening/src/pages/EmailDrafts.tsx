@@ -153,45 +153,14 @@ function isManualSendResponse(data: unknown): data is ManualSendResponse {
   )
 }
 
-async function imageBlobToDataUrl(blob: Blob): Promise<string> {
-  const bitmap = await createImageBitmap(blob)
-  try {
-    const canvas = document.createElement('canvas')
-    canvas.width = bitmap.width
-    canvas.height = bitmap.height
-    const context = canvas.getContext('2d')
-    if (!context) throw new Error('Could not prepare screenshot for the PDF.')
-    context.drawImage(bitmap, 0, 0)
-    return canvas.toDataURL('image/jpeg', 0.86)
-  } finally {
-    bitmap.close()
-  }
-}
-
 async function createAuditPdfAttachment(
   analysis: WebsiteAnalysis,
   prospect: OutreachProspect,
 ) {
-  const visualAudit = (analysis.ai_analysis as Record<string, any> | null)?.visual_audit
-  const pages = Array.isArray(visualAudit?.pages) ? visualAudit.pages : []
-  const screenshotImages: Record<string, string> = {}
-  await Promise.all(pages.filter((page: any) => typeof page.image_path === 'string').map(async (page: any) => {
-    try {
-      const { data, error } = await supabase.storage
-        .from('website-audit-screenshots')
-        .createSignedUrl(page.image_path, 300)
-      if (error || !data?.signedUrl) return
-      const response = await fetch(data.signedUrl)
-      if (!response.ok) return
-      screenshotImages[page.image_path] = await imageBlobToDataUrl(await response.blob())
-    } catch {
-      // The PDF remains useful without a screenshot if storage access is unavailable.
-    }
-  }))
   return createWebsiteAnalysisPdfBase64(analysis, {
     businessName: prospect.business_name,
     verified: prospect.business_name_verified,
-  }, screenshotImages)
+  })
 }
 
 function isSendOutreachResponse(data: unknown): data is SendOutreachResponse {

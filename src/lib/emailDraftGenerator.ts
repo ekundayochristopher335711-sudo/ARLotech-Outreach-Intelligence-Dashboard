@@ -93,14 +93,11 @@ type DraftFinding = {
 }
 
 type DraftAnalysis = Omit<
-  Pick<WebsiteAnalysis, 'website_url' | 'overall_score' | 'category_scores' | 'findings' | 'positive_observations' | 'ai_analysis'>,
-  'findings' | 'ai_analysis'
+  Pick<WebsiteAnalysis, 'website_url' | 'overall_score' | 'category_scores' | 'findings' | 'positive_observations' | 'analysis_details'>,
+  'findings' | 'analysis_details'
 > & {
   findings: DraftFinding[]
-  ai_analysis: (Record<string, any> & {
-    visual_audit?: {
-      observations?: DraftFinding[]
-    }
+  analysis_details: (Record<string, any> & {
     optimization_opportunities?: DraftFinding[]
   }) | null
 }
@@ -151,25 +148,19 @@ function candidateObservations(analysis?: DraftAnalysis | null, industry?: strin
     }
     return rank(right) - rank(left)
   })
-  const opportunities = Array.isArray(analysis.ai_analysis?.optimization_opportunities)
-    ? analysis.ai_analysis.optimization_opportunities.filter((finding: any) =>
+  const opportunities = Array.isArray(analysis.analysis_details?.optimization_opportunities)
+    ? analysis.analysis_details.optimization_opportunities.filter((finding: any) =>
         finding?.classification === 'optimization_opportunity' &&
         typeof finding.title === 'string' &&
         typeof finding.evidence === 'string',
       )
     : []
-  const visual = Array.isArray(analysis.ai_analysis?.visual_audit?.observations)
-    ? analysis.ai_analysis.visual_audit.observations.filter((finding) =>
-        finding && typeof finding.title === 'string' && typeof finding.evidence === 'string',
-      ).map((finding) => ({ ...finding, classification: 'observed_visual' }))
-    : []
-  return [...confirmed, ...opportunities, ...visual].slice(0, 5).map((finding) => ({
+  return [...confirmed, ...opportunities].slice(0, 5).map((finding) => ({
     title: emailObservationTitle(finding),
     why: industry
       ? personalizedEmailFindingImpact(finding, industry)
       : emailObservationImpact(finding),
     estimated: finding.classification === 'optimization_opportunity',
-    visual: finding.classification === 'observed_visual',
   }))
 }
 

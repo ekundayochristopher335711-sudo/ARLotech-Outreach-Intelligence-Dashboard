@@ -1,8 +1,7 @@
 import { useEffect, useId, useState } from 'react'
 import { Badge } from '@/components/ui/Badge'
 import { supabase } from '@/lib/supabase'
-import type { VisualAudit } from '@/lib/visualReview'
-import { clientFriendlyAuditText } from '@/lib/auditReportLanguage'
+import type { ScreenshotReview } from '@/lib/visualReview'
 
 interface VisualPageView {
   page_url: string
@@ -13,10 +12,10 @@ interface VisualPageView {
   error?: string
 }
 
-export function VisualReviewPanel({ audit }: { audit?: VisualAudit | null }) {
+export function VisualReviewPanel({ audit, visualAudit }: { audit?: ScreenshotReview | null; visualAudit?: any }) {
   const headingId = useId()
   const [loadedAudit, setLoadedAudit] = useState<{
-    audit: VisualAudit
+    audit: ScreenshotReview
     pages: VisualPageView[]
     error: string | null
   } | null>(null)
@@ -77,13 +76,13 @@ export function VisualReviewPanel({ audit }: { audit?: VisualAudit | null }) {
       <div>
         <div className="flex flex-wrap items-center gap-2">
           <h3 id={headingId} className="text-sm font-semibold text-slate-800">
-            Visual review
+            AI visual audit & screenshots
           </h3>
           <Badge variant="default">Website review tools</Badge>
           <span className="text-xs text-slate-500">{statusLabel}</span>
         </div>
         <p className="mt-1 text-xs text-slate-500">
-          We reviewed screenshots from the first page load only. We did not test menus, forms, or other controls.
+          Screenshots are inspected by an AI vision model. Static images cannot verify menu, form, or control functionality.
         </p>
         {typeof inspectionCount === 'number' && typeof requestedCount === 'number' && (
           <p className="mt-1 text-xs text-slate-500">
@@ -98,6 +97,44 @@ export function VisualReviewPanel({ audit }: { audit?: VisualAudit | null }) {
         )}
       </div>
 
+      {visualAudit?.status === 'completed' || visualAudit?.status === 'partial' ? (
+        <div className="space-y-3 rounded-lg bg-slate-50 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">AI visual score</p>
+              <p className="text-3xl font-semibold text-slate-900">{visualAudit.visual_score}<span className="text-base text-slate-400">/100</span></p>
+            </div>
+            <Badge variant={visualAudit.status === 'completed' ? 'success' : 'warning'}>{visualAudit.status === 'completed' ? 'Analysis complete' : 'Partial analysis'}</Badge>
+          </div>
+          <p className="text-sm text-slate-700">{visualAudit.assessment?.summary}</p>
+          <p className="text-xs text-slate-500">{visualAudit.score_explanation}</p>
+          <div className="space-y-2">
+            <h4 className="text-sm font-semibold text-slate-800">Visual findings ({visualAudit.findings?.length || 0})</h4>
+            {(visualAudit.findings || []).map((finding: any) => (
+              <details key={finding.id} className="rounded-md border border-slate-200 bg-white p-3">
+                <summary className="flex cursor-pointer flex-wrap items-center gap-2 text-sm font-medium text-slate-800">
+                  <span>{finding.title}</span>
+                  <Badge variant={finding.severity === 'critical' || finding.severity === 'high' ? 'error' : 'default'}>{finding.severity}</Badge>
+                  <Badge variant="default">{finding.device}</Badge>
+                </summary>
+                <div className="mt-3 space-y-2 text-sm text-slate-600">
+                  <p><strong>Category:</strong> {finding.category} · {finding.page_label} · {finding.location}</p>
+                  <p>{finding.observation}</p>
+                  <p><strong>Evidence:</strong> {finding.evidence}</p>
+                  <p><strong>Visitor impact:</strong> {finding.user_impact}</p>
+                  <p><strong>Recommendation:</strong> {finding.recommendation}</p>
+                  <p className="text-xs text-slate-400">Confidence: {Math.round(finding.confidence * 100)}% · {finding.finding_type === 'confirmed_issue' ? 'Confirmed visual issue' : 'Improvement opportunity'}</p>
+                </div>
+              </details>
+            ))}
+            {visualAudit.findings?.length === 0 && <p className="text-sm text-emerald-700">No significant visual issues were identified in the available screenshots.</p>}
+          </div>
+        </div>
+      ) : visualAudit?.status === 'failed' ? (
+        <p role="alert" className="text-sm text-amber-700">AI visual analysis could not be completed: {visualAudit.error}</p>
+      ) : (
+        <p className="text-xs text-slate-500">AI visual analysis has not been run for this audit.</p>
+      )}
       {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
       {isLoading && <p role="status" className="text-sm text-slate-500">Loading saved screenshots…</p>}
 
@@ -141,37 +178,8 @@ export function VisualReviewPanel({ audit }: { audit?: VisualAudit | null }) {
         </div>
       )}
 
-      {audit.observations.length > 0 ? (
-        <div className="space-y-2">
-          <h4 className="text-sm font-semibold text-slate-700">Visual observations to validate</h4>
-          {audit.observations.map((observation, index) => (
-            <article key={`${observation.page_url}|${observation.viewport}|${index}`} className="rounded-lg border border-amber-200 bg-amber-50/50 p-3">
-              <div className="flex flex-wrap items-center gap-2">
-                <p className="text-sm font-medium text-slate-800">{clientFriendlyAuditText(observation.title)}</p>
-                <Badge variant="default">{observation.severity}</Badge>
-                <span className="text-xs text-slate-500">
-                  {observation.viewport} · {Math.round(observation.confidence * 100)}% confidence from our tools
-                </span>
-              </div>
-              <p className="mt-1 text-sm text-slate-600"><strong>What we noticed:</strong> {clientFriendlyAuditText(observation.evidence)}</p>
-              <p className="mt-1 text-sm text-slate-600"><strong>Why it may matter:</strong> {observation.why_it_matters
-                ? clientFriendlyAuditText(observation.why_it_matters)
-                : 'If confirmed, this may affect how visitors see or use this part of the page.'}</p>
-              <p className="mt-1 text-xs text-slate-500">{observation.page_url}</p>
-              <p className="mt-2 text-sm text-slate-700"><strong>What we recommend:</strong> {observation.recommended_fix
-                ? clientFriendlyAuditText(observation.recommended_fix)
-                : 'We recommend confirming this observation on the live page before making changes.'}</p>
-            </article>
-          ))}
-        </div>
-      ) : pages.some((page) => page.image_url) ? (
-        <p className="text-sm text-slate-500">
-          No clear visual defects were identified in the screenshots. This does not confirm that all layouts or interactive states work correctly.
-        </p>
-      ) : (
-        <p className="text-sm text-slate-500">
-          No visual observations are available because no screenshot could be loaded. The page appearance was not assessed.
-        </p>
+      {pages.length === 0 && !isLoading && !error && (
+        <p className="text-sm text-slate-500">No screenshots are available for this review.</p>
       )}
     </section>
   )

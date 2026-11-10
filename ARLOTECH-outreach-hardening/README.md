@@ -50,32 +50,29 @@ Campaigns can be created, filtered, updated, and deleted. Email drafts can be cr
 
 Outreach batches are sent individually through the `send-outreach` Supabase Edge Function and Resend. The function checks ownership, do-not-contact status, suppressions, and completed website audits; it limits batches to 10 and sends to 50 recipients per rolling 24 hours. Previously contacted prospects are labeled and require confirmation before resending. Website reports are attached for audited prospects, while prospects without a website receive a separate introduction. Review and confirm every message before sending. Email sending does not guarantee inbox placement or replace applicable marketing/privacy compliance.
 
-AI website analysis and outreach generation require their respective server-side secrets. Replies sent to your configured Resend receiving domain are recorded by the `resend-inbound` Edge Function. Automatic follow-up sending is not implemented.
+Website analysis uses measured PageSpeed Insights results and extracted page data. Replies sent to your configured Resend receiving domain are recorded by the `resend-inbound` Edge Function. Automatic follow-up sending is not implemented.
 
 
 ## Website Intelligence integrations
 
-The Website Intelligence page orchestrates three Supabase Edge Functions:
+The Website Intelligence page orchestrates two Supabase Edge Functions:
 
 - `pagespeed-insights` — calls the Google PageSpeed Insights API (Lighthouse) for performance, accessibility, SEO and best-practices scores plus audit details.
 - `extract-content` — fetches the target page server-side and extracts title, meta, headings, text, links, images, schema.org, etc. For client-rendered pages, contact extraction also checks a small number of bounded same-origin JavaScript bundles for embedded email and telephone links.
-- `gemini-analysis` — sends the extracted content + PageSpeed data to the Gemini API and returns an AI summary, score explanation, recommendations and observations.
-
-The combined report is stored in the `website_analyses` Supabase table.
+The PageSpeed scores, extracted page details, measured findings, and audit metadata are stored in the `website_analyses` Supabase table.
 
 Website audit PDFs identify the linked prospect when available, include all unique measured/page-inspection observations, explain the PageSpeed score calculation, distinguish Lighthouse estimates from measured results, and provide contextual recommendations to validate. Reports conclude with a concise, evidence-based next step.
 
 The displayed ArloTech composite score is the rounded arithmetic mean of available Lighthouse category scores; it is not an official Lighthouse score. Prospect business names default to unverified and appear as the report recipient only after an account user verifies them in the prospect record.
 
-Website Intelligence can also run an optional visual review. It uses PageSpeed's rendered screenshots for the homepage (desktop and mobile where available) and up to three same-origin pages discovered first inside navigation landmarks, then from other page links if no navigation links are available (mobile). If the initial HTML contains no page links, JavaScript-rendered navigation may require a browser-based crawler and will not be discovered by this bounded pass. Screenshots are saved in a private, user-scoped Supabase Storage bucket, and Gemini returns AI-assisted visual observations for human review. A PageSpeed timeout can leave an individual viewport screenshot unavailable while preserving other audit results. This is a bounded initial-load crawl; it does not click menus, submit forms, test interactive states, or guarantee that visual observations are correct. It makes additional PageSpeed requests.
+Website Intelligence can also save PageSpeed screenshots from the homepage (desktop and mobile where available) and up to three same-origin pages for manual review. If the initial HTML contains no page links, JavaScript-rendered navigation may require a browser-based crawler and will not be discovered by this bounded pass. Screenshots are saved in a private, user-scoped Supabase Storage bucket. Screenshots are not automatically evaluated for visual defects; menus, forms, and other interactive states are not tested. This optional review makes additional PageSpeed requests.
 
-Before deploying the visual review, apply the pending migrations and redeploy the updated `extract-content` and `gemini-analysis` functions. Migration `20261027220000_create_visual_audit_screenshots.sql` creates the private screenshot bucket.
+Before deploying screenshot review, apply pending migrations and deploy the updated `extract-content` function. Migration `20261027220000_create_visual_audit_screenshots.sql` creates the private screenshot bucket.
 
 ### Configure secrets (server-side, never exposed to the browser)
 
 ```sh
 npx supabase secrets set PAGESPEED_API_KEY=your-google-pagespeed-key
-npx supabase secrets set GEMINI_API_KEY=your-gemini-key
 ```
 
 ### Deploy the functions
@@ -83,7 +80,6 @@ npx supabase secrets set GEMINI_API_KEY=your-gemini-key
 ```sh
 npx supabase functions deploy pagespeed-insights
 npx supabase functions deploy extract-content
-npx supabase functions deploy gemini-analysis
 ```
 
 The frontend invokes them via `supabase.functions.invoke(...)` and stores the resulting report in Supabase.

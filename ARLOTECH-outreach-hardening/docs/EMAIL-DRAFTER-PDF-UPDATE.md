@@ -24,11 +24,11 @@ The generated message remains editable before saving or sending. Operators shoul
 
 Website audit reports now start with an executive summary, a compact score/findings snapshot, and a prioritized reading of the results. They include a practical three-step improvement plan and a clear Arlotech next step without presenting the report as a quotation or guaranteeing results.
 
-Where saved visual-review screenshots are available, the download flow and website-report email attachment retrieve short-lived signed URLs, convert the images to JPEG, and embed them in the PDF. If a screenshot cannot be retrieved, the report still generates and retains the text observations.
+Where saved visual-review screenshots are available, the download flow and website-report email attachment retrieve short-lived signed URLs, convert the images to JPEG, and embed them in the PDF for manual review. Screenshots are not automatically evaluated, and the report does not include visual observations. If a screenshot cannot be retrieved, the report still generates.
 
 ## Safety and data behavior
 
-- No database schema or migration was changed.
-- Existing report findings remain separated into measured, page-inspection, tool-assisted, and unverified categories.
+- The database schema separates non-model audit metadata from measured findings.
+- Existing report findings remain separated into measured, page-inspection, and unverified categories.
 - Email drafts remain editable and are not automatically sent by generation.
 - Screenshot URLs are short-lived and are not stored in the report data.

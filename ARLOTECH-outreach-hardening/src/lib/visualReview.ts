@@ -23,21 +23,9 @@ export interface StoredVisualPage {
   error?: string
 }
 
-export interface VisualObservation {
-  page_url: string
-  viewport: 'desktop' | 'mobile'
-  title: string
-  evidence: string
-  why_it_matters?: string
-  severity: 'high' | 'medium' | 'low'
-  confidence: number
-  recommended_fix?: string
-}
-
-export interface VisualAudit {
+export interface ScreenshotReview {
   status: 'completed' | 'partial' | 'unavailable'
   pages: StoredVisualPage[]
-  observations: VisualObservation[]
   discovered_page_count?: number
   requested_viewport_count?: number
   inspected_viewport_count?: number

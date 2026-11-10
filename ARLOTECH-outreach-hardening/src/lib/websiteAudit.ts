@@ -49,20 +49,6 @@ export interface PageInspectionResult {
   status: 'completed' | 'failed'
 }
 
-export interface VisualScreenshotReference {
-  page_url: string
-  viewport: 'desktop' | 'mobile'
-}
-
-export interface SanitizedVisualObservation extends VisualScreenshotReference {
-  title: string
-  evidence: string
-  why_it_matters?: string
-  severity: 'high' | 'medium' | 'low'
-  confidence: number
-  recommended_fix?: string
-}
-
 const NON_ACTIONABLE_DISPLAY_MODES = new Set([
   'informative',
   'manual',
@@ -214,61 +200,6 @@ export function summarizePageInspectionCoverage(
       ? Math.round((inspectedViewportCount / requestedViewportCount) * 100)
       : 0,
   }
-}
-
-export function sanitizePlainText(value: unknown, maxLength: number): string {
-  return typeof value === 'string' ? value.trim().slice(0, maxLength) : ''
-}
-
-export function sanitizeRecommendationList(value: unknown, limit = 8): string[] {
-  if (!Array.isArray(value)) return []
-  return value
-    .filter((item): item is string => typeof item === 'string' && !!item.trim())
-    .slice(0, limit)
-    .map((item) => item.trim().slice(0, 600))
-}
-
-export function sanitizeVisualObservations(
-  value: unknown,
-  screenshots: VisualScreenshotReference[],
-): SanitizedVisualObservation[] {
-  if (!Array.isArray(value)) return []
-  const screenshotKeys = new Set(screenshots.map(({ page_url, viewport }) => `${page_url}|${viewport}`))
-
-  return value.flatMap((item) => {
-    if (!item || typeof item !== 'object') return []
-    const observation = item as Record<string, unknown>
-    const page_url = typeof observation.page_url === 'string' ? observation.page_url : ''
-    const viewport = observation.viewport
-    const title = sanitizePlainText(observation.title, 200)
-    const evidence = sanitizePlainText(observation.evidence, 800)
-    const whyItMatters = sanitizePlainText(observation.why_it_matters, 500)
-    const severity = observation.severity
-    const confidence = observation.confidence
-
-    if (
-      !screenshotKeys.has(`${page_url}|${viewport}`) ||
-      !title ||
-      !evidence ||
-      !['high', 'medium', 'low'].includes(String(severity)) ||
-      typeof confidence !== 'number' ||
-      !Number.isFinite(confidence) ||
-      confidence < 0 ||
-      confidence > 1
-    ) return []
-
-    const recommendedFix = sanitizePlainText(observation.recommended_fix, 500)
-    return [{
-      page_url,
-      viewport: viewport as 'desktop' | 'mobile',
-      title,
-      evidence,
-      ...(whyItMatters ? { why_it_matters: whyItMatters } : {}),
-      severity: severity as 'high' | 'medium' | 'low',
-      confidence: Math.round(confidence * 100) / 100,
-      ...(recommendedFix ? { recommended_fix: recommendedFix } : {}),
-    }]
-  }).slice(0, 24)
 }
 
 export function classifyLighthouseAudits(pagespeed: PageSpeedResult) {

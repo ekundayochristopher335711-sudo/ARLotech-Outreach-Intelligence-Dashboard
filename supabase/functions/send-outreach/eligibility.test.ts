@@ -29,7 +29,7 @@ describe('website outreach eligibility', () => {
   })
 
   it('withholds sending when an audit has no confirmed findings', () => {
-    expect(hasActionableWebsiteFinding({ findings: [], ai_analysis: {} })).toBe(false)
+    expect(hasActionableWebsiteFinding({ findings: [], analysis_details: {} })).toBe(false)
     expect(hasActionableWebsiteFinding({
       findings: [{ title: 'Network dependency tree', classification: 'diagnostic', evidence: 'Diagnostic only.' }],
     })).toBe(false)
@@ -61,7 +61,7 @@ describe('website outreach eligibility', () => {
   it('allows a useful evidence-backed improvement opportunity', () => {
     expect(hasActionableWebsiteFinding({
       findings: [],
-      ai_analysis: {
+      analysis_details: {
         optimization_opportunities: [{
           classification: 'optimization_opportunity',
           title: 'Images may take too long to load',
@@ -74,7 +74,7 @@ describe('website outreach eligibility', () => {
   it('ignores an optimization item without evidence', () => {
     expect(hasActionableWebsiteFinding({
       findings: [],
-      ai_analysis: {
+      analysis_details: {
         optimization_opportunities: [{
           classification: 'optimization_opportunity',
           title: 'Images may take too long to load',
