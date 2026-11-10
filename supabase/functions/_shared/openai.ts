@@ -12,6 +12,8 @@ export interface OpenAIRequestOptions {
   image_detail?: OpenAIImageDetail
   timeout_ms?: number
   max_retries?: number
+  system_prompt?: string
+  text_mode?: boolean
 }
 
 export interface OpenAIUsage {
@@ -22,10 +24,11 @@ export interface OpenAIUsage {
 
 export interface OpenAIJsonResponse {
   text: string
-  parsed: Record<string, unknown>
+  parsed: Record<string, unknown> | null
   model: string
   usage: OpenAIUsage
   duration_ms: number
+  is_json: boolean
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -52,6 +55,8 @@ function resolveOptions(options: OpenAIRequestOptions = {}): Required<OpenAIRequ
     image_detail: options.image_detail ?? 'low',
     timeout_ms: options.timeout_ms ?? DEFAULT_TIMEOUT_MS,
     max_retries: options.max_retries ?? DEFAULT_MAX_RETRIES,
+    system_prompt: options.system_prompt ?? null,
+    text_mode: options.text_mode ?? false,
   }
 }
 
@@ -77,11 +82,19 @@ export async function generateOpenAIJson(
     })),
   ]
 
+  const messages: Array<{ role: string; content: unknown }> = []
+  if (config.system_prompt) {
+    messages.push({ role: 'system', content: config.system_prompt })
+  }
+  messages.push({ role: 'user', content })
+
   const body: Record<string, unknown> = {
     model: config.model,
     reasoning_effort: 'none',
-    response_format: { type: 'json_object' },
-    messages: [{ role: 'user', content }],
+    messages,
+  }
+  if (!config.text_mode) {
+    body.response_format = { type: 'json_object' }
   }
   if (config.max_tokens !== null) body.max_tokens = config.max_tokens
   if (config.temperature !== null) body.temperature = config.temperature
@@ -139,14 +152,22 @@ export async function generateOpenAIJson(
     throw new Error('OpenAI returned an empty response')
   }
 
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(text)
-  } catch {
-    throw new Error('OpenAI returned invalid JSON')
-  }
-  if (!isRecord(parsed)) {
-    throw new Error('OpenAI returned JSON with an invalid shape')
+  let parsed: Record<string, unknown> | null = null
+  let is_json = false
+  if (!config.text_mode) {
+    try {
+      parsed = JSON.parse(text)
+      if (isRecord(parsed)) {
+        is_json = true
+      } else {
+        parsed = null
+      }
+    } catch {
+      parsed = null
+    }
+    if (!is_json) {
+      throw new Error('OpenAI returned invalid JSON in non-text mode')
+    }
   }
 
   const usage = data?.usage
@@ -161,5 +182,6 @@ export async function generateOpenAIJson(
       total_tokens: typeof usage?.total_tokens === 'number' ? usage.total_tokens : null,
     },
     duration_ms: Date.now() - startTime,
+    is_json,
   }
 }
