@@ -4,6 +4,7 @@ import {
   extractPageSpeedScreenshot,
   formatVisualCaptureError,
   MAX_VISUAL_REVIEW_PAGES,
+  selectUniqueScreenshots,
   selectVisualReviewPages,
   type StoredVisualPage,
   type VisualAudit,
@@ -89,6 +90,17 @@ export interface PageSpeedResult {
   loadingExperience?: any
   originLoadingExperience?: any
 }
+export interface OpenAIUsage {
+  prompt_tokens: number | null
+  completion_tokens: number | null
+  total_tokens: number | null
+}
+
+export interface OpenAIStageTwo {
+  conclusion?: string | null
+  targeted_screenshots?: number | null
+}
+
 export interface OpenAIResult {
   text: string
   parsed: {
@@ -108,8 +120,12 @@ export interface OpenAIResult {
       confidence: number
       recommended_fix?: string
     }>
+    duplicate_screenshots_skipped?: number | null
+    stage_two?: OpenAIStageTwo | null
   } | null
   model: string
+  usage: OpenAIUsage | null
+  duration_ms: number | null
   error?: string
 }
 
@@ -454,9 +470,12 @@ export async function analyzeWebsite(
     text: '',
     parsed: null,
     model: 'unavailable',
+    usage: null,
+    duration_ms: null,
   }
   try {
-    const visualScreenshots = visualPages.flatMap((page) => page.screenshot ? [page.screenshot] : [])
+    const allVisualScreenshots = visualPages.flatMap((page) => page.screenshot ? [page.screenshot] : [])
+    const { selected: visualScreenshots, skipped: duplicateVisualScreenshots } = selectUniqueScreenshots(allVisualScreenshots)
     openai = await generateOpenAIAnalysis({
       url,
       content,
@@ -466,7 +485,7 @@ export async function analyzeWebsite(
   } catch (error) {
     const detail = error instanceof Error ? error.message : 'OpenAI analysis failed.'
     console.warn('AI analysis unavailable; saving measured audit data without AI analysis:', detail)
-    openai = { text: '', parsed: null, model: 'unavailable', error: detail }
+    openai = { text: '', parsed: null, model: 'unavailable', usage: null, duration_ms: null, error: detail }
   }
 
   const scoreExplanation = overall === null
@@ -521,6 +540,17 @@ export async function analyzeWebsite(
     optimization_opportunities: optimizationOpportunities,
     diagnostics,
     lighthouse_page_results: lighthousePageResults,
+    ...(openai.usage ? {
+      openai_usage: {
+        model: openai.model,
+        prompt_tokens: openai.usage.prompt_tokens,
+        completion_tokens: openai.usage.completion_tokens,
+        total_tokens: openai.usage.total_tokens,
+        duration_ms: openai.duration_ms,
+        duplicate_screenshots_skipped: openai.parsed?.duplicate_screenshots_skipped ?? 0,
+        stage_two: openai.parsed?.stage_two ?? null,
+      }
+    } : {}),
   }
 
   const { data, error } = await supabase

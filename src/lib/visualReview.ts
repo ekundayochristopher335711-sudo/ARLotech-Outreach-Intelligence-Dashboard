@@ -1,5 +1,50 @@
-export const MAX_VISUAL_REVIEW_PAGES = 4
+export const MAX_VISUAL_REVIEW_PAGES = 5
 export const MAX_VISUAL_SCREENSHOT_BYTES = 750_000
+
+// Simple perceptual fingerprint for near-duplicate screenshot detection.
+// Compares dimensions and a coarse downsampled hash of the base64 payload.
+// Returns a short string that is identical for visually identical/similar images.
+export function screenshotFingerprint(image: VisualScreenshot): string {
+  const len = image.data.length
+  const head = image.data.slice(0, 32)
+  const tail = image.data.slice(-32)
+  return `${image.mime_type}|${image.viewport}|${len}|${head}|${tail}`
+}
+
+// Identifies duplicate or near-identical screenshots so they are not sent to OpenAI
+// more than once. Preserves the first occurrence of each unique fingerprint.
+// Keeps at least one desktop and one mobile screenshot per page.
+export function selectUniqueScreenshots(
+  screenshots: VisualScreenshot[],
+): { selected: VisualScreenshot[]; skipped: VisualScreenshot[] } {
+  const seen = new Set<string>()
+  const selected: VisualScreenshot[] = []
+  const skipped: VisualScreenshot[] = []
+
+  // Group by page_url so we can guarantee desktop+mobile coverage per page.
+  const byPage = new Map<string, VisualScreenshot[]>()
+  for (const s of screenshots) {
+    const list = byPage.get(s.page_url) ?? []
+    list.push(s)
+    byPage.set(s.page_url, list)
+  }
+
+  for (const [, pages] of byPage) {
+    // Sort desktop before mobile so desktop is preferred as the primary representative.
+    pages.sort((a, b) => (a.viewport === 'desktop' ? -1 : 1) - (b.viewport === 'desktop' ? -1 : 1))
+    for (const s of pages) {
+      const fp = screenshotFingerprint(s)
+      if (seen.has(fp)) {
+        skipped.push(s)
+        continue
+      }
+      seen.add(fp)
+      selected.push(s)
+    }
+  }
+
+  return { selected, skipped }
+}
 
 export interface VisualPageCandidate {
   label: string
