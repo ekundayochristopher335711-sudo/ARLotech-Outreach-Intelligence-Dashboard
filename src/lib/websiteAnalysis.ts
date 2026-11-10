@@ -89,7 +89,7 @@ export interface PageSpeedResult {
   loadingExperience?: any
   originLoadingExperience?: any
 }
-export interface GeminiResult {
+export interface OpenAIResult {
   text: string
   parsed: {
     summary?: string
@@ -149,12 +149,12 @@ export async function runPageSpeed(url: string, strategy: 'mobile' | 'desktop' =
   return data as PageSpeedResult
 }
 
-export async function generateGeminiAnalysis(payload: {
+export async function generateOpenAIAnalysis(payload: {
   url: string
   content: ExtractedContent
   pagespeed: PageSpeedResult
   visualScreenshots?: VisualScreenshot[]
-}): Promise<GeminiResult> {
+}): Promise<OpenAIResult> {
   const { fullPageScreenshot: _fullPageScreenshot, ...lighthouseResult } = payload.pagespeed.lighthouseResult
   const { data, error } = await (supabase as any).functions.invoke('gemini-analysis', {
     body: {
@@ -163,7 +163,7 @@ export async function generateGeminiAnalysis(payload: {
     },
   })
   if (error) {
-    let detail = error.message || 'gemini-analysis failed'
+    let detail = error.message || 'OpenAI analysis failed'
     try {
       const ctx = (error as any)?.context
       if (ctx && typeof ctx.text === 'function') {
@@ -174,7 +174,7 @@ export async function generateGeminiAnalysis(payload: {
     throw new Error(detail)
   }
   if (data?.error) throw new Error(data.error)
-  return data as GeminiResult
+  return data as OpenAIResult
 }
 
 export async function analyzeWebsite(
@@ -450,48 +450,48 @@ export async function analyzeWebsite(
     limitations,
   }
 
-  let gemini: GeminiResult = {
+  let openai: OpenAIResult = {
     text: '',
     parsed: null,
     model: 'unavailable',
   }
   try {
     const visualScreenshots = visualPages.flatMap((page) => page.screenshot ? [page.screenshot] : [])
-    gemini = await generateGeminiAnalysis({
+    openai = await generateOpenAIAnalysis({
       url,
       content,
       pagespeed: { ...pagespeed, lighthouseResult: { ...pagespeed.lighthouseResult, fullPageScreenshot: undefined } },
       ...(visualScreenshots.length ? { visualScreenshots } : {}),
     })
   } catch (error) {
-    const detail = error instanceof Error ? error.message : 'Gemini analysis failed.'
+    const detail = error instanceof Error ? error.message : 'OpenAI analysis failed.'
     console.warn('AI analysis unavailable; saving measured audit data without AI analysis:', detail)
-    gemini = { text: '', parsed: null, model: 'unavailable', error: detail }
+    openai = { text: '', parsed: null, model: 'unavailable', error: detail }
   }
 
   const scoreExplanation = overall === null
     ? `A technical health score is unavailable because Lighthouse did not return valid scores for every required category${missingCategories.length ? ` (${missingCategories.join(', ')})` : ''}.`
     : `Technical health score: ${overall}/100, calculated from Lighthouse category scores using Performance 30%, SEO 25%, Accessibility 25%, and Best Practices 20%.`
-  const parsedGemini = gemini.parsed && typeof gemini.parsed === 'object'
+  const parsedOpenAI = openai.parsed && typeof openai.parsed === 'object'
     ? {
-        summary: sanitizePlainText(gemini.parsed.summary, 1200),
-        recommendations: sanitizeRecommendationList(gemini.parsed.recommendations),
+        summary: sanitizePlainText(openai.parsed.summary, 1200),
+        recommendations: sanitizeRecommendationList(openai.parsed.recommendations),
         visual_observations: sanitizeVisualObservations(
-          gemini.parsed.visual_observations,
+          openai.parsed.visual_observations,
           visualPages.flatMap((page) => page.screenshot
             ? [{ page_url: page.page_url, viewport: page.viewport }]
             : []),
         ),
       }
     : null
-  gemini = { ...gemini, parsed: parsedGemini }
+  openai = { ...openai, parsed: parsedOpenAI }
   const aiSummary = {
-    ...(parsedGemini?.summary ? { summary: parsedGemini.summary } : {}),
+    ...(parsedOpenAI?.summary ? { summary: parsedOpenAI.summary } : {}),
     score_explanation: scoreExplanation,
-    recommendations: parsedGemini?.recommendations ?? [],
-    text: gemini.text.slice(0, 6000),
-    model: gemini.model,
-    ...(gemini.error ? { error: gemini.error } : {}),
+    recommendations: parsedOpenAI?.recommendations ?? [],
+    text: openai.text.slice(0, 6000),
+    model: openai.model,
+    ...(openai.error ? { error: openai.error } : {}),
     technical_score: {
       methodology: 'Weighted Lighthouse category score',
       weights: { performance: 30, seo: 25, accessibility: 25, 'best-practices': 20 },
@@ -540,7 +540,7 @@ export async function analyzeWebsite(
       ai_analysis: aiSummary,
       analysis_status: 'completed',
       error_message: null,
-      analysis_provider: gemini.model === 'unavailable' ? 'pagespeed' : 'pagespeed+gemini',
+      analysis_provider: openai.model === 'unavailable' ? 'pagespeed' : 'pagespeed+openai',
       analyzed_at: new Date().toISOString(),
     })
     .select()
@@ -599,7 +599,7 @@ export async function analyzeWebsite(
     const savedPageViewports = new Set(
       savedPages.filter((page) => page.image_path).map((page) => `${page.page_url}|${page.viewport}`),
     )
-    const observations = (parsedGemini?.visual_observations ?? [])
+    const observations = (parsedOpenAI?.visual_observations ?? [])
       .filter((observation) =>
         savedPageViewports.has(`${observation.page_url}|${observation.viewport}`) &&
         typeof observation.title === 'string' &&
@@ -659,7 +659,7 @@ export async function analyzeWebsite(
       record: updatedRecord,
       content,
       pagespeed: pagespeedSummary,
-      gemini,
+      openai,
       overallScore: overall,
       seoScore,
       perfScore,
@@ -672,7 +672,7 @@ export async function analyzeWebsite(
     record: data,
     content,
     pagespeed: pagespeedSummary,
-    gemini,
+    openai,
     overallScore: overall,
     seoScore,
     perfScore,

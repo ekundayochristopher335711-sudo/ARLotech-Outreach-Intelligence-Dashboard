@@ -1,4 +1,5 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
+import { generateOpenAIJson } from '../_shared/openai.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -8,8 +9,6 @@ const corsHeaders = {
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
   try {
-    const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY')
-    if (!GEMINI_API_KEY) throw new Error('GEMINI_API_KEY is not configured')
     const body = await req.json()
     const businessName = String(body?.business_name ?? 'Prospect')
     const website = String(body?.website ?? '')
@@ -36,33 +35,13 @@ Requirements:
 - Include a clear CTA.
 - Return ONLY valid JSON: { "subject": string, "body": string } where body is plain text email (no markdown).`
 
-    const models = ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-flash-latest']
-    let lastError: Error | null = null
-    for (const modelName of models) {
-      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${GEMINI_API_KEY}`
-      const res = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { temperature: 0.5, responseMimeType: 'application/json' },
-        }),
-      })
-      if (!res.ok) { lastError = new Error(`Gemini error ${res.status}`); continue }
-      const data = await res.json()
-      const raw = data?.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
-      let parsed: any = null
-      try {
-        const cleaned = raw.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim()
-        parsed = JSON.parse(cleaned)
-      } catch { parsed = null }
-      if (!parsed?.subject || !parsed?.body) {
-        // fallback
-        parsed = { subject: `Quick website improvements for ${businessName}`, body: raw }
-      }
-      return new Response(JSON.stringify(parsed), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+    const result = await generateOpenAIJson(prompt)
+    const subject = result.parsed.subject
+    const emailBody = result.parsed.body
+    if (typeof subject !== 'string' || typeof emailBody !== 'string') {
+      throw new Error('OpenAI response did not contain a valid subject and body')
     }
-    throw lastError || new Error('No Gemini model available')
+    return new Response(JSON.stringify({ subject, body: emailBody }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
   } catch (error) {
     return new Response(JSON.stringify({ error: error instanceof Error ? error.message : 'Failed' }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
   }

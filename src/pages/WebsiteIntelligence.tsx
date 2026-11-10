@@ -257,10 +257,10 @@ export function WebsiteIntelligencePage() {
           </div>
           <p className="text-xs text-slate-500">SEO means search engine optimization: how easily search engines can find and understand your pages. Scores come from Lighthouse/PageSpeed.</p>
 
-          {lastResult.gemini?.parsed?.summary && (
+          {lastResult.openai?.parsed?.summary && (
             <div>
               <h3 className="text-sm font-semibold text-slate-700 mb-1">Our assessment</h3>
-              <p className="text-sm text-slate-600">{clientFriendlyAuditText(lastResult.gemini.parsed.summary)}</p>
+              <p className="text-sm text-slate-600">{clientFriendlyAuditText(lastResult.openai.parsed.summary)}</p>
             </div>
           )}
           {lastResult.record?.ai_analysis?.score_explanation && (
@@ -329,11 +329,11 @@ export function WebsiteIntelligencePage() {
               </ul>
             </div>
           )}
-          {lastResult.gemini?.parsed?.recommendations?.length ? (
+          {lastResult.openai?.parsed?.recommendations?.length ? (
             <div>
               <h3 className="text-sm font-semibold text-slate-700 mb-1">Additional ideas from our review tools (not measured findings)</h3>
               <ul className="list-disc pl-5 text-sm text-slate-600 space-y-1">
-                {lastResult.gemini.parsed.recommendations.map((r: string, i: number) => (
+                {lastResult.openai.parsed.recommendations.map((r: string, i: number) => (
                   <li key={i}>{clientFriendlyAuditText(r)}</li>
                 ))}
               </ul>

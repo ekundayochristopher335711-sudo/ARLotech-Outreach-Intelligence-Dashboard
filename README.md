@@ -66,7 +66,7 @@ The Website Intelligence page orchestrates three Supabase Edge Functions:
 
 - `pagespeed-insights` — calls the Google PageSpeed Insights API (Lighthouse) for performance, accessibility, SEO and best-practices scores plus audit details.
 - `extract-content` — fetches the target page server-side and extracts title, meta, headings, text, links, images, schema.org, etc. For client-rendered pages, contact extraction also checks a small number of bounded same-origin JavaScript bundles for embedded email and telephone links.
-- `gemini-analysis` — sends the extracted content + PageSpeed data to the Gemini API and returns an AI summary, score explanation, recommendations and observations.
+- `gemini-analysis` — the existing Supabase function endpoint now sends extracted content + PageSpeed data to OpenAI and returns an AI summary, recommendations and observations. Its historical function name is retained so existing clients keep working.
 
 The combined report is stored in the `website_analyses` Supabase table.
 
@@ -76,7 +76,7 @@ Customer-facing PDFs use the official Arlotech Digital Solutions logo without an
 
 The displayed ArloTech composite score is the rounded arithmetic mean of available Lighthouse category scores; it is not an official Lighthouse score. Prospect business names default to unverified and appear as the report recipient only after an account user verifies them in the prospect record.
 
-Website Intelligence can also run an optional visual review. It uses PageSpeed's rendered screenshots for the homepage (desktop and mobile where available) and up to three same-origin pages discovered first inside navigation landmarks, then from other page links if no navigation links are available (mobile). If the initial HTML contains no page links, JavaScript-rendered navigation may require a browser-based crawler and will not be discovered by this bounded pass. Screenshots are saved in a private, user-scoped Supabase Storage bucket, and Gemini returns AI-assisted visual observations for human review. A PageSpeed timeout can leave an individual viewport screenshot unavailable while preserving other audit results. This is a bounded initial-load crawl; it does not click menus, submit forms, test interactive states, or guarantee that visual observations are correct. It makes additional PageSpeed requests. The **Re-analyze all websites** action refreshes the primary-page technical and content analysis without running this optional multi-page visual review; use an individual website analysis when detailed visual screenshots are needed. Bulk analysis progress survives refresh, can be paused between groups of three sites and resumed later, and can be closed from the completed progress panel.
+Website Intelligence can also run an optional visual review. It uses PageSpeed's rendered screenshots for the homepage (desktop and mobile where available) and up to three same-origin pages discovered first inside navigation landmarks, then from other page links if no navigation links are available (mobile). If the initial HTML contains no page links, JavaScript-rendered navigation may require a browser-based crawler and will not be discovered by this bounded pass. Screenshots are saved in a private, user-scoped Supabase Storage bucket, and OpenAI returns AI-assisted visual observations for human review. A PageSpeed timeout can leave an individual viewport screenshot unavailable while preserving other audit results. This is a bounded initial-load crawl; it does not click menus, submit forms, test interactive states, or guarantee that visual observations are correct. It makes additional PageSpeed requests. The **Re-analyze all websites** action refreshes the primary-page technical and content analysis without running this optional multi-page visual review; use an individual website analysis when detailed visual screenshots are needed. Bulk analysis progress survives refresh, can be paused between groups of three sites and resumed later, and can be closed from the completed progress panel.
 
 Before deploying the visual review, apply the pending migrations and redeploy the updated `extract-content` and `gemini-analysis` functions. Migration `20261027220000_create_visual_audit_screenshots.sql` creates the private screenshot bucket.
 
@@ -84,8 +84,10 @@ Before deploying the visual review, apply the pending migrations and redeploy th
 
 ```sh
 npx supabase secrets set PAGESPEED_API_KEY=your-google-pagespeed-key
-npx supabase secrets set GEMINI_API_KEY=your-gemini-key
+npx supabase secrets set OPENAI_API_KEY=your-openai-api-key
 ```
+
+The AI functions use `gpt-6-luna` by default. To choose another model available to your OpenAI API account, set `OPENAI_MODEL` as a Supabase secret. Never put the OpenAI key in a `VITE_` variable or browser code.
 
 ### Deploy the functions
 
@@ -95,19 +97,18 @@ npx supabase functions deploy extract-content
 npx supabase functions deploy gemini-analysis
 ```
 
-The frontend invokes them via `supabase.functions.invoke(...)` and stores the resulting report in Supabase.
+The existing `gemini-analysis` function name is retained for compatibility; it now calls OpenAI. The frontend invokes it via `supabase.functions.invoke(...)` and stores the resulting report in Supabase.
 
 ### Prospect extraction and AI outreach drafting
 
-Pasting business listings into the prospect importer and generating AI-assisted outreach drafts use the `extract-leads` and `gemini-outreach` Edge Functions. Configure the Gemini key as a server-side secret, then deploy both functions:
+Pasting business listings into the prospect importer and generating AI-assisted outreach drafts use the `extract-leads` and `gemini-outreach` Edge Functions. Both now call OpenAI using the same server-side key; the outreach function name is retained for compatibility. Deploy both functions:
 
 ```sh
-npx supabase secrets set GEMINI_API_KEY=your-gemini-key
 npx supabase functions deploy extract-leads
 npx supabase functions deploy gemini-outreach
 ```
 
-The Gemini key is also used by `gemini-analysis`; set it once for the linked project. Never put it in a `VITE_` variable or browser code.
+Set `OPENAI_API_KEY` once for the linked Supabase project. The API is billed by OpenAI based on model usage; ChatGPT subscriptions are separate from API billing.
 
 ## Resend outreach
 

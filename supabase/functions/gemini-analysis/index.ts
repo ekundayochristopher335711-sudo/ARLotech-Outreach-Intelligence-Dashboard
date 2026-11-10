@@ -1,4 +1,5 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
+import { generateOpenAIJson } from '../_shared/openai.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -11,9 +12,6 @@ serve(async (req) => {
   }
 
   try {
-    const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY')
-    if (!GEMINI_API_KEY) throw new Error('GEMINI_API_KEY is not configured')
-
     const body = await req.json()
     const { url, content, pagespeed } = body
     if (!url) throw new Error('url is required')
@@ -31,43 +29,6 @@ serve(async (req) => {
         ['desktop', 'mobile'].includes(image?.viewport) &&
         /^[A-Za-z0-9+/]+={0,2}$/.test(image.data),
       )
-
-    // Candidate models in priority order. We try each until one succeeds,
-    // so the function keeps working even if a model is retired/renamed.
-    const requestedModel = typeof body?.model === 'string' ? body.model : null
-
-    // Discover the models this key can actually use, so we never guess wrong names.
-    let availableModels: string[] = []
-    try {
-      const listRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${GEMINI_API_KEY}&pageSize=1000`)
-      if (listRes.ok) {
-        const listData = await listRes.json()
-        availableModels = (listData?.models ?? [])
-          .filter((m: any) => Array.isArray(m?.supportedGenerationMethods) && m.supportedGenerationMethods.includes('generateContent'))
-          .map((m: any) => String(m.name).replace(/^models\//, ''))
-          .filter((name: string) => /gemini/i.test(name))
-          .filter((name: string) => !/tts|audio|image|embedding|aqa/i.test(name))
-          .filter(Boolean)
-      }
-    } catch { /* ignore; fall back to static list */ }
-
-    const staticModels = [
-      'gemini-2.5-flash',
-      'gemini-2.0-flash',
-      'gemini-2.0-flash-lite',
-      'gemini-1.5-flash',
-      'gemini-1.5-flash-latest',
-      'gemini-1.5-pro',
-    ]
-
-    const candidateModels = requestedModel
-      ? [requestedModel]
-      : (availableModels.length ? availableModels.slice().sort((a: string, b: string) => {
-          const af = /flash/i.test(a) ? 0 : 1
-          const bf = /flash/i.test(b) ? 0 : 1
-          if (af !== bf) return af - bf
-          return b.localeCompare(a)
-        }) : staticModels)
 
     const categories = pagespeed?.lighthouseResult?.categories || {}
     const audits = pagespeed?.lighthouseResult?.audits || {}
@@ -161,53 +122,11 @@ Return ONLY valid JSON (no markdown) with this shape:
   ]
 }`
 
-    let lastError: Error | null = null
-    for (const modelName of candidateModels) {
-      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${GEMINI_API_KEY}`
-
-      const geminiRes = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{
-            parts: [
-              { text: prompt },
-              ...visualScreenshots.map((image: any) => ({
-                inlineData: { mimeType: image.mime_type, data: image.data },
-              })),
-            ],
-          }],
-          generationConfig: { temperature: 0.4, responseMimeType: 'application/json' },
-        }),
-      })
-
-      if (!geminiRes.ok) {
-        const errBody = await geminiRes.text()
-        lastError = new Error(`Gemini API error (${modelName}): ${geminiRes.status} - ${errBody}`)
-        // Try next model on 404/NOT_FOUND, 400 (capability mismatch), 429 (rate limit), or 503 (overloaded); otherwise stop.
-        if ([404, 400, 429, 500, 503].includes(geminiRes.status)) continue
-        throw lastError
-      }
-
-      const geminiData = await geminiRes.json()
-      const rawText = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
-
-      let parsed: any = null
-      try {
-        const cleaned = rawText.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim()
-        parsed = JSON.parse(cleaned)
-      } catch {
-        parsed = null
-      }
-
-      return new Response(
-        JSON.stringify({ text: rawText, parsed, model: modelName }),
-        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
-      )
-    }
-
-    const hint = availableModels.length ? ` Available models: ${availableModels.join(', ')}` : ''
-    throw new Error((lastError?.message ?? 'No Gemini model available') + hint)
+    const result = await generateOpenAIJson(prompt, visualScreenshots)
+    return new Response(
+      JSON.stringify(result),
+      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+    )
   } catch (error) {
     return new Response(
       JSON.stringify({ error: error instanceof Error ? error.message : 'An error occurred' }),

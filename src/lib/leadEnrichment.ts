@@ -25,7 +25,7 @@ export async function recordFailedWebsiteAnalysis(prospect: Prospect, errorMessa
     website_url: prospect.website ?? '',
     analysis_status: 'failed',
     error_message: errorMessage,
-    analysis_provider: 'pagespeed+gemini',
+    analysis_provider: 'pagespeed+openai',
     analyzed_at: new Date().toISOString(),
     findings: [],
     positive_observations: [],
