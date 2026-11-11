@@ -122,6 +122,11 @@ interface SendOutreachMutationResult extends SendOutreachResponse {
   omittedReports: string[]
 }
 
+interface AiDraftChatMessage {
+  role: 'user' | 'assistant'
+  content: string
+}
+
 interface GeneratedOutreachPreview extends OutreachPreview {
   generatedDraft: GeneratedEmailDraft
   aiApproach?: AiEmailApproach
@@ -131,6 +136,7 @@ interface GeneratedOutreachPreview extends OutreachPreview {
   aiSenderBusiness?: string
   aiSenderEmail?: string
   aiWebsiteContext?: AiEmailContextReference[]
+  aiChatMessages?: AiDraftChatMessage[]
   savedDraftId?: string
 }
 
@@ -202,7 +208,11 @@ async function getOutreachFunctionError(error: unknown) {
     : fallbackMessage
 }
 
-function validateAiPreview(draft: GeneratedEmailDraft, prospect: OutreachProspect) {
+function validateAiPreview(
+  draft: GeneratedEmailDraft,
+  prospect: OutreachProspect,
+  includeReport = false,
+) {
   const body = draft.body.trim()
   const errors: string[] = []
   if (draft.subjectSuggestions.length !== 3 || draft.subjectSuggestions.some((item) => !item.trim() || item.length > 200)) {
@@ -218,18 +228,22 @@ function validateAiPreview(draft: GeneratedEmailDraft, prospect: OutreachProspec
   if (containsEmailJargon(body) || containsExternalAuditReference(body) || /https?:\/\/|www\./i.test(body)) {
     errors.push('Remove technical jargon, external audit references, or unsupported links from the email.')
   }
-  if (/your website review is attached|the attached pdf|we[’']ve attached|i[’']ve attached|we have attached|please see the attached/i.test(body)) {
+  const mentionsAttachment = /your website review is attached|the attached pdf|pdf.{0,30}attached|we[’']ve attached|i[’']ve attached|we have attached|please see the attached/i.test(body)
+  if (mentionsAttachment && !includeReport) {
     errors.push('The email mentions an attachment that will not be sent.')
+  }
+  if (includeReport && !mentionsAttachment) errors.push('Tell the recipient the website review PDF is attached.')
+  if (!/\bwe\b.{0,160}\b(?:design|build|develop|improve)\b.{0,100}\bwebsites?\b/i.test(body)) {
+    errors.push('Explain that Arlotech designs, builds, develops, or improves websites.')
+  }
+  if (!/\b(?:clear(?:ly|er)?|professional(?:ly)?|easier|easy|visitors|get in touch)\b/i.test(body)) {
+    errors.push('Explain a realistic benefit of the website services.')
+  }
+  if (!/\bfeedback\b/i.test(body) && !/\b(?:share|tell us|let us know)\b.{0,100}\b(?:goals|priorities|thoughts|views|website)\b/i.test(body)) {
+    errors.push('Invite the recipient to share feedback about their website goals.')
   }
   if (/we (?:user )?tested your website|our user testing|conversion test(?:ing)? showed/i.test(body)) {
     errors.push('The email claims website testing that was not performed.')
-  }
-  if (
-    prospect.business_name_verified &&
-    prospect.business_name.trim() &&
-    !body.toLowerCase().includes(prospect.business_name.trim().toLowerCase())
-  ) {
-    errors.push('The email does not include the verified business name.')
   }
   const wordCount = body.split(/\s+/).filter(Boolean).length
   if (wordCount < 40 || wordCount > 250) errors.push('Keep the email concise (approximately 80–160 words unless context requires more).')
@@ -258,9 +272,10 @@ export function EmailDraftsPage() {
   const [prospectId, setProspectId] = useState('')
   const [outreachPreviews, setOutreachPreviews] = useState<GeneratedOutreachPreview[]>([])
   const [generatorMode, setGeneratorMode] = useState<'ai' | 'local'>('ai')
-  const [aiApproach, setAiApproach] = useState<AiEmailApproach>('audit_based')
+  const [aiApproach, setAiApproach] = useState<AiEmailApproach>('professional')
   const [aiGenerating, setAiGenerating] = useState(false)
   const [aiActionId, setAiActionId] = useState<string | null>(null)
+  const [aiChatInputs, setAiChatInputs] = useState<Record<string, string>>({})
   const [selectedEmailRanges, setSelectedEmailRanges] = useState<Record<string, { start: number; end: number }>>({})
   const [draftSearch, setDraftSearch] = useState('')
   const [draftStatusFilter, setDraftStatusFilter] = useState('all')
@@ -567,10 +582,10 @@ export function EmailDraftsPage() {
             analysis_id: analysis?.id ?? null,
             subject: '',
             body: '',
-            has_website_report: false,
+            has_website_report: !!analysis,
             suitability: analysis ? getOutreachSuitability(analysis) : 'Incomplete Audit',
             internal_note: analysis
-              ? 'AI draft for review. It does not claim an attachment.'
+              ? 'AI draft for review. A matching website review PDF will be attached.'
               : 'No matching saved audit was available; verify all website-specific claims before use.',
           }
           : createOutreachPreview(prospect, analysis)
@@ -593,6 +608,7 @@ export function EmailDraftsPage() {
             length: generatorLength,
             senderContext,
             followUpStage,
+            includeReport: preview.has_website_report,
           })
           if (result.prospect.website !== prospect.website) {
             throw new Error(`${prospect.business_name}: the AI response did not match the saved website URL.`)
@@ -610,7 +626,7 @@ export function EmailDraftsPage() {
           aiSenderBusiness = result.sender.business
           aiSenderEmail = result.sender.email
           generatedAnalysisId = result.analysisId
-          const errors = validateAiPreview(generatedDraft, prospect)
+          const errors = validateAiPreview(generatedDraft, prospect, preview.has_website_report)
           if (errors.length) throw new Error(`${prospect.business_name}: ${errors.join(' ')}`)
         } else if (followUpStage !== 'none') {
           const previousEmail = sentEmailRows.find((message) => message.prospect_id === prospect.id)
@@ -710,6 +726,7 @@ export function EmailDraftsPage() {
         action,
         body: preview.body,
         selectedText,
+        includeReport: preview.has_website_report,
       })
       const nextBody = action === 'rewrite_selection' && selection
         ? `${preview.body.slice(0, selection.start)}${result.body}${preview.body.slice(selection.end)}`
@@ -739,6 +756,59 @@ export function EmailDraftsPage() {
     }
   }
 
+  const customizeAiPreview = async (preview: GeneratedOutreachPreview) => {
+    const instruction = (aiChatInputs[preview.prospect_id] || '').trim()
+    if (!instruction) {
+      toast.error('Enter an instruction for the AI draft assistant.')
+      return
+    }
+    if (!preview.aiApproach) return
+    setAiActionId(preview.prospect_id)
+    try {
+      const result = await rewriteAiOutreachDraft({
+        prospectId: preview.prospect_id,
+        approach: preview.aiApproach,
+        action: 'custom',
+        body: preview.body,
+        customInstruction: instruction,
+        conversation: preview.aiChatMessages,
+        includeReport: preview.has_website_report,
+      })
+      const prospect = outreachProspectRows.find((item) => item.id === preview.prospect_id)
+      if (!prospect) throw new Error('This prospect is no longer available.')
+      const generatedDraft = {
+        ...preview.generatedDraft,
+        body: result.body,
+        includesReportReference: preview.has_website_report,
+        subjectSuggestions: result.subjectSuggestions,
+        observationsUsed: result.observationsUsed,
+        wordCount: result.body.split(/\s+/).filter(Boolean).length,
+      }
+      const errors = validateAiPreview(generatedDraft, prospect, preview.has_website_report)
+      if (errors.length) throw new Error(errors.join(' '))
+      setOutreachPreviews((current) => current.map((item) => item.prospect_id === preview.prospect_id
+        ? {
+          ...item,
+          body: result.body,
+          generatedDraft,
+          aiRecommendedCallToAction: result.recommendedCallToAction,
+          aiChatMessages: [
+            ...(item.aiChatMessages || []),
+            { role: 'user' as const, content: instruction },
+            { role: 'assistant' as const, content: result.assistantMessage || 'The draft has been updated. Review the revised message above.' },
+          ].slice(-10),
+        }
+        : item))
+      setAiChatInputs((current) => ({ ...current, [preview.prospect_id]: '' }))
+      setComplianceConfirmed(false)
+      toast.success('The AI updated the draft. Review it before sending.')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'The AI could not update this draft.')
+    } finally {
+      setAiActionId(null)
+    }
+  }
+
   const generateAnotherAiVersion = async (preview: GeneratedOutreachPreview) => {
     if (!preview.aiApproach) return
     if (!window.confirm('Replace this preview with a newly generated version? Your current edits will be replaced.')) return
@@ -751,6 +821,7 @@ export function EmailDraftsPage() {
         length: generatorLength,
         senderContext,
         followUpStage,
+        includeReport: preview.has_website_report,
       })
       const prospect = outreachProspectRows.find((item) => item.id === preview.prospect_id)
       if (!prospect) throw new Error('This prospect is no longer available.')
@@ -758,7 +829,7 @@ export function EmailDraftsPage() {
       if (prospect.business_name_verified && result.prospect.businessName !== prospect.business_name) {
         throw new Error('The AI response business name did not match the verified prospect record.')
       }
-      const errors = validateAiPreview(result, prospect)
+      const errors = validateAiPreview(result, prospect, preview.has_website_report)
       if (errors.length) throw new Error(errors.join(' '))
       setOutreachPreviews((current) => current.map((item) => item.prospect_id === preview.prospect_id
         ? {
@@ -864,7 +935,7 @@ export function EmailDraftsPage() {
           wordCount: body.trim().split(/\s+/).filter(Boolean).length,
         }
         if (preview.aiApproach) {
-          const validationErrors = validateAiPreview(generatedDraft, prospect)
+          const validationErrors = validateAiPreview(generatedDraft, prospect, preview.has_website_report)
           if (validationErrors.length) throw new Error(`${prospect.business_name}: ${validationErrors.join(' ')}`)
         } else {
           const validation = validateProfessionalEmailDraft(
@@ -1192,7 +1263,7 @@ export function EmailDraftsPage() {
         const validationErrors = validateAiPreview({
           ...preview.generatedDraft,
           body: preview.body,
-        }, prospect)
+        }, prospect, preview.has_website_report)
         if (validationErrors.length) throw new Error(validationErrors.join(' '))
       }
       const userId = await getCurrentUserId()
@@ -1379,7 +1450,7 @@ export function EmailDraftsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-slate-800">{localStorage.getItem('arlotech-login-mode') === 'blacksite' ? 'PAYLOAD ASSEMBLY' : 'Email Drafts'}</h1>
-          <p className="mt-1 text-sm text-slate-500">Create drafts and prepare personalized, reviewed outreach batches.</p>
+          <p className="mt-1 text-sm text-slate-500">Create drafts and prepare generic, reviewed outreach batches.</p>
         </div>
         <Button onClick={() => { closeForm(); setShowForm(true) }}>
           <Plus className="h-4 w-4" /> New Draft
@@ -1502,10 +1573,10 @@ export function EmailDraftsPage() {
 
       <Card className="space-y-5 p-4 sm:p-6">
         <div>
-          <h2 className="text-lg font-semibold text-slate-800">{localStorage.getItem('arlotech-login-mode') === 'blacksite' ? 'BATCH TRANSMISSION ASSEMBLY' : 'Personalized outreach batch'}</h2>
+          <h2 className="text-lg font-semibold text-slate-800">{localStorage.getItem('arlotech-login-mode') === 'blacksite' ? 'BATCH TRANSMISSION ASSEMBLY' : 'Outreach batch drafts'}</h2>
           <p className="mt-1 text-sm text-slate-500">
-            Generate evidence-aware drafts, review or edit each one, and save it when ready. Generation never sends email. AI batches are limited to {MAX_AI_GENERATION_BATCH_SIZE} and 40 AI requests per rolling 24 hours; sending is processed in batches of {MAX_SEND_REQUEST_SIZE}, up to 50 per rolling 24 hours.
-            A website link is required. AI generation uses saved prospect, audit, notes, profile, and communication history when available. Sending still requires an eligible recipient and a matching audit with actionable evidence.
+            Generate generic, non-personalized AI drafts, review or edit each one, and save it when ready. Generation never sends email. AI batches are limited to {MAX_AI_GENERATION_BATCH_SIZE} and 40 AI requests per rolling 24 hours; sending is processed in batches of {MAX_SEND_REQUEST_SIZE}, up to 50 per rolling 24 hours.
+            A website link is required to associate a draft with a prospect. AI copy does not use recipient or audit details. Sending still requires an eligible recipient and a matching audit with actionable evidence.
           </p>
         </div>
 
@@ -1517,7 +1588,7 @@ export function EmailDraftsPage() {
               onChange={(event) => setGeneratorMode(event.target.value as 'ai' | 'local')}
               className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
             >
-              <option value="ai">AI personalized (recommended)</option>
+              <option value="ai">AI generic outreach (recommended)</option>
               <option value="local">Rule-based fallback</option>
             </select>
             <span className="block text-xs text-slate-500">The fallback is manual selection only; AI failures are never silently replaced.</span>
@@ -1535,7 +1606,7 @@ export function EmailDraftsPage() {
                     {{
                       professional: 'Professional',
                       friendly: 'Friendly',
-                      audit_based: 'Audit-based',
+                      audit_based: 'Website services',
                       value_first: 'Value-first',
                       short: 'Short',
                       website_redesign: 'Website redesign',
@@ -1774,8 +1845,14 @@ export function EmailDraftsPage() {
                       <p className="break-all text-xs text-slate-500">{prospect.email}</p>
                       {preview.aiApproach && (
                         <p className="mt-1 text-xs text-slate-600">
-                          AI {preview.aiApproach.replaceAll('_', ' ')} approach
-                          {preview.aiConfidence ? ` · ${preview.aiConfidence} personalization confidence` : ''}
+                          Generic AI outreach · {{
+                            professional: 'professional',
+                            friendly: 'friendly',
+                            audit_based: 'website services',
+                            value_first: 'value-first',
+                            short: 'short',
+                            website_redesign: 'website redesign',
+                          }[preview.aiApproach]} style
                         </p>
                       )}
                       {preview.aiApproach && (
@@ -1790,7 +1867,7 @@ export function EmailDraftsPage() {
                         </p>
                       )}
                       {preview.has_website_report && (
-                        <p className="mt-1 text-xs text-green-700">A personalized website report will be attached.</p>
+                        <p className="mt-1 text-xs text-green-700">The matching website review PDF will be attached.</p>
                       )}
                       {preview.has_website_report && (
                         <p className="mt-1 text-xs font-medium text-slate-600">
@@ -1945,6 +2022,62 @@ export function EmailDraftsPage() {
                         >
                           Generate another version
                         </Button>
+                      </div>
+                      <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                        <div>
+                          <h4 className="text-sm font-semibold text-slate-800">Chat with AI to edit this draft</h4>
+                          <p className="mt-1 text-xs text-slate-500">
+                            Ask for changes in plain language. The AI keeps the generic, “we” voice and only mentions a PDF when one is available to attach.
+                          </p>
+                        </div>
+                        {!!preview.aiChatMessages?.length && (
+                          <div className="max-h-48 space-y-2 overflow-y-auto" role="log" aria-live="polite">
+                            {preview.aiChatMessages.map((message, index) => (
+                              <div
+                                key={`${preview.prospect_id}-chat-${index}`}
+                                className={`max-w-[90%] rounded-lg px-3 py-2 text-sm ${
+                                  message.role === 'user'
+                                    ? 'ml-auto bg-arlotech text-white'
+                                    : 'bg-white text-slate-700 ring-1 ring-slate-200'
+                                }`}
+                              >
+                                <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide opacity-75">
+                                  {message.role === 'user' ? 'You' : 'AI draft assistant'}
+                                </span>
+                                {message.content}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        <label className="block space-y-1">
+                          <span className="text-xs font-medium text-slate-700">Your instruction</span>
+                          <textarea
+                            value={aiChatInputs[preview.prospect_id] || ''}
+                            maxLength={1000}
+                            rows={2}
+                            disabled={aiActionId === preview.prospect_id}
+                            onChange={(event) => setAiChatInputs((current) => ({
+                              ...current,
+                              [preview.prospect_id]: event.target.value,
+                            }))}
+                            placeholder="For example: Make the value proposition more practical and soften the final question."
+                            className="w-full resize-y rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-arlotech focus:outline-none focus:ring-2 focus:ring-arlotech/20 disabled:bg-slate-100"
+                          />
+                        </label>
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="text-xs text-slate-500">
+                            {(aiChatInputs[preview.prospect_id] || '').length}/1000
+                          </span>
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            onClick={() => customizeAiPreview(preview)}
+                            disabled={aiActionId === preview.prospect_id || !(aiChatInputs[preview.prospect_id] || '').trim()}
+                          >
+                            <Send className="h-3.5 w-3.5" />
+                            {aiActionId === preview.prospect_id ? 'Updating…' : 'Ask AI to update'}
+                          </Button>
+                        </div>
                       </div>
                     </>
                   )}

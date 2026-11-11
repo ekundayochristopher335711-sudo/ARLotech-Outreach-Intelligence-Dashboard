@@ -37,6 +37,7 @@ interface AiEmailResponse {
   referenced_context_pages: AiEmailContextReference[]
   recommended_call_to_action: string
   personalization_confidence: 'high' | 'medium' | 'low'
+  assistant_message?: string
 }
 
 export function isAiEmailResponse(value: unknown): value is AiEmailResponse {
@@ -92,5 +93,7 @@ export function isAiEmailResponse(value: unknown): value is AiEmailResponse {
     result.referenced_context_pages.length === contextPageIds.length &&
     result.referenced_context_pages.every((page, index) => page.id === contextPageIds[index]) &&
     typeof result.recommended_call_to_action === 'string' &&
+    (result.assistant_message === undefined ||
+      (typeof result.assistant_message === 'string' && result.assistant_message.length <= 300)) &&
     ['high', 'medium', 'low'].includes(String(result.personalization_confidence))
 }

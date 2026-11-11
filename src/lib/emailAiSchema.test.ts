@@ -43,6 +43,7 @@ describe('AI email response contract', () => {
 
   it('accepts a complete response with three subject suggestions and matching evidence', () => {
     expect(isAiEmailResponse(validResponse)).toBe(true)
+    expect(isAiEmailResponse({ ...validResponse, assistant_message: 'The draft is now more concise.' })).toBe(true)
   })
 
   it('rejects missing subjects, mismatched evidence, and oversized output', () => {
@@ -54,5 +55,6 @@ describe('AI email response contract', () => {
       ...validResponse,
       referenced_context_pages: [{ ...validResponse.referenced_context_pages[0], source_url: 'javascript:alert(1)' }],
     })).toBe(false)
+    expect(isAiEmailResponse({ ...validResponse, assistant_message: 'x'.repeat(301) })).toBe(false)
   })
 })

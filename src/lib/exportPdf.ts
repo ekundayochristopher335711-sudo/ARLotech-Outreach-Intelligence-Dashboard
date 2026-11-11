@@ -6,11 +6,14 @@ import {
   rateLighthouseFinding,
   unifiedScoreCategories,
   UNIFIED_WEBSITE_SCORE_VERSION,
-  UNIFIED_WEBSITE_SCORE_WEIGHTS,
 } from '@/lib/websiteAudit'
 import {
+  auditFindingRecommendation,
+  auditFindingTitle,
+  auditFindingWhy,
   auditFindingBusinessImpact,
   auditFindingBusinessTitle,
+  clientFriendlyAuditText,
 } from '@/lib/auditReportLanguage'
 import { ARLOTECH_BLACKSITE_PDF_LOGO_FILE, loadArlotechLogoDataUrl } from '@/lib/brandAssets'
 
@@ -86,6 +89,25 @@ function displayDate(value?: string | null) {
   if (!value) return 'Not recorded'
   const date = new Date(value)
   return Number.isNaN(date.getTime()) ? 'Not recorded' : date.toLocaleString()
+}
+
+function auditPdfText(value: unknown, limit = 1200) {
+  if (typeof value !== 'string') return ''
+  if (/BOOT_ERROR|Edge Function returned|failed because the audit/i.test(value)) {
+    return 'One or more screenshots could not be saved or analyzed.'
+  }
+  if (/invalid markup/i.test(value)) {
+    return 'The page structure may make some content harder to interpret.'
+  }
+  return clientFriendlyAuditText(value)
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/\b(?:Lighthouse|PageSpeed)\b/gi, 'the website check')
+    .replace(/\bJavaScript\b/gi, 'website code')
+    .replace(/\bCSS\b/gi, 'styling files')
+    .replace(/\bSpeed Index\b/gi, 'page display speed')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, limit)
 }
 
 function createReport(
@@ -241,14 +263,24 @@ function createReport(
     y += cardHeight + 5
   }
 
-  const addWebsiteIssueCard = (index: number, title: string, impact: string) => {
+  const addWebsiteIssueCard = (
+    index: number,
+    title: string,
+    impact: string,
+    evidence?: string,
+    recommendation?: string,
+  ) => {
     doc.setFont('helvetica', 'bold')
     doc.setFontSize(10.5)
     const titleLines = doc.splitTextToSize(title, CONTENT_WIDTH - 22)
     doc.setFont('helvetica', 'normal')
     doc.setFontSize(9)
     const impactLines = doc.splitTextToSize(impact, CONTENT_WIDTH - 22)
-    const cardHeight = 12 + titleLines.length * 5 + 4 + impactLines.length * 4.5 + 7
+    const evidenceLines = evidence ? doc.splitTextToSize(evidence, CONTENT_WIDTH - 16) : []
+    const recommendationLines = recommendation ? doc.splitTextToSize(recommendation, CONTENT_WIDTH - 16) : []
+    const cardHeight = 12 + titleLines.length * 5 + 4 + impactLines.length * 4.5 + 7 +
+      (evidenceLines.length ? 7 + evidenceLines.length * 4 : 0) +
+      (recommendationLines.length ? 7 + recommendationLines.length * 4 : 0)
     if (!ensureSpace(cardHeight + 4)) return
 
     const top = y
@@ -273,6 +305,28 @@ function createReport(
     doc.setFont('helvetica', 'normal')
     doc.setFontSize(9)
     doc.text(impactLines, LEFT + 8, impactLabelY + 5)
+    let detailY = impactLabelY + 5 + impactLines.length * 4.5 + 4
+    if (evidenceLines.length) {
+      doc.setTextColor(...TEAL)
+      doc.setFont('helvetica', 'bold')
+      doc.setFontSize(7)
+      doc.text('WHAT THE REVIEW FOUND', LEFT + 8, detailY)
+      doc.setTextColor(...SLATE)
+      doc.setFont('helvetica', 'normal')
+      doc.setFontSize(8)
+      doc.text(evidenceLines, LEFT + 8, detailY + 4)
+      detailY += 4 + evidenceLines.length * 4 + 3
+    }
+    if (recommendationLines.length) {
+      doc.setTextColor(...TEAL)
+      doc.setFont('helvetica', 'bold')
+      doc.setFontSize(7)
+      doc.text('RECOMMENDED NEXT STEP', LEFT + 8, detailY)
+      doc.setTextColor(...SLATE)
+      doc.setFont('helvetica', 'normal')
+      doc.setFontSize(8)
+      doc.text(recommendationLines, LEFT + 8, detailY + 4)
+    }
     y += cardHeight + 5
   }
 
@@ -568,34 +622,19 @@ function buildConsultantWebsiteAnalysisPdf(
         impact: auditFindingBusinessImpact(finding),
         support: relevantArlotechSupport(finding),
         rank: priorityRank * 4 + ratingRank,
+        finding,
       }
     })
   const selectedTitles = new Set<string>()
-  const selectedImpacts = new Set<string>()
-  const selectedFacts: Array<{ title: string; impact: string }> = []
-  const factSimilarity = (left: string, right: string) => {
-    const leftWords = new Set(left.toLowerCase().match(/[a-z0-9]+/g) || [])
-    const rightWords = new Set(right.toLowerCase().match(/[a-z0-9]+/g) || [])
-    if (!leftWords.size || !rightWords.size) return 0
-    const shared = [...leftWords].filter((word) => rightWords.has(word)).length
-    return shared / new Set([...leftWords, ...rightWords]).size
-  }
   const topFindings = measuredCandidates
     .sort((left, right) => right.rank - left.rank)
     .filter((finding) => {
       const titleKey = finding.title.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
-      const impactKey = finding.impact.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
-      const repeatsSelectedFact = selectedFacts.some((selected) =>
-        factSimilarity(titleKey, selected.title) >= 0.8 ||
-        factSimilarity(impactKey, selected.impact) >= 0.85,
-      )
-      if (!titleKey || !impactKey || repeatsSelectedFact || selectedTitles.has(titleKey) || selectedImpacts.has(impactKey)) return false
+      if (!titleKey || selectedTitles.has(titleKey)) return false
       selectedTitles.add(titleKey)
-      selectedImpacts.add(impactKey)
-      selectedFacts.push({ title: titleKey, impact: impactKey })
       return true
     })
-    .slice(0, 3)
+    .slice(0, 20)
   const report = createReport(
     'Website review',
     `Reviewed ${displayDate(rec.analyzed_at)}  |  Arlotech Digital Solutions`,
@@ -662,33 +701,110 @@ function buildConsultantWebsiteAnalysisPdf(
     'The score is a guide to the areas reviewed, not a promise of search position, sales, or inquiries.',
     { size: 7.5, color: MUTED },
   )
-  if (unifiedScore) {
-    report.addSection('Website score breakdown')
-    report.addParagraph(
-      unifiedScore.provisional
-        ? `Provisional score: unavailable categories were excluded and the remaining weights were normalized. Unavailable: ${unifiedScore.unavailable_categories.join(', ')}.`
-        : 'Unified score uses the weighted categories below. Each category is normalized to a 0–100 scale.',
-      { size: 8.5 },
-    )
-    const categoryLabels: Record<keyof typeof UNIFIED_WEBSITE_SCORE_WEIGHTS, string> = {
-      visual_design: 'Visual Design',
-      performance: 'Performance',
-      seo: 'SEO',
-      accessibility: 'Accessibility',
-      'best-practices': 'Best Practices',
-    }
-    for (const category of Object.keys(UNIFIED_WEBSITE_SCORE_WEIGHTS) as Array<
-      keyof typeof UNIFIED_WEBSITE_SCORE_WEIGHTS
-    >) {
-      const details = unifiedScore.breakdown[category]
+  const analysisDetails = rec.analysis_details && typeof rec.analysis_details === 'object'
+    ? rec.analysis_details as Record<string, any>
+    : {}
+  const coverage = analysisDetails.audit_completeness
+  const screenshotReview = analysisDetails.screenshot_review
+  if (coverage && typeof coverage === 'object') {
+    report.addSection('Review coverage and limitations')
+    const coverageParts = [
+      typeof coverage.completeness_percent === 'number' ? `${coverage.completeness_percent}% coverage` : null,
+      typeof coverage.inspected_viewport_count === 'number' && typeof coverage.requested_viewport_count === 'number'
+        ? `${coverage.inspected_viewport_count}/${coverage.requested_viewport_count} performance test viewports inspected`
+        : null,
+      typeof coverage.discovered_page_count === 'number'
+        ? `${coverage.discovered_page_count} page${coverage.discovered_page_count === 1 ? '' : 's'} reviewed`
+        : null,
+    ].filter(Boolean)
+    if (coverageParts.length) report.addParagraph(coverageParts.join(' · '), { bold: true, color: NAVY })
+    if (typeof coverage.saved_screenshot_count === 'number') {
       report.addParagraph(
-        `${categoryLabels[category]}: ${details.score === null ? 'Unavailable' : `${details.score}/100`} | Weight ${details.configured_weight_percent}%${unifiedScore.provisional && details.score !== null ? ` (applied ${details.applied_weight_percent.toFixed(1)}%)` : ''} | Weighted contribution ${details.weighted_contribution === null ? '—' : details.weighted_contribution.toFixed(2)}`,
-        { size: 8.5 },
+        `${coverage.saved_screenshot_count} screenshot${coverage.saved_screenshot_count === 1 ? '' : 's'} saved for interface review.`,
+      )
+    }
+    if (Array.isArray(coverage.limitations) && coverage.limitations.length) {
+      report.addParagraph('Review limitations:', { bold: true, color: NAVY })
+      coverage.limitations.forEach((limitation: unknown) => {
+        if (typeof limitation === 'string' && limitation.trim()) {
+          report.addParagraph(`- ${auditPdfText(limitation)}`, { size: 8, indent: 4 })
+        }
+      })
+    }
+  }
+  if (screenshotReview && typeof screenshotReview === 'object') {
+    const pages = Array.isArray(screenshotReview.pages) ? screenshotReview.pages : []
+    const savedCount = pages.filter((page: Record<string, unknown>) => typeof page.image_path === 'string' && page.image_path).length
+    if (savedCount > 0) {
+      report.addParagraph(
+        `Screenshots were saved for ${savedCount} of ${pages.length} reviewed page/viewport views. The visual assessment uses static images and cannot verify menus, forms, or other controls work.`,
+        { size: 8 },
       )
     }
   }
+  const htmlInspection = analysisDetails.html_inspection
+  if (
+    htmlInspection &&
+    typeof htmlInspection === 'object' &&
+    htmlInspection.discovered_same_origin_navigation_count === 0
+  ) {
+    report.addParagraph(
+      'No links to other pages were found in the initial HTML. Pages added later by JavaScript may not have been included.',
+      { size: 8 },
+    )
+  }
 
-  report.addSection(`Customer friction points (${topFindings.length})`)
+  const visualAudit = rec.analysis_details?.visual_audit
+  report.addSection('User interface design assessment')
+  if (visualAudit?.status === 'completed' || visualAudit?.status === 'partial') {
+    report.addParagraph(`User interface design score: ${visualAudit.visual_score ?? 'Not available'}/100 (${visualAudit.status} screenshot coverage).`, { bold: true, color: NAVY })
+    report.addParagraph(auditPdfText(visualAudit.score_explanation || visualAudit.assessment?.summary) || 'Design assessment explanation was not recorded.')
+    const assessment = visualAudit.assessment && typeof visualAudit.assessment === 'object'
+      ? visualAudit.assessment as Record<string, unknown>
+      : {}
+    const assessmentAreas: Array<[string, unknown]> = [
+      ['Visual hierarchy', assessment.visual_hierarchy],
+      ['Typography', assessment.typography],
+      ['Layout consistency', assessment.layout_consistency],
+      ['Color consistency', assessment.color_consistency],
+      ['Desktop presentation', assessment.desktop_presentation],
+      ['Mobile presentation', assessment.mobile_presentation],
+      ['Professional appearance', assessment.professional_appearance],
+      ['User experience', assessment.user_experience],
+    ]
+    assessmentAreas.forEach(([label, value]) => {
+      if (typeof value === 'string' && value.trim() && value !== 'Not assessed') {
+        report.addParagraph(`${label}: ${auditPdfText(value)}`, { size: 8 })
+      }
+    })
+    if (Array.isArray(assessment.most_important_improvements) && assessment.most_important_improvements.length) {
+      report.addParagraph('Priority design improvements:', { bold: true, color: NAVY })
+      assessment.most_important_improvements.slice(0, 8).forEach((item: unknown, index: number) => {
+        if (typeof item === 'string' && item.trim()) {
+          report.addParagraph(`${index + 1}. ${auditPdfText(item)}`, { size: 8, indent: 4 })
+        }
+      })
+    }
+    const visualFindings = Array.isArray(visualAudit.findings) ? visualAudit.findings : []
+    if (!visualFindings.length) {
+      report.addParagraph('No significant interface issues were identified in the screenshots that were available.', { color: NAVY })
+    } else {
+      visualFindings.forEach((finding: Record<string, any>, index: number) => {
+        report.ensureSpace(28)
+        report.addParagraph(`${index + 1}. ${auditPdfText(finding.title) || 'Interface observation'} — ${String(finding.severity || 'informational').toUpperCase()} | ${auditPdfText(finding.device) || 'device not recorded'} | ${auditPdfText(finding.page_label) || 'Page not recorded'}`, { bold: true, color: NAVY })
+        report.addParagraph(`Observation: ${auditPdfText(finding.observation) || 'Not recorded'}`)
+        report.addParagraph(`Screenshot evidence: ${auditPdfText(finding.evidence) || 'Not recorded'}`)
+        report.addParagraph(`Potential visitor impact: ${auditPdfText(finding.user_impact) || 'Not recorded'}`)
+        report.addParagraph(`Recommended improvement: ${auditPdfText(finding.recommendation) || 'Not recorded'}`)
+      })
+    }
+  } else {
+    report.addParagraph(visualAudit?.status === 'failed'
+      ? `User interface design assessment could not be completed: ${visualAudit.error || 'No error details were recorded.'}`
+      : 'User interface design assessment was not available for this audit. No design score or findings have been inferred.')
+  }
+
+  report.addSection(`What we found (${topFindings.length})`)
   if (topFindings.length === 0) {
     report.addParagraph(
       'No confirmed customer friction points were identified in the available review. We do not recommend making changes based on issues this report could not verify.',
@@ -696,40 +812,76 @@ function buildConsultantWebsiteAnalysisPdf(
     )
   } else {
     topFindings.forEach((finding, index) => {
-      report.addWebsiteIssueCard(index + 1, finding.title, finding.impact)
+      const rawEvidence = String(finding.finding.evidence || '')
+      const evidence = rawEvidence
+        ? auditPdfText(/^Lighthouse reported score/i.test(rawEvidence)
+          ? 'The website check flagged this item for review; a specific visitor-facing effect was not confirmed.'
+          : rawEvidence, 500)
+        : ''
+      const sourceRecommendation = String(finding.finding.recommended_fix || '')
+      const hasKnownRecommendation = /largest-contentful-paint|\blcp\b|total-blocking-time|\btbt\b|cumulative-layout-shift|\bcls\b|render.blocking|unused.javascript|unused.css|server-response-time|document-request-latency|time-to-first-byte|document-title|html-title|meta-description|content-meta|canonical|crawlable|robots\.txt|color-contrast|image-alt|content-alt|font-display|content-h1|\bh1\b|heading/i
+        .test(`${finding.finding.audit_id || ''} ${finding.finding.id || ''} ${finding.finding.title || ''}`)
+      const recommendation = auditPdfText(
+        /<[^>]+>/.test(String(finding.finding.title || ''))
+          ? 'Review the structure of the page lists to make sure assistive technology can interpret them correctly.'
+          : sourceRecommendation || (hasKnownRecommendation
+            ? auditFindingRecommendation(finding.finding)
+            : 'Review this item and its page-specific evidence before deciding whether a change would help visitors.'),
+        500,
+      )
+      report.addWebsiteIssueCard(index + 1, finding.title, finding.impact, evidence, recommendation)
     })
   }
-  const visualAudit = rec.analysis_details?.visual_audit
-  report.addSection('AI visual design assessment')
-  if (visualAudit?.status === 'completed' || visualAudit?.status === 'partial') {
-    report.addParagraph(`Visual design score: ${visualAudit.visual_score ?? 'Not available'}/100 (${visualAudit.status} screenshot coverage).`, { bold: true, color: NAVY })
-    report.addParagraph(visualAudit.score_explanation || visualAudit.assessment?.summary || 'Visual assessment explanation was not recorded.')
-    const visualFindings = Array.isArray(visualAudit.findings) ? visualAudit.findings : []
-    if (!visualFindings.length) {
-      report.addParagraph('No significant visual issues were identified in the screenshots that were available.', { color: NAVY })
-    } else {
-      visualFindings.forEach((finding: Record<string, any>, index: number) => {
-        report.ensureSpace(22)
-        report.addParagraph(`${index + 1}. ${finding.title || 'Visual observation'} — ${String(finding.severity || 'informational').toUpperCase()} | ${finding.device || 'device not recorded'} | ${finding.page_label || 'Page not recorded'}`, { bold: true, color: NAVY })
-        report.addParagraph(`Observation: ${finding.observation || 'Not recorded'}`)
-        report.addParagraph(`Evidence: ${finding.evidence || 'Not recorded'}`)
-        report.addParagraph(`Visitor impact: ${finding.user_impact || 'Not recorded'}`)
-        report.addParagraph(`Recommended improvement: ${finding.recommendation || 'Not recorded'}`)
-      })
-    }
-  } else {
-    report.addParagraph(visualAudit?.status === 'failed'
-      ? `AI visual assessment could not be completed: ${visualAudit.error || 'No error details were recorded.'}`
-      : 'AI visual assessment was not available for this audit. No visual score or findings have been inferred.')
+  const opportunities: PdfFinding[] = Array.isArray(analysisDetails.optimization_opportunities)
+    ? analysisDetails.optimization_opportunities
+    : []
+  if (opportunities.length) {
+    report.addSection('Possible improvements to review')
+    report.addParagraph(
+      'These are estimated opportunities, not confirmed problems. Review the affected page and resources before deciding whether a change is useful.',
+      { size: 8, color: MUTED },
+    )
+    opportunities.forEach((finding, index) => {
+      report.addParagraph(`${index + 1}. ${auditPdfText(auditFindingTitle(finding))}`, { bold: true, color: NAVY })
+      report.addParagraph(`Why it may matter: ${auditPdfText(auditFindingWhy(finding))}`, { size: 8 })
+      report.addParagraph(`Suggested review: ${auditPdfText(finding.recommended_fix || auditFindingRecommendation(finding))}`, { size: 8 })
+    })
+  }
+  const diagnostics: PdfFinding[] = Array.isArray(analysisDetails.diagnostics)
+    ? analysisDetails.diagnostics
+    : []
+  if (diagnostics.length) {
+    report.addSection('Other checks (not counted as problems)')
+    diagnostics.forEach((finding) => {
+      report.addParagraph(
+        `${auditPdfText(auditFindingTitle(finding))} — ${auditPdfText(auditFindingWhy(finding))}`,
+        { size: 8 },
+      )
+    })
+  }
+  const positiveObservations = (Array.isArray(rec.positive_observations) ? rec.positive_observations : [])
+    .filter((observation: Record<string, unknown>) =>
+      !/^(?:speed index|largest contentful paint|first contentful paint|seo|accessibility|best practices|performance)\s*[—-]\s*good\b/i.test(
+        typeof observation.title === 'string' ? observation.title : '',
+      ),
+    )
+  if (positiveObservations.length) {
+    report.addSection('What is working well')
+    positiveObservations.forEach((observation: Record<string, unknown>) => {
+      const title = typeof observation.title === 'string' ? observation.title : ''
+      const evidence = typeof observation.evidence === 'string' ? observation.evidence : ''
+      const line = [title, evidence].filter(Boolean).join(' — ')
+      if (line) report.addParagraph(auditPdfText(line), { size: 8 })
+    })
   }
   const relevantSupport = [...new Set(topFindings.map((finding) => finding.support).filter(Boolean))]
-  report.addSection('Relevant Arlotech support')
-  report.addParagraph(
-    relevantSupport.length
-      ? `Based on the findings above, Arlotech can discuss focused options for ${relevantSupport.join('; ')}. Any proposed work should be confirmed against your goals and priorities.`
-      : 'The available review did not verify a specific change to recommend. Arlotech can first discuss your goals and only suggest website work if it is useful.',
-    { size: 9, color: NAVY },
-  )
+  if (relevantSupport.length) {
+    report.addSection('Relevant Arlotech support')
+    report.addParagraph(
+      `Based on the findings above, Arlotech can discuss focused options for ${relevantSupport.join('; ')}. Any proposed work should be confirmed against your goals and priorities.`,
+      { size: 9, color: NAVY },
+    )
+  }
   const businessImpactParagraph = topFindings.length
     ? 'A clear, dependable website helps protect your reputation and gives potential customers a simpler path from finding your business to getting in touch. The points above show where a small, focused improvement may help.'
     : 'The available review did not confirm a customer issue that needs fixing. Keeping the website clear and dependable can still help protect your reputation and make it easy for customers to get in touch.'
@@ -739,6 +891,14 @@ function buildConsultantWebsiteAnalysisPdf(
     'Email: info@arlotech.com.ng',
     'Website: arlotech.com.ng',
   ])
+  const visualObservationCount = Array.isArray(visualAudit?.findings)
+    ? visualAudit.findings.length
+    : 0
+  const shortSummary = topFindings.length || visualObservationCount
+    ? `In brief, this review recorded ${topFindings.length} evidence-backed website finding${topFindings.length === 1 ? '' : 's'} and ${visualObservationCount} interface design observation${visualObservationCount === 1 ? '' : 's'}.`
+    : 'In brief, no confirmed website findings were recorded in the available review.'
+  report.addSection('Short summary')
+  report.addParagraph(shortSummary, { size: 9, color: NAVY })
 
   return {
     report,

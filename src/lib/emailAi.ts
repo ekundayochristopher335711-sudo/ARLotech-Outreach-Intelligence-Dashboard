@@ -10,12 +10,14 @@ export type AiEmailRewriteAction =
   | 'persuasive'
   | 'change_cta'
   | 'rewrite_selection'
+  | 'custom'
 
 export interface AiEmailDraftResult extends GeneratedEmailDraft {
   approach: AiEmailApproach
   emailType: string
   personalizationConfidence: 'high' | 'medium' | 'low'
   recommendedCallToAction: string
+  assistantMessage?: string
   websiteContextUsed: AiEmailContextReference[]
   analysisId: string | null
   prospect: {
@@ -45,6 +47,7 @@ export async function generateAiOutreachDraft(input: {
   length: 'short' | 'standard' | 'detailed'
   senderContext?: string
   followUpStage?: FollowUpStage
+  includeReport?: boolean
 }) {
   const { data, error } = await supabase.functions.invoke<unknown>('generate-outreach-draft', {
     body: {
@@ -55,6 +58,7 @@ export async function generateAiOutreachDraft(input: {
       length: input.length,
       sender_context: input.senderContext?.slice(0, 600) ?? '',
       follow_up_stage: input.followUpStage ?? 'none',
+      include_report: input.includeReport ?? false,
     },
   })
 
@@ -77,10 +81,10 @@ export async function generateAiOutreachDraft(input: {
     personalization: [],
     observationsUsed,
     qualityChecks: [
-      'AI-generated from account-owned prospect, audit, and communication records.',
-      'No attachment or unsupported business outcome is claimed.',
+      'AI-generated generic outreach; recipient-specific records are excluded from the copy.',
+      input.includeReport ? 'A matching website review PDF is referenced for attachment.' : 'No report attachment is referenced.',
     ],
-    includesReportReference: false,
+    includesReportReference: input.includeReport ?? false,
     wordCount: data.body.trim().split(/\s+/).filter(Boolean).length,
     personalizationConfidence: data.personalization_confidence,
     recommendedCallToAction: data.recommended_call_to_action.trim(),
@@ -101,12 +105,21 @@ export async function rewriteAiOutreachDraft(input: {
   action: AiEmailRewriteAction
   body: string
   selectedText?: string
+  customInstruction?: string
+  conversation?: Array<{ role: 'user' | 'assistant'; content: string }>
+  includeReport?: boolean
 }) {
   if (!input.body.trim() || input.body.length > 12_000) {
     throw new Error('The current email body is empty or exceeds the supported length.')
   }
   if (input.action === 'rewrite_selection' && !input.selectedText?.trim()) {
     throw new Error('Select text in the email body before rewriting it.')
+  }
+  if (input.action === 'custom' && !input.customInstruction?.trim()) {
+    throw new Error('Enter an instruction for the AI draft assistant.')
+  }
+  if (input.customInstruction && input.customInstruction.length > 1000) {
+    throw new Error('The AI draft instruction exceeds the 1,000-character limit.')
   }
 
   const { data, error } = await supabase.functions.invoke<unknown>('generate-outreach-draft', {
@@ -117,6 +130,12 @@ export async function rewriteAiOutreachDraft(input: {
       rewrite_action: input.action,
       current_body: input.body,
       selected_text: input.selectedText?.slice(0, 2000) ?? '',
+      custom_instruction: input.customInstruction?.slice(0, 1000) ?? '',
+      chat_history: input.conversation?.slice(-10).map((message) => ({
+        role: message.role,
+        content: message.content.slice(0, 1000),
+      })) ?? [],
+      include_report: input.includeReport ?? false,
     },
   })
 
@@ -124,6 +143,9 @@ export async function rewriteAiOutreachDraft(input: {
     throw new Error(await getFunctionErrorMessage(error, 'Could not rewrite this email.'))
   }
   if (!isAiEmailResponse(data)) throw new Error('The AI email function returned an invalid rewrite.')
+  if (input.action === 'custom' && !data.assistant_message?.trim()) {
+    throw new Error('The AI draft assistant returned no response.')
+  }
   return {
     ...input,
     body: data.body.trim(),
@@ -132,6 +154,7 @@ export async function rewriteAiOutreachDraft(input: {
     websiteContextUsed: data.referenced_context_pages,
     personalizationConfidence: data.personalization_confidence,
     recommendedCallToAction: data.recommended_call_to_action.trim(),
+    assistantMessage: data.assistant_message?.trim(),
     analysisId: data.analysis_id,
     sender: data.sender,
   }

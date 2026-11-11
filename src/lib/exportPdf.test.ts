@@ -46,6 +46,16 @@ function pdfPages(base64: string) {
 }
 
 describe('website audit PDF', () => {
+  it('omits generic support copy when the audit has no supported recommendations', async () => {
+    const report = pdfText(await createWebsiteAnalysisPdfBase64({
+      website_url: 'https://example.com',
+      findings: [],
+    }))
+
+    expect(report).not.toContain('The available review did not verify a specific change to recommend')
+    expect(report).not.toContain('Relevant Arlotech support')
+  })
+
   it('keeps the summary and detailed issues distinct without repeating customer explanations', async () => {
     const findings = [
       ['largest-contentful-paint', 'Largest Contentful Paint'],
@@ -70,7 +80,7 @@ describe('website audit PDF', () => {
     })
     const pages = pdfPages(base64)
     const report = pdfText(base64)
-    const summaryEnd = report.indexOf('CUSTOMER FRICTION POINTS (3)')
+    const summaryEnd = report.indexOf('WHAT WE FOUND (4)')
     const overview = summaryEnd < 0 ? report : report.slice(0, summaryEnd)
     const summaryTitles = report.match(/The main page content takes too long to appear|Files may delay the first view of your website|Parts of the page may take longer to look ready|Extra website features may slow down taps and clicks/g) ?? []
     const issueDescriptions = report.split('WHY THIS MAY MATTER TO CUSTOMERS').slice(1)
@@ -82,11 +92,11 @@ describe('website audit PDF', () => {
     expect(pages.every((_page, index) => report.includes(`Page ${index + 1} of ${pages.length}`))).toBe(true)
     expect(overview).toContain('YOUR WEBSITE AT A GLANCE')
     expect(overview).not.toContain('The main page content takes too long to appear')
-    expect(report).toContain('CUSTOMER FRICTION POINTS (3)')
-    expect(summaryTitles).toHaveLength(3)
-    expect(new Set(summaryTitles.map((title) => title.toLowerCase())).size).toBe(3)
-    expect(issueDescriptions).toHaveLength(3)
-    expect(new Set(issueDescriptions.map((description) => description.toLowerCase())).size).toBe(3)
+    expect(report).toContain('WHAT WE FOUND (4)')
+    expect(summaryTitles).toHaveLength(4)
+    expect(new Set(summaryTitles.map((title) => title.toLowerCase())).size).toBe(4)
+    expect(issueDescriptions).toHaveLength(4)
+    expect(new Set(issueDescriptions.map((description) => description.toLowerCase())).size).toBe(4)
   })
 
   it('creates a plain-English report with an overview, unique issue explanations, and a business close', async () => {
@@ -134,7 +144,7 @@ describe('website audit PDF', () => {
     expect(pages.length).toBeGreaterThanOrEqual(1)
     expect(pages.length).toBeLessThanOrEqual(3)
     expect(report).toContain('WEBSITE HEALTH SCORE')
-    expect(report).toContain('CUSTOMER FRICTION POINTS (3)')
+    expect(report).toContain('WHAT WE FOUND (4)')
     expect(report).not.toContain('example.com')
     expect(report).not.toContain('Website reviewed')
     expect(report).not.toContain('Prepared for')
@@ -147,12 +157,13 @@ describe('website audit PDF', () => {
     expect(report).not.toContain('user-id/analysis-id')
     expect(report).toContain('info@arlotech.com.ng')
     expect(report).toContain('arlotech.com.ng')
+    expect(report).toContain('In brief, this review recorded 4 evidence-backed website findings and 0 interface design observations.')
     expect(report).not.toContain('+2348166419332')
     expect(report).not.toContain("WHAT'S WORKING WELL")
     expect(report).not.toContain('The review did not record a separate positive observation')
   })
 
-  it('uses the unified visual-and-technical score and includes its matching weighted breakdown', async () => {
+  it('keeps the unified score summary and orders interface assessment before customer findings', async () => {
     const report = pdfText(await createWebsiteAnalysisPdfBase64({
       overall_score: 80,
       category_scores: {
@@ -167,19 +178,49 @@ describe('website audit PDF', () => {
           score: 80,
           provisional: false,
         },
-        visual_audit: { status: 'completed', visual_score: 80 },
+        visual_audit: {
+          status: 'completed',
+          visual_score: 80,
+          assessment: {
+            summary: 'The service section is difficult to scan.',
+            visual_hierarchy: 'Primary actions need stronger emphasis.',
+            typography: 'Body text is too small in the service list.',
+            most_important_improvements: ['Increase body text size.', 'Give the primary action stronger contrast.'],
+          },
+          findings: [{
+            title: 'The primary action is difficult to find',
+            severity: 'medium',
+            device: 'desktop',
+            page_label: 'Homepage',
+            observation: 'The main action blends into surrounding content.',
+            evidence: 'The button has low contrast against the background.',
+            user_impact: 'Visitors may overlook the next step.',
+            recommendation: 'Increase the action button contrast.',
+          }],
+        },
       },
       findings: [],
     }))
 
     expect(report).toContain('80 / 100')
-    expect(report).toContain('WEBSITE SCORE BREAKDOWN')
-    expect(report).toContain('Visual Design: 80/100 | Weight 40% | Weighted contribution 32.00')
-    expect(report).toContain('Performance: 75/100 | Weight 18% | Weighted contribution 13.50')
-    expect(report).toContain('Best Practices: 85/100 | Weight 12% | Weighted contribution 10.20')
+    expect(report).toContain('USER INTERFACE DESIGN ASSESSMENT')
+    expect(report).toContain('User interface design score: 80/100')
+    expect(report).toContain('The primary action is difficult to find')
+    expect(report).toContain('Primary actions need stronger emphasis')
+    expect(report).toContain('Increase body text size')
+    expect(report).toContain('Screenshot evidence: The button has low contrast against the background.')
+    expect(report).toContain('Recommended improvement: Increase the action button contrast.')
+    expect(report).toContain('In brief, this review recorded 0 evidence-backed website findings and 1 interface design observation.')
+    expect(report).not.toContain('AI VISUAL DESIGN ASSESSMENT')
+    expect(report).not.toContain('WEBSITE SCORE BREAKDOWN')
+    expect(report).not.toContain('Unified score uses the weighted categories below')
+    expect(report).not.toContain('Weighted contribution')
+    expect(report.indexOf('USER INTERFACE DESIGN ASSESSMENT')).toBeLessThan(
+      report.indexOf('WHAT WE FOUND'),
+    )
   })
 
-  it('labels incomplete unified scores provisional and normalizes available weights in the PDF', async () => {
+  it('labels incomplete unified scores provisional without printing a weighted score breakdown', async () => {
     const report = pdfText(await createWebsiteAnalysisPdfBase64({
       overall_score: 80,
       category_scores: {
@@ -194,9 +235,22 @@ describe('website audit PDF', () => {
       findings: [],
     }))
 
-    expect(report).toContain('Provisional score: unavailable categories were excluded and the remaining weights were normalized.')
-    expect(report).toContain('Visual Design: Unavailable | Weight 40% | Weighted contribution')
-    expect(report).toContain('Performance: 75/100 | Weight 18% (applied 30.0%) | Weighted contribution 22.50')
+    expect(report).toContain('provisional, because one or more scoring categories were unavailable.')
+    expect(report).not.toContain('WEBSITE SCORE BREAKDOWN')
+    expect(report).not.toContain('Visual Design: Unavailable')
+    expect(report).not.toContain('Weighted contribution')
+  })
+
+  it('ends a report without findings with a concise summary', async () => {
+    const report = pdfText(await createWebsiteAnalysisPdfBase64({
+      website_url: 'https://example.com',
+      findings: [],
+    }))
+
+    expect(report).toContain('SHORT SUMMARY')
+    expect(report).toContain('In brief, no confirmed website findings were recorded in the available review.')
+    expect(report.lastIndexOf('In brief, no confirmed website findings were recorded in the available review.'))
+      .toBeGreaterThan(report.lastIndexOf('Reply to the email that included this report'))
   })
 
   it('preserves a historical saved score and labels its legacy methodology', async () => {
@@ -246,7 +300,7 @@ describe('website audit PDF', () => {
     expect(emptyReportPages).toHaveLength(1)
   })
 
-  it('omits the positive observations section and keeps support tied to the audit category', async () => {
+  it('includes evidence-based positive observations and keeps support tied to the audit category', async () => {
     const report = pdfText(await createWebsiteAnalysisPdfBase64({
       website_url: 'https://example.com',
       category_scores: { performance: 55 },
@@ -267,8 +321,8 @@ describe('website audit PDF', () => {
       }],
     }))
 
-    expect(report).not.toContain("WHAT'S WORKING WELL")
-    expect(report).not.toContain('Business contact details are easy to find')
+    expect(report).toContain('WHAT IS WORKING WELL')
+    expect(report).toContain('Business contact details are easy to find')
     expect(report).not.toContain('The review did not record a separate positive observation')
     expect(report).toContain('RELEVANT ARLOTECH SUPPORT')
     expect(report).toContain('page speed and website performance improvements')
@@ -380,7 +434,7 @@ describe('website audit PDF', () => {
     expect(report).not.toContain('50 ms')
     expect(report).not.toContain('BOOT_ERROR')
     expect(report).not.toMatch(/\bLighthouse\b|\bPageSpeed\b|\bJavaScript\b/)
-    expect(report).toContain('No confirmed customer friction points')
+    expect(report).toContain('WHAT WE FOUND (0)')
     expect(report).toContain('No confirmed customer friction points were identified')
     expect(report).not.toContain('These observations highlight opportunities')
   })
@@ -443,7 +497,7 @@ describe('website audit PDF', () => {
     expect(pages.length).toBeGreaterThanOrEqual(1)
     expect(pages.length).toBeLessThanOrEqual(3)
     expect(pages.every((page) => page.includes('ARLOTECH'))).toBe(true)
-    expect(fullReport).toContain('CUSTOMER FRICTION POINTS (2)')
+    expect(fullReport).toContain('WHAT WE FOUND (2)')
     expect(fullReport).toContain('The main page content takes too long to appear')
     expect(fullReport).toContain('The page may take too long to respond')
     expect(fullReport).not.toContain('Speed Index')
@@ -470,7 +524,7 @@ describe('website audit PDF', () => {
     const report = pdfText(base64)
     const pages = pdfPages(base64)
     expect(report).toContain('YOUR WEBSITE AT A GLANCE')
-    expect(report).toContain('CUSTOMER FRICTION POINTS (0)')
+    expect(report).toContain('WHAT WE FOUND (0)')
     expect(report).toMatch(/We could not\s+calculate a reliable overall score/)
     expect(report).not.toContain('100 / 100')
     expect(report).toContain('Reply to the email that included this report')
