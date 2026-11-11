@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   getGenericCopyViolation,
   getGenericEmailContentViolations,
+  normalizeEmailSalutation,
   normalizeGenericEmailContent,
 } from "./copyRules.ts";
 
@@ -51,7 +52,7 @@ describe("generic email copy rules", () => {
     );
 
     expect(body).toBe(
-      "Hello. We design and improve websites so businesses can present their services clearly and make it easier for visitors to find information or get in touch. Could you share what you would like your website to help visitors do?",
+      "Hello,\n\nWe design and improve websites so businesses can present their services clearly and make it easier for visitors to find information or get in touch. Could you share what you would like your website to help visitors do?",
     );
     expect((body.match(/\?/g) ?? []).length).toBe(1);
     expect(getGenericEmailContentViolations(body)).toEqual([]);
@@ -66,6 +67,25 @@ describe("generic email copy rules", () => {
     expect(body).toContain("We’ve attached the website review PDF for your reference.");
     expect(body.endsWith("\n\nKind regards,\nArlotech")).toBe(true);
     expect(getGenericEmailContentViolations(body, true)).toEqual([]);
+  });
+
+  it("uses the saved contact name in the greeting and keeps report findings in the body", () => {
+    const body = normalizeGenericEmailContent(
+      "Hello. The mobile navigation menu overlaps page content on smaller screens. Could you share your website goals?",
+      true,
+      "Ada Lovelace",
+    );
+
+    expect(body).toContain("Hello Ada Lovelace,");
+    expect(body).toContain("The mobile navigation menu overlaps page content on smaller screens.");
+    expect(body).toContain("We’ve attached the website review PDF for your reference.");
+    expect((body.match(/\?/g) ?? []).length).toBe(1);
+  });
+
+  it("uses a neutral salutation when no saved contact name exists", () => {
+    expect(normalizeEmailSalutation("Dear visitor,\n\nWe can help.", "")).toBe(
+      "Hello,\n\nWe can help.",
+    );
   });
 
   it("removes attachment claims when no report will be sent", () => {
@@ -85,7 +105,7 @@ describe("generic email copy rules", () => {
     );
 
     expect(body).toBe(
-      "Hello. At ARLOTECH Digital Solutions, we design and improve websites so visitors can understand services clearly and get in touch more easily. We’ve attached the website review PDF for your reference. Could you share what you would like your website to help visitors do?\n\nKind regards,\nEkundayo Christopher\nARLOTECH",
+      "Hello,\n\nAt ARLOTECH Digital Solutions, we design and improve websites so visitors can understand services clearly and get in touch more easily. We’ve attached the website review PDF for your reference. Could you share what you would like your website to help visitors do?\n\nKind regards,\nEkundayo Christopher\nARLOTECH",
     );
     expect((body.match(/\?/g) ?? []).length).toBe(1);
     expect(getGenericEmailContentViolations(body, true)).toEqual([]);

@@ -5,7 +5,23 @@ const requiredServiceSentence =
   "We design and improve websites so businesses can present their services clearly and make it easier for visitors to find information or get in touch.";
 const requiredAttachmentSentence = "We’ve attached the website review PDF for your reference.";
 
-export function normalizeGenericEmailContent(body: string, includeReport: boolean): string {
+export function normalizeEmailSalutation(body: string, contactName: string): string {
+  const signatureStart = body.search(/\n\n(?:kind regards|best regards|regards|sincerely|thanks),?\s*\n/i);
+  const content = signatureStart < 0 ? body.trim() : body.slice(0, signatureStart).trim();
+  const signature = signatureStart < 0 ? "" : body.slice(signatureStart);
+  const remainder = content
+    .replace(/^\s*(?:hello|hi|dear)\b[^.!?\n,]*(?:[,!.])?\s*/i, "")
+    .trimStart();
+  const name = contactName.replace(/[?!\r\n]/g, " ").replace(/\s+/g, " ").trim().slice(0, 100);
+  const greeting = name ? `Hello ${name},` : "Hello,";
+  return `${greeting}${remainder ? `\n\n${remainder}` : ""}${signature}`;
+}
+
+export function normalizeGenericEmailContent(
+  body: string,
+  includeReport: boolean,
+  contactName = "",
+): string {
   const signatureStart = body.search(/\n\n(?:kind regards|best regards|regards|sincerely|thanks),?\s*\n/i);
   const content = signatureStart < 0 ? body : body.slice(0, signatureStart);
   const signature = signatureStart < 0 ? "" : body.slice(signatureStart);
@@ -17,7 +33,8 @@ export function normalizeGenericEmailContent(body: string, includeReport: boolea
     if (
       !sentence ||
       sentence.includes("?") ||
-      /\b(?:feedback|share|tell us|let us know|would love to learn|love to learn|look forward to hearing|hear your thoughts|website goals|website priorities|what you would like|what you want|what you hope)\b/i.test(sentence) ||
+      /\b(?:would love to learn|love to learn|look forward to hearing|hear your thoughts|what you would like|what you want|what you hope|website goals|website priorities)\b/i.test(sentence) ||
+      /\b(?:we(?:'d| would) (?:like|appreciate)|we welcome|would welcome|would appreciate|share|tell us|let us know)\b.{0,80}\b(?:feedback|thoughts|goals|priorities)\b/i.test(sentence) ||
       (!includeReport && /\b(?:attached|attachment|attaching|attach|pdf|report)\b/i.test(sentence))
     ) {
       continue;
@@ -37,7 +54,10 @@ export function normalizeGenericEmailContent(body: string, includeReport: boolea
   const requiredStatements = [...statements];
   if (!describesService || !hasBenefit) requiredStatements.push(requiredServiceSentence);
   if (includeReport && !hasAttachedReport) requiredStatements.push(requiredAttachmentSentence);
-  return `${[...requiredStatements, requiredFeedbackQuestion].join(" ")}${signature}`;
+  return normalizeEmailSalutation(
+    `${[...requiredStatements, requiredFeedbackQuestion].join(" ")}${signature}`,
+    contactName,
+  );
 }
 
 export function getGenericCopyViolation(copy: string): "internal_reference" | "first_person_singular" | null {

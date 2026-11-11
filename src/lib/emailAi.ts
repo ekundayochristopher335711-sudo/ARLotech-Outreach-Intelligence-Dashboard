@@ -81,7 +81,9 @@ export async function generateAiOutreachDraft(input: {
     personalization: [],
     observationsUsed,
     qualityChecks: [
-      'AI-generated generic outreach; recipient-specific records are excluded from the copy.',
+      input.includeReport
+        ? 'AI draft uses the saved contact name and matching website-review observations where relevant.'
+        : 'AI draft uses the saved contact name only; no matching website-review findings were available.',
       input.includeReport ? 'A matching website review PDF is referenced for attachment.' : 'No report attachment is referenced.',
     ],
     includesReportReference: input.includeReport ?? false,

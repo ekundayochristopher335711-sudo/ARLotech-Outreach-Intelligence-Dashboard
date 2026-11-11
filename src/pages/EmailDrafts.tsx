@@ -1450,7 +1450,7 @@ export function EmailDraftsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-slate-800">{localStorage.getItem('arlotech-login-mode') === 'blacksite' ? 'PAYLOAD ASSEMBLY' : 'Email Drafts'}</h1>
-          <p className="mt-1 text-sm text-slate-500">Create drafts and prepare generic, reviewed outreach batches.</p>
+          <p className="mt-1 text-sm text-slate-500">Create drafts and prepare evidence-based outreach batches.</p>
         </div>
         <Button onClick={() => { closeForm(); setShowForm(true) }}>
           <Plus className="h-4 w-4" /> New Draft
@@ -1575,8 +1575,8 @@ export function EmailDraftsPage() {
         <div>
           <h2 className="text-lg font-semibold text-slate-800">{localStorage.getItem('arlotech-login-mode') === 'blacksite' ? 'BATCH TRANSMISSION ASSEMBLY' : 'Outreach batch drafts'}</h2>
           <p className="mt-1 text-sm text-slate-500">
-            Generate generic, non-personalized AI drafts, review or edit each one, and save it when ready. Generation never sends email. AI batches are limited to {MAX_AI_GENERATION_BATCH_SIZE} and 40 AI requests per rolling 24 hours; sending is processed in batches of {MAX_SEND_REQUEST_SIZE}, up to 50 per rolling 24 hours.
-            A website link is required to associate a draft with a prospect. AI copy does not use recipient or audit details. Sending still requires an eligible recipient and a matching audit with actionable evidence.
+            Generate AI-assisted, evidence-based drafts, review or edit each one, and save it when ready. Generation never sends email. AI batches are limited to {MAX_AI_GENERATION_BATCH_SIZE} and 40 AI requests per rolling 24 hours; sending is processed in batches of {MAX_SEND_REQUEST_SIZE}, up to 50 per rolling 24 hours.
+            The AI uses a saved contact name in the greeting and, when available, verified observations from the matching website review. The AI receives the saved audit data, not the finished PDF file. Sending still requires an eligible recipient and a matching audit with actionable evidence.
           </p>
         </div>
 
@@ -1588,7 +1588,7 @@ export function EmailDraftsPage() {
               onChange={(event) => setGeneratorMode(event.target.value as 'ai' | 'local')}
               className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
             >
-              <option value="ai">AI generic outreach (recommended)</option>
+              <option value="ai">AI evidence-based outreach (recommended)</option>
               <option value="local">Rule-based fallback</option>
             </select>
             <span className="block text-xs text-slate-500">The fallback is manual selection only; AI failures are never silently replaced.</span>
@@ -1821,7 +1821,7 @@ export function EmailDraftsPage() {
               !!outreachProspectsError
             }
           >
-            <Sparkles className="h-4 w-4" /> {aiGenerating ? 'Generating drafts…' : 'Generate generic emails'}
+            <Sparkles className="h-4 w-4" /> {aiGenerating ? 'Generating drafts…' : 'Generate email drafts'}
           </Button>
         </div>
         {generatorMode === 'ai' && (
@@ -2032,7 +2032,7 @@ export function EmailDraftsPage() {
                         <div>
                           <h4 className="text-sm font-semibold text-slate-800">Chat with AI to edit this draft</h4>
                           <p className="mt-1 text-xs text-slate-500">
-                            Ask for changes in plain language. The AI keeps the generic, “we” voice and only mentions a PDF when one is available to attach.
+                            Ask for changes in plain language. The AI keeps the collective “we” voice, uses matching audit evidence when available, and only mentions a PDF when one will be attached.
                           </p>
                         </div>
                         {!!preview.aiChatMessages?.length && (
