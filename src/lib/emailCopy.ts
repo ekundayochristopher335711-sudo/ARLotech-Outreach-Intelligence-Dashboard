@@ -14,6 +14,18 @@ type FindingCopy = {
 }
 
 const findingCopies: Array<[RegExp, FindingCopy]> = [
+  [/image-aspect-ratio/i, {
+    title: 'Some images may look stretched or compressed',
+    impact: 'Images that do not keep their intended proportions can make products, services, or portfolio work harder to assess. This check does not indicate a loading delay.',
+  }],
+  [/heading-order/i, {
+    title: 'Some page headings may be out of sequence',
+    impact: 'Visitors who scan or navigate by headings may find the page structure less predictable. This observation is about structure and does not assess the clarity of the business message.',
+  }],
+  [/doctype/i, {
+    title: 'The page may use older browser display rules',
+    impact: 'Older compatibility rules can sometimes affect how page elements appear. The page should be checked visually before deciding whether a change is needed.',
+  }],
   [/largest-contentful-paint|\blcp\b/i, {
     title: 'The main page content takes too long to appear',
     impact: 'A longer wait can frustrate someone looking for help. If the main information takes too long to appear, they may return to search results and contact someone else.',

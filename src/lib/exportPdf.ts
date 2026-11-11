@@ -9,8 +9,6 @@ import {
 } from '@/lib/websiteAudit'
 import {
   auditFindingRecommendation,
-  auditFindingTitle,
-  auditFindingWhy,
   auditFindingBusinessImpact,
   auditFindingBusinessTitle,
   clientFriendlyAuditText,
@@ -33,6 +31,86 @@ const WHITE = [255, 255, 255] as const
 interface PdfBrandLogo {
   data: string
   format: 'PNG'
+}
+
+interface PdfScreenshot {
+  data: string
+  format: 'PNG' | 'JPEG'
+  label: string
+}
+
+async function loadAuditScreenshots(analysis: Record<string, any>): Promise<PdfScreenshot[]> {
+  const record = analysis?.record || analysis || {}
+  const pages = Array.isArray(record.analysis_details?.screenshot_review?.pages)
+    ? record.analysis_details.screenshot_review.pages as Array<Record<string, unknown>>
+    : []
+  const userId = typeof record.user_id === 'string' ? record.user_id : ''
+  const auditId = typeof record.id === 'string' ? record.id : ''
+  if (!userId || !auditId) return []
+
+  const candidates = pages.filter((page) =>
+    typeof page.image_path === 'string' &&
+    page.image_path.startsWith(`${userId}/${auditId}/`) &&
+    /\.(?:jpe?g|png)$/i.test(page.image_path),
+  ).slice(0, 2)
+  if (!candidates.length) return []
+
+  const { supabase } = await import('@/lib/supabase')
+  const screenshots = await Promise.all(candidates.map(async (page): Promise<PdfScreenshot | null> => {
+    try {
+      const path = String(page.image_path)
+      const { data: signed, error } = await supabase.storage
+        .from('website-audit-screenshots')
+        .createSignedUrl(path, 120)
+      if (error || !signed?.signedUrl) return null
+
+      const response = await fetch(signed.signedUrl)
+      if (!response.ok) return null
+      const blob = await response.blob()
+      if (!['image/jpeg', 'image/png'].includes(blob.type) || blob.size <= 0 || blob.size > 1_000_000) return null
+      if (typeof createImageBitmap !== 'function' || typeof document === 'undefined') return null
+
+      const bitmap = await createImageBitmap(blob)
+      const scale = Math.min(1, 1500 / Math.max(bitmap.width, bitmap.height))
+      const canvas = document.createElement('canvas')
+      canvas.width = Math.max(1, Math.round(bitmap.width * scale))
+      canvas.height = Math.max(1, Math.round(bitmap.height * scale))
+      const context = canvas.getContext('2d')
+      if (!context) {
+        bitmap.close()
+        return null
+      }
+      context.fillStyle = '#ffffff'
+      context.fillRect(0, 0, canvas.width, canvas.height)
+      context.drawImage(bitmap, 0, 0, canvas.width, canvas.height)
+      bitmap.close()
+
+      const toJpeg = (quality: number) => new Promise<Blob | null>((resolve) => {
+        canvas.toBlob(resolve, 'image/jpeg', quality)
+      })
+      let compressed = await toJpeg(0.62)
+      if (!compressed || compressed.size > 130_000) compressed = await toJpeg(0.46)
+      if (!compressed || compressed.size > 130_000) return null
+
+      const bytes = new Uint8Array(await compressed.arrayBuffer())
+      let binary = ''
+      for (let offset = 0; offset < bytes.length; offset += 0x8000) {
+        binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000))
+      }
+      const format = 'JPEG'
+      const viewport = typeof page.viewport === 'string' ? page.viewport : 'view'
+      const pageLabel = typeof page.page_label === 'string' ? page.page_label : 'Website page'
+      return {
+        data: `data:image/jpeg;base64,${btoa(binary)}`,
+        format,
+        label: `${pageLabel} - ${viewport}`,
+      }
+    } catch {
+      return null
+    }
+  }))
+
+  return screenshots.filter((item): item is PdfScreenshot => item !== null)
 }
 
 async function loadPdfBrandLogo(): Promise<PdfBrandLogo> {
@@ -269,6 +347,7 @@ function createReport(
     impact: string,
     evidence?: string,
     recommendation?: string,
+    evidenceLabel = 'Review evidence',
   ) => {
     doc.setFont('helvetica', 'bold')
     doc.setFontSize(10.5)
@@ -276,8 +355,12 @@ function createReport(
     doc.setFont('helvetica', 'normal')
     doc.setFontSize(9)
     const impactLines = doc.splitTextToSize(impact, CONTENT_WIDTH - 22)
-    const evidenceLines = evidence ? doc.splitTextToSize(evidence, CONTENT_WIDTH - 16) : []
-    const recommendationLines = recommendation ? doc.splitTextToSize(recommendation, CONTENT_WIDTH - 16) : []
+    const evidenceLines = evidence
+      ? doc.splitTextToSize(`${evidenceLabel}: ${evidence}`, CONTENT_WIDTH - 16)
+      : []
+    const recommendationLines = recommendation
+      ? doc.splitTextToSize(`Recommended improvement: ${recommendation}`, CONTENT_WIDTH - 16)
+      : []
     const cardHeight = 12 + titleLines.length * 5 + 4 + impactLines.length * 4.5 + 7 +
       (evidenceLines.length ? 7 + evidenceLines.length * 4 : 0) +
       (recommendationLines.length ? 7 + recommendationLines.length * 4 : 0)
@@ -307,26 +390,47 @@ function createReport(
     doc.text(impactLines, LEFT + 8, impactLabelY + 5)
     let detailY = impactLabelY + 5 + impactLines.length * 4.5 + 4
     if (evidenceLines.length) {
-      doc.setTextColor(...TEAL)
-      doc.setFont('helvetica', 'bold')
-      doc.setFontSize(7)
-      doc.text('WHAT THE REVIEW FOUND', LEFT + 8, detailY)
       doc.setTextColor(...SLATE)
       doc.setFont('helvetica', 'normal')
       doc.setFontSize(8)
-      doc.text(evidenceLines, LEFT + 8, detailY + 4)
-      detailY += 4 + evidenceLines.length * 4 + 3
+      doc.text(evidenceLines, LEFT + 8, detailY)
+      detailY += evidenceLines.length * 4 + 3
     }
     if (recommendationLines.length) {
-      doc.setTextColor(...TEAL)
-      doc.setFont('helvetica', 'bold')
-      doc.setFontSize(7)
-      doc.text('RECOMMENDED NEXT STEP', LEFT + 8, detailY)
       doc.setTextColor(...SLATE)
       doc.setFont('helvetica', 'normal')
       doc.setFontSize(8)
-      doc.text(recommendationLines, LEFT + 8, detailY + 4)
+      doc.text(recommendationLines, LEFT + 8, detailY)
     }
+    y += cardHeight + 5
+  }
+
+  const addScreenshotGallery = (screenshots: PdfScreenshot[]) => {
+    if (!screenshots.length) return
+    addSection('Website screenshots')
+    const gap = 5
+    const columnWidth = (CONTENT_WIDTH - gap) / 2
+    const imageMaxHeight = 48
+    const cardHeight = 61
+    if (!ensureSpace(cardHeight + 4)) return
+
+    screenshots.slice(0, 2).forEach((screenshot, index) => {
+      const x = LEFT + index * (columnWidth + gap)
+      doc.setFillColor(...LIGHT)
+      doc.setDrawColor(226, 232, 240)
+      doc.roundedRect(x, y, columnWidth, cardHeight, 2, 2, 'FD')
+      const properties = doc.getImageProperties(screenshot.data)
+      const scale = Math.min((columnWidth - 8) / properties.width, imageMaxHeight / properties.height)
+      const imageWidth = properties.width * scale
+      const imageHeight = properties.height * scale
+      const imageX = x + (columnWidth - imageWidth) / 2
+      const imageY = y + 3 + (imageMaxHeight - imageHeight) / 2
+      doc.addImage(screenshot.data, screenshot.format, imageX, imageY, imageWidth, imageHeight)
+      doc.setFont('helvetica', 'bold')
+      doc.setFontSize(7)
+      doc.setTextColor(...NAVY)
+      doc.text(screenshot.label.slice(0, 48), x + 4, y + 57)
+    })
     y += cardHeight + 5
   }
 
@@ -401,6 +505,7 @@ function createReport(
     addMetricCards,
     addWebsiteHealthCard,
     addWebsiteIssueCard,
+    addScreenshotGallery,
     addWebsiteContactCard,
     addParagraph,
     addSection,
@@ -575,6 +680,7 @@ function buildConsultantWebsiteAnalysisPdf(
     email?: string | null
   } | null,
   logo?: PdfBrandLogo,
+  screenshots: PdfScreenshot[] = [],
 ) {
   const rec = analysis?.record || analysis || {}
   const scoreInputs = Object.fromEntries(
@@ -634,15 +740,18 @@ function buildConsultantWebsiteAnalysisPdf(
       selectedTitles.add(titleKey)
       return true
     })
-    .slice(0, 20)
+    .slice(0, 4)
+  const visualAudit = rec.analysis_details?.visual_audit
+  const allVisualFindings = Array.isArray(visualAudit?.findings) ? visualAudit.findings : []
+  const hasAnyFindings = topFindings.length > 0 || allVisualFindings.length > 0
   const report = createReport(
     'Website review',
     `Reviewed ${displayDate(rec.analyzed_at)}  |  Arlotech Digital Solutions`,
     'WEBSITE REVIEW',
-    12,
+    4,
     logo,
   )
-  const scoreSummary = topFindings.length === 0
+  const scoreSummary = !hasAnyFindings
     ? score === null
       ? 'No customer issue was confirmed in the available review. We could not calculate a reliable overall score.'
       : 'The available checks did not confirm a customer issue that needs attention.'
@@ -650,12 +759,16 @@ function buildConsultantWebsiteAnalysisPdf(
       ? 'A reliable overall score was not available, so this report focuses on the customer issues supported by the review.'
       : score >= 90
         ? 'Your website has a strong overall starting point. A few focused changes may make the customer experience even smoother.'
-        : score >= 70
-          ? 'Your website has a fair starting point. Addressing the customer frictions below may help it work more smoothly.'
-          : 'This review found areas that may be getting in customers’ way. Addressing the most important ones could make it easier to reach your business.'
-  const experienceSummary = topFindings.length === 0
+        : score >= 80
+          ? 'Your website has a good overall foundation. The focused improvements below may make the experience clearer and easier to use.'
+          : score >= 70
+            ? 'Your website has a reasonable foundation, with a few areas worth improving to make key information easier to use.'
+            : score >= 60
+              ? 'This review found several areas that deserve attention. The priorities below focus on the most useful changes to consider first.'
+              : 'This review found areas that may be getting in customers’ way. Addressing the highest-priority points could make it easier to reach your business.'
+  const experienceSummary = !hasAnyFindings
     ? 'This report is a helpful snapshot of the areas reviewed, not a guarantee of how every visitor experiences the website.'
-    : `The review highlights ${topFindings.length} area${topFindings.length === 1 ? '' : 's'} where visitors may experience friction. Each note explains what a customer may notice and why it matters.`
+    : `The review highlights ${topFindings.length + allVisualFindings.length} area${topFindings.length + allVisualFindings.length === 1 ? '' : 's'} worth reviewing across the available technical and visual checks.`
   const reviewAreaLabels: Record<string, string> = {
     performance: 'how quickly pages load and respond',
     seo: 'how pages may appear in search',
@@ -709,15 +822,18 @@ function buildConsultantWebsiteAnalysisPdf(
   if (coverage && typeof coverage === 'object') {
     report.addSection('Review coverage and limitations')
     const coverageParts = [
-      typeof coverage.completeness_percent === 'number' ? `${coverage.completeness_percent}% coverage` : null,
-      typeof coverage.inspected_viewport_count === 'number' && typeof coverage.requested_viewport_count === 'number'
-        ? `${coverage.inspected_viewport_count}/${coverage.requested_viewport_count} performance test viewports inspected`
-        : null,
       typeof coverage.discovered_page_count === 'number'
         ? `${coverage.discovered_page_count} page${coverage.discovered_page_count === 1 ? '' : 's'} reviewed`
         : null,
+      typeof coverage.inspected_viewport_count === 'number' && typeof coverage.requested_viewport_count === 'number'
+        ? `${coverage.inspected_viewport_count} of ${coverage.requested_viewport_count} performance test viewports inspected`
+        : null,
     ].filter(Boolean)
-    if (coverageParts.length) report.addParagraph(coverageParts.join(' · '), { bold: true, color: NAVY })
+    if (coverageParts.length) report.addParagraph(coverageParts.join(' | '), { bold: true, color: NAVY })
+    report.addParagraph(
+      'This describes the available audit scope; it does not mean every page or interactive feature on the website was reviewed.',
+      { size: 7.5, color: MUTED },
+    )
     if (typeof coverage.saved_screenshot_count === 'number') {
       report.addParagraph(
         `${coverage.saved_screenshot_count} screenshot${coverage.saved_screenshot_count === 1 ? '' : 's'} saved for interface review.`,
@@ -725,7 +841,7 @@ function buildConsultantWebsiteAnalysisPdf(
     }
     if (Array.isArray(coverage.limitations) && coverage.limitations.length) {
       report.addParagraph('Review limitations:', { bold: true, color: NAVY })
-      coverage.limitations.forEach((limitation: unknown) => {
+      coverage.limitations.slice(0, 2).forEach((limitation: unknown) => {
         if (typeof limitation === 'string' && limitation.trim()) {
           report.addParagraph(`- ${auditPdfText(limitation)}`, { size: 8, indent: 4 })
         }
@@ -737,8 +853,8 @@ function buildConsultantWebsiteAnalysisPdf(
     const savedCount = pages.filter((page: Record<string, unknown>) => typeof page.image_path === 'string' && page.image_path).length
     if (savedCount > 0) {
       report.addParagraph(
-        `Screenshots were saved for ${savedCount} of ${pages.length} reviewed page/viewport views. The visual assessment uses static images and cannot verify menus, forms, or other controls work.`,
-        { size: 8 },
+        `${savedCount} of ${pages.length} reviewed page/device views had saved screenshots. Static screenshots do not verify interactive controls.`,
+        { size: 7.5 },
       )
     }
   }
@@ -749,12 +865,11 @@ function buildConsultantWebsiteAnalysisPdf(
     htmlInspection.discovered_same_origin_navigation_count === 0
   ) {
     report.addParagraph(
-      'No links to other pages were found in the initial HTML. Pages added later by JavaScript may not have been included.',
-      { size: 8 },
+      'The initial HTML did not expose links to other pages, so JavaScript-added pages may not be included in this review.',
+      { size: 7.5 },
     )
   }
 
-  const visualAudit = rec.analysis_details?.visual_audit
   report.addSection('User interface design assessment')
   if (visualAudit?.status === 'completed' || visualAudit?.status === 'partial') {
     report.addParagraph(`User interface design score: ${visualAudit.visual_score ?? 'Not available'}/100 (${visualAudit.status} screenshot coverage).`, { bold: true, color: NAVY })
@@ -765,12 +880,7 @@ function buildConsultantWebsiteAnalysisPdf(
     const assessmentAreas: Array<[string, unknown]> = [
       ['Visual hierarchy', assessment.visual_hierarchy],
       ['Typography', assessment.typography],
-      ['Layout consistency', assessment.layout_consistency],
-      ['Color consistency', assessment.color_consistency],
-      ['Desktop presentation', assessment.desktop_presentation],
       ['Mobile presentation', assessment.mobile_presentation],
-      ['Professional appearance', assessment.professional_appearance],
-      ['User experience', assessment.user_experience],
     ]
     assessmentAreas.forEach(([label, value]) => {
       if (typeof value === 'string' && value.trim() && value !== 'Not assessed') {
@@ -779,7 +889,7 @@ function buildConsultantWebsiteAnalysisPdf(
     })
     if (Array.isArray(assessment.most_important_improvements) && assessment.most_important_improvements.length) {
       report.addParagraph('Priority design improvements:', { bold: true, color: NAVY })
-      assessment.most_important_improvements.slice(0, 8).forEach((item: unknown, index: number) => {
+      assessment.most_important_improvements.slice(0, 3).forEach((item: unknown, index: number) => {
         if (typeof item === 'string' && item.trim()) {
           report.addParagraph(`${index + 1}. ${auditPdfText(item)}`, { size: 8, indent: 4 })
         }
@@ -789,20 +899,30 @@ function buildConsultantWebsiteAnalysisPdf(
     if (!visualFindings.length) {
       report.addParagraph('No significant interface issues were identified in the screenshots that were available.', { color: NAVY })
     } else {
-      visualFindings.forEach((finding: Record<string, any>, index: number) => {
-        report.ensureSpace(28)
-        report.addParagraph(`${index + 1}. ${auditPdfText(finding.title) || 'Interface observation'} — ${String(finding.severity || 'informational').toUpperCase()} | ${auditPdfText(finding.device) || 'device not recorded'} | ${auditPdfText(finding.page_label) || 'Page not recorded'}`, { bold: true, color: NAVY })
-        report.addParagraph(`Observation: ${auditPdfText(finding.observation) || 'Not recorded'}`)
-        report.addParagraph(`Screenshot evidence: ${auditPdfText(finding.evidence) || 'Not recorded'}`)
-        report.addParagraph(`Potential visitor impact: ${auditPdfText(finding.user_impact) || 'Not recorded'}`)
-        report.addParagraph(`Recommended improvement: ${auditPdfText(finding.recommendation) || 'Not recorded'}`)
+      visualFindings.slice(0, 3).forEach((finding: Record<string, any>, index: number) => {
+        const location = [
+          auditPdfText(finding.page_label),
+          auditPdfText(finding.device),
+        ].filter(Boolean).join(' | ')
+        report.addWebsiteIssueCard(
+          index + 1,
+          `${auditPdfText(finding.title) || 'Interface observation'}${location ? ` (${location})` : ''}${finding.severity ? ` - ${String(finding.severity).toUpperCase()}` : ''}`,
+          auditPdfText(finding.user_impact, 300) || 'This may affect how easily visitors understand or use this part of the page.',
+          auditPdfText(finding.evidence, 300),
+          auditPdfText(finding.recommendation, 300),
+          'Screenshot evidence',
+        )
       })
+      if (visualFindings.length > 3) {
+        report.addParagraph(`${visualFindings.length - 3} additional lower-priority visual observation(s) are omitted from this concise prospect report.`, { size: 7.5, color: MUTED })
+      }
     }
   } else {
     report.addParagraph(visualAudit?.status === 'failed'
       ? `User interface design assessment could not be completed: ${visualAudit.error || 'No error details were recorded.'}`
       : 'User interface design assessment was not available for this audit. No design score or findings have been inferred.')
   }
+  report.addScreenshotGallery(screenshots)
 
   report.addSection(`What we found (${topFindings.length})`)
   if (topFindings.length === 0) {
@@ -819,46 +939,29 @@ function buildConsultantWebsiteAnalysisPdf(
           : rawEvidence, 500)
         : ''
       const sourceRecommendation = String(finding.finding.recommended_fix || '')
-      const hasKnownRecommendation = /largest-contentful-paint|\blcp\b|total-blocking-time|\btbt\b|cumulative-layout-shift|\bcls\b|render.blocking|unused.javascript|unused.css|server-response-time|document-request-latency|time-to-first-byte|document-title|html-title|meta-description|content-meta|canonical|crawlable|robots\.txt|color-contrast|image-alt|content-alt|font-display|content-h1|\bh1\b|heading/i
+      const hasKnownRecommendation = /largest-contentful-paint|\blcp\b|first-contentful-paint|\bfcp\b|total-blocking-time|\btbt\b|cumulative-layout-shift|\bcls\b|render.blocking|unused.javascript|unused.css|server-response-time|document-request-latency|time-to-first-byte|document-title|html-title|meta-description|content-meta|canonical|crawlable|robots\.txt|color-contrast|image-alt|content-alt|font-display|content-h1|\bh1\b|heading-order|doctype|image-aspect-ratio|(?:^|[-_])list(?:[-_]|$)|list.*(?:element|markup|structure)/i
         .test(`${finding.finding.audit_id || ''} ${finding.finding.id || ''} ${finding.finding.title || ''}`)
       const recommendation = auditPdfText(
         /<[^>]+>/.test(String(finding.finding.title || ''))
-          ? 'Review the structure of the page lists to make sure assistive technology can interpret them correctly.'
-          : sourceRecommendation || (hasKnownRecommendation
+          ? 'Review the affected list structure in the rendered page and use semantic list elements where appropriate.'
+          : hasKnownRecommendation
             ? auditFindingRecommendation(finding.finding)
-            : 'Review this item and its page-specific evidence before deciding whether a change would help visitors.'),
+            : sourceRecommendation || 'Review this item and its page-specific evidence before deciding whether a change would help visitors.',
         500,
       )
-      report.addWebsiteIssueCard(index + 1, finding.title, finding.impact, evidence, recommendation)
+      const priorityLabel = typeof finding.finding.priority === 'string' ? ` - ${finding.finding.priority.toUpperCase()} PRIORITY` : ''
+      report.addWebsiteIssueCard(index + 1, `${finding.title}${priorityLabel}`, finding.impact, evidence, recommendation)
     })
-  }
-  const opportunities: PdfFinding[] = Array.isArray(analysisDetails.optimization_opportunities)
-    ? analysisDetails.optimization_opportunities
-    : []
-  if (opportunities.length) {
-    report.addSection('Possible improvements to review')
-    report.addParagraph(
-      'These are estimated opportunities, not confirmed problems. Review the affected page and resources before deciding whether a change is useful.',
-      { size: 8, color: MUTED },
-    )
-    opportunities.forEach((finding, index) => {
-      report.addParagraph(`${index + 1}. ${auditPdfText(auditFindingTitle(finding))}`, { bold: true, color: NAVY })
-      report.addParagraph(`Why it may matter: ${auditPdfText(auditFindingWhy(finding))}`, { size: 8 })
-      report.addParagraph(`Suggested review: ${auditPdfText(finding.recommended_fix || auditFindingRecommendation(finding))}`, { size: 8 })
-    })
-  }
-  const diagnostics: PdfFinding[] = Array.isArray(analysisDetails.diagnostics)
-    ? analysisDetails.diagnostics
-    : []
-  if (diagnostics.length) {
-    report.addSection('Other checks (not counted as problems)')
-    diagnostics.forEach((finding) => {
+    if (measuredCandidates.length > topFindings.length) {
       report.addParagraph(
-        `${auditPdfText(auditFindingTitle(finding))} — ${auditPdfText(auditFindingWhy(finding))}`,
-        { size: 8 },
+        'Additional lower-priority or overlapping technical observations remain available in the dashboard and are omitted from this concise prospect report.',
+        { size: 7.5, color: MUTED },
       )
-    })
+    }
   }
+  // The prospect report intentionally excludes diagnostic-only and estimated opportunities.
+  // They remain available in the dashboard for a deeper technical review.
+
   const positiveObservations = (Array.isArray(rec.positive_observations) ? rec.positive_observations : [])
     .filter((observation: Record<string, unknown>) =>
       !/^(?:speed index|largest contentful paint|first contentful paint|seo|accessibility|best practices|performance)\s*[—-]\s*good\b/i.test(
@@ -867,7 +970,7 @@ function buildConsultantWebsiteAnalysisPdf(
     )
   if (positiveObservations.length) {
     report.addSection('What is working well')
-    positiveObservations.forEach((observation: Record<string, unknown>) => {
+    positiveObservations.slice(0, 2).forEach((observation: Record<string, unknown>) => {
       const title = typeof observation.title === 'string' ? observation.title : ''
       const evidence = typeof observation.evidence === 'string' ? observation.evidence : ''
       const line = [title, evidence].filter(Boolean).join(' — ')
@@ -892,7 +995,7 @@ function buildConsultantWebsiteAnalysisPdf(
     'Website: arlotech.com.ng',
   ])
   const visualObservationCount = Array.isArray(visualAudit?.findings)
-    ? visualAudit.findings.length
+    ? Math.min(visualAudit.findings.length, 3)
     : 0
   const shortSummary = topFindings.length || visualObservationCount
     ? `In brief, this review recorded ${topFindings.length} evidence-backed website finding${topFindings.length === 1 ? '' : 's'} and ${visualObservationCount} interface design observation${visualObservationCount === 1 ? '' : 's'}.`
@@ -907,8 +1010,11 @@ function buildConsultantWebsiteAnalysisPdf(
 }
 
 export async function exportWebsiteAnalysisPdf(analysis: Record<string, any>) {
-  const logo = await loadPdfBrandLogo()
-  const { report, filename } = buildConsultantWebsiteAnalysisPdf(analysis, null, logo)
+  const [logo, screenshots] = await Promise.all([
+    loadPdfBrandLogo(),
+    loadAuditScreenshots(analysis),
+  ])
+  const { report, filename } = buildConsultantWebsiteAnalysisPdf(analysis, null, logo, screenshots)
   report.finish(filename)
 }
 
@@ -921,6 +1027,9 @@ export async function createWebsiteAnalysisPdfBase64(
     email?: string | null
   } | null,
 ) {
-  const logo = await loadPdfBrandLogo()
-  return buildConsultantWebsiteAnalysisPdf(analysis, preparedFor, logo).report.toBase64()
+  const [logo, screenshots] = await Promise.all([
+    loadPdfBrandLogo(),
+    loadAuditScreenshots(analysis),
+  ])
+  return buildConsultantWebsiteAnalysisPdf(analysis, preparedFor, logo, screenshots).report.toBase64()
 }

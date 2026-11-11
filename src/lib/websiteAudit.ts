@@ -76,6 +76,11 @@ const LIGHTHOUSE_METRIC_THRESHOLDS: Record<string, {
     goodMaximumMs: 200,
     poorMinimumMs: 600,
   },
+  'first-contentful-paint': {
+    title: 'First Contentful Paint',
+    goodMaximumMs: 1800,
+    poorMinimumMs: 3000,
+  },
 }
 
 export interface PageInspectionResult {
@@ -115,6 +120,7 @@ function metricKey(identifier: string) {
   if (/largest-contentful-paint|\blcp\b/.test(normalized)) return 'largest-contentful-paint'
   if (/speed-index|\bspeed index\b/.test(normalized)) return 'speed-index'
   if (/total-blocking-time|\btbt\b/.test(normalized)) return 'total-blocking-time'
+  if (/first-contentful-paint|\bfcp\b/.test(normalized)) return 'first-contentful-paint'
   return null
 }
 

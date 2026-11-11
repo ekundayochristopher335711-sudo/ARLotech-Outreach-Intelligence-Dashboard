@@ -199,6 +199,17 @@ describe('Lighthouse evidence and score handling', () => {
     })
   })
 
+  it('recognizes a healthy First Contentful Paint measurement instead of presenting it as a problem', () => {
+    expect(assessLighthouseMetric('first-contentful-paint', { displayValue: '1.2 s' })).toMatchObject({
+      valueMs: 1200,
+      rating: 'Good',
+    })
+    expect(assessLighthouseMetric('first-contentful-paint', { displayValue: '2.4 s' })).toMatchObject({
+      valueMs: 2400,
+      rating: 'Needs Improvement',
+    })
+  })
+
   it('does not treat non-scoring insights or null scores as failed issues', () => {
     const findings = classifyLighthouseAudits(pagespeedFixture())
     expect(findings.map(({ audit_id, classification }) => [audit_id, classification])).toEqual([

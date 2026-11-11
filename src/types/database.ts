@@ -1,4 +1,4 @@
-﻿export type Json =
+export type Json =
   | string
   | number
   | boolean
@@ -562,6 +562,65 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "prospect_notes_prospect_id_fkey"
+            columns: ["prospect_id"]
+            isOneToOne: false
+            referencedRelation: "prospects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      prospect_proposals: {
+        Row: {
+          amount: number | null
+          created_at: string
+          currency: string
+          document_url: string | null
+          follow_up_at: string | null
+          id: string
+          notes: string | null
+          prospect_id: string
+          scope_summary: string | null
+          sent_at: string | null
+          status: string
+          title: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          amount?: number | null
+          created_at?: string
+          currency?: string
+          document_url?: string | null
+          follow_up_at?: string | null
+          id?: string
+          notes?: string | null
+          prospect_id: string
+          scope_summary?: string | null
+          sent_at?: string | null
+          status?: string
+          title: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          amount?: number | null
+          created_at?: string
+          currency?: string
+          document_url?: string | null
+          follow_up_at?: string | null
+          id?: string
+          notes?: string | null
+          prospect_id?: string
+          scope_summary?: string | null
+          sent_at?: string | null
+          status?: string
+          title?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "prospect_proposals_prospect_id_fkey"
             columns: ["prospect_id"]
             isOneToOne: false
             referencedRelation: "prospects"

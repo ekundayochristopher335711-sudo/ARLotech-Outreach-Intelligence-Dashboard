@@ -287,7 +287,7 @@ export function EmailDraftsPage() {
   const [generatorProspectId, setGeneratorProspectId] = useState(() => searchParams.get('prospectId') || '')
   const [generatorStrategy, setGeneratorStrategy] = useState<OutreachStrategy>('general_review')
   const [generatorTone, setGeneratorTone] = useState<OutreachTone>('professional')
-  const [generatorLength, setGeneratorLength] = useState<OutreachLength>('standard')
+  const [generatorLength, setGeneratorLength] = useState<OutreachLength>('short')
   const [senderContext, setSenderContext] = useState('')
   const [followUpStage, setFollowUpStage] = useState<FollowUpStage>('none')
   const [followUpMessageId, setFollowUpMessageId] = useState('')

@@ -344,7 +344,8 @@ describe('website audit PDF', () => {
       }],
     }))
 
-    expect(report).toContain('Some visitors may find this page difficult to use')
+    expect(report).toContain('Some page list markup may need review')
+    expect(report).toContain('People using assistive technology may receive less useful structure')
     expect(report).not.toMatch(/<li>|<script>|<template>|screen readers|dequeuniversity|axe\/4\.14|invalid markup/i)
   })
 
@@ -531,6 +532,77 @@ describe('website audit PDF', () => {
     expect(report).toContain('info@arlotech.com.ng')
     expect(report).not.toContain('+2348166419332')
     expect(pages).toHaveLength(1)
+  })
+
+
+  it('keeps prospect reports concise and clarifies that coverage is limited to the inspected scope', async () => {
+    const auditIds = [
+      'largest-contentful-paint',
+      'total-blocking-time',
+      'cumulative-layout-shift',
+      'render-blocking-resources',
+      'unused-javascript',
+      'unused-css-rules',
+      'server-response-time',
+      'meta-description',
+      'image-alt',
+    ]
+    const findings = auditIds.map((auditId, index) => ({
+      id: `ps-${auditId}`,
+      source: 'lighthouse',
+      title: auditId,
+      audit_id: auditId,
+      category: 'performance',
+      lighthouse_score_pct: 40,
+      priority: index < 3 ? 'high' : 'low',
+      evidence: `Evidence for issue ${index + 1}.`,
+      recommended_fix: `Review issue ${index + 1}.`,
+    }))
+    const visualFindings = Array.from({ length: 5 }, (_, index) => ({
+      title: `Visual observation ${index + 1}`,
+      severity: 'medium',
+      device: 'mobile',
+      page_label: 'Homepage',
+      observation: `Visible observation ${index + 1}.`,
+      evidence: `Screenshot evidence ${index + 1}.`,
+      user_impact: `Possible impact ${index + 1}.`,
+      recommendation: `Suggested improvement ${index + 1}.`,
+    }))
+    const base64 = await createWebsiteAnalysisPdfBase64({
+      id: 'audit-concise',
+      website_url: 'https://example.com',
+      findings,
+      analysis_details: {
+        audit_completeness: {
+          completeness_percent: 100,
+          discovered_page_count: 1,
+          inspected_viewport_count: 1,
+          requested_viewport_count: 1,
+          limitations: ['Only the homepage was discovered.', 'Interactive controls were not tested.', 'Additional pages may exist.'],
+        },
+        visual_audit: {
+          status: 'completed',
+          visual_score: 65,
+          assessment: { summary: 'Several visible areas could be easier to scan.' },
+          findings: visualFindings,
+        },
+        diagnostics: [{ title: 'Diagnostic-only check', evidence: 'Not a confirmed problem.' }],
+        optimization_opportunities: [{ title: 'Estimated unused code', evidence: 'Estimated opportunity only.' }],
+      },
+    })
+    const report = pdfText(base64)
+    const pages = pdfPages(base64)
+
+    expect(pages.length).toBeLessThanOrEqual(4)
+    expect(report).toContain('WHAT WE FOUND (4)')
+    expect(report).toContain('Visual observation 1')
+    expect(report).toContain('Visual observation 3')
+    expect(report).not.toContain('Visual observation 4')
+    expect(report).not.toContain('Diagnostic-only check')
+    expect(report).not.toContain('Estimated unused code')
+    expect(report).not.toContain('100% coverage')
+    expect(report).toContain('This describes the available audit scope')
+    expect(report).toContain('2 additional lower-priority visual observation(s) are omitted')
   })
 
 })

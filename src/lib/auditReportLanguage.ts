@@ -13,6 +13,26 @@ interface AuditFindingInput {
 }
 
 const findingCopy: Array<[RegExp, AuditFindingCopy]> = [
+  [/image-aspect-ratio/i, {
+    title: 'Some images may not keep their intended proportions',
+    whyItMatters: 'The displayed dimensions may stretch or compress an image. This is a presentation issue and does not show that the image loads slowly.',
+    recommendation: 'We recommend reviewing the displayed width, height, and styling so each image keeps its intended aspect ratio.',
+  }],
+  [/heading-order/i, {
+    title: 'Some heading levels may be out of sequence',
+    whyItMatters: 'Heading levels help organize page content and support people who navigate by headings. A skipped level does not by itself mean the business message is unclear.',
+    recommendation: 'We recommend reviewing the heading hierarchy in context and arranging levels logically without changing the visual design unnecessarily.',
+  }],
+  [/doctype/i, {
+    title: 'The page may be using a browser compatibility mode',
+    whyItMatters: 'A missing or outdated document type can cause browsers to use legacy rendering rules. This check alone does not prove that a visible layout problem exists.',
+    recommendation: 'We recommend checking the rendered page and using the standard HTML5 doctype where appropriate.',
+  }],
+  [/(?:^|[-_])list(?:[-_]|$)|(?:^|\s)list(?:$|\s)|list.*(?:element|markup|structure)/i, {
+    title: 'Some page list markup may need review',
+    whyItMatters: 'Correct list structure helps browsers and assistive technologies interpret grouped information. The source check does not establish that every visitor is affected.',
+    recommendation: 'We recommend checking the affected list in the rendered page and using list elements only for content that is genuinely a list.',
+  }],
   [/largest-contentful-paint|largest contentful paint|\blcp\b/i, {
     title: 'Main content loading time (Largest Contentful Paint, LCP)',
     whyItMatters: 'LCP measures how long the main content takes to appear. A longer time may make visitors wait before they can use the page.',
@@ -111,6 +131,9 @@ export function auditFindingTitle(finding: AuditFindingInput) {
 
 export function auditFindingEmailTopic(finding: AuditFindingInput) {
   const searchText = `${finding.audit_id || ''} ${finding.id || ''} ${finding.title || ''}`
+  if (/image-aspect-ratio/i.test(searchText)) return 'natural-looking images'
+  if (/heading-order/i.test(searchText)) return 'clearer page structure'
+  if (/doctype/i.test(searchText)) return 'consistent browser display'
   if (/largest-contentful-paint|\blcp\b|unused-javascript|render.blocking|server-response-time|document-request-latency/i.test(searchText)) {
     return 'faster page loading'
   }
@@ -129,6 +152,10 @@ export function auditFindingEmailTopic(finding: AuditFindingInput) {
 
 export function auditFindingBusinessTitle(finding: AuditFindingInput) {
   const searchText = `${finding.audit_id || ''} ${finding.id || ''} ${finding.title || ''}`
+  if (/image-aspect-ratio/i.test(searchText)) return 'Some images may not keep their intended proportions'
+  if (/heading-order/i.test(searchText)) return 'Some heading levels may be out of sequence'
+  if (/doctype/i.test(searchText)) return 'The page may be using a browser compatibility mode'
+  if (/(?:^|[-_])list(?:[-_]|$)|(?:^|\s)list(?:$|\s)|list.*(?:element|markup|structure)/i.test(searchText)) return 'Some page list markup may need review'
   if (/largest-contentful-paint|\blcp\b/i.test(searchText)) return 'The main page content takes too long to appear'
   if (/total-blocking-time|\btbt\b|forced-reflow/i.test(searchText)) return 'The page may take too long to respond'
   if (/cumulative-layout-shift|\bcls\b/i.test(searchText)) return 'Page content may move while it loads'
@@ -152,6 +179,18 @@ export function auditFindingBusinessTitle(finding: AuditFindingInput) {
 
 export function auditFindingBusinessImpact(finding: AuditFindingInput) {
   const searchText = `${finding.audit_id || ''} ${finding.id || ''} ${finding.title || ''}`
+  if (/image-aspect-ratio/i.test(searchText)) {
+    return 'An image that looks stretched or compressed can make product, service, or portfolio visuals harder to assess. The check does not indicate a loading delay.'
+  }
+  if (/heading-order/i.test(searchText)) {
+    return 'Visitors who use page headings to scan or navigate content may find the structure less predictable. This does not prove that the page message itself is unclear.'
+  }
+  if (/doctype/i.test(searchText)) {
+    return 'Legacy browser rendering rules can sometimes affect how page elements appear. A visual issue should be confirmed in the rendered page before changes are made.'
+  }
+  if (/(?:^|[-_])list(?:[-_]|$)|(?:^|\s)list(?:$|\s)|list.*(?:element|markup|structure)/i.test(searchText)) {
+    return 'People using assistive technology may receive less useful structure when a list is marked up incorrectly. The affected content should be checked in context.'
+  }
   if (/largest-contentful-paint|\blcp\b/i.test(searchText)) {
     return 'A longer wait can frustrate potential customers looking for help before they see what you offer. If the main information takes too long to appear, they may return to search results and contact a business that responds sooner.'
   }

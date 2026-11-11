@@ -9,6 +9,13 @@ import { type DashboardMetrics } from '@/types'
 import { toast } from 'sonner'
 import { exportDashboardPdf } from '@/lib/exportPdf'
 
+type DashboardAuditRow = {
+  id: string
+  overall_score: number | null
+  analyzed_at: string | null
+  analysis_status: string
+}
+
 export function DashboardPage() {
   const navigate = useNavigate()
   const blacksite = (() => {
@@ -84,6 +91,25 @@ export function DashboardPage() {
         .limit(5)
       if (error) throw error
       return data
+    },
+  })
+
+  const { data: auditSnapshot, isLoading: auditsLoading } = useQuery({
+    queryKey: ['/dashboard/audit-snapshot'],
+    queryFn: async () => {
+      const userId = await getCurrentUserId()
+      const { data, count, error } = await supabase
+        .from('website_analyses')
+        .select('id, overall_score, analyzed_at, analysis_status', { count: 'exact' })
+        .eq('user_id', userId)
+        .eq('analysis_status', 'completed')
+        .order('analyzed_at', { ascending: false, nullsFirst: false })
+        .limit(100)
+      if (error) throw error
+      const auditRows = (data || []) as DashboardAuditRow[]
+      const scored = auditRows.filter((item) => typeof item.overall_score === 'number')
+      const average = scored.length ? scored.reduce((sum, item) => sum + Number(item.overall_score), 0) / scored.length : null
+      return { total: count || 0, average, latest: auditRows[0]?.analyzed_at ?? null }
     },
   })
 
@@ -275,6 +301,22 @@ export function DashboardPage() {
         </div>
         <div className="mt-4 grid grid-cols-2 gap-3 border-t border-amber-100 pt-4 sm:grid-cols-4">
           {[['Interested', metrics?.interested_prospects ?? 0], ['Meetings booked', metrics?.meetings_booked ?? 0], ['Customers won', metrics?.clients_won ?? 0], ['Reply rate', `${(metrics?.emails_sent ?? 0) > 0 ? Math.round(((metrics?.replies_received ?? 0) / (metrics?.emails_sent ?? 1)) * 100) : 0}%`]].map(([label, value]) => <div key={label}><p className="text-2xl font-bold text-slate-900">{value}</p><p className="text-xs text-slate-500">{label}</p></div>)}
+        </div>
+      </Card>
+
+      <Card className="overflow-hidden border-slate-200">
+        <div className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-arlotech">Website intelligence</p>
+            <h2 className="mt-1 text-lg font-semibold text-slate-900">Audit performance overview</h2>
+            <p className="mt-1 text-sm text-slate-500">Completed website reviews saved to your workspace.</p>
+          </div>
+          <button type="button" onClick={() => navigate('/website-intelligence')} className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">Open website analysis</button>
+        </div>
+        <div className="grid grid-cols-1 gap-3 border-t border-slate-100 bg-slate-50/70 p-4 sm:grid-cols-3">
+          <div className="rounded-lg bg-white p-3"><p className="text-2xl font-bold text-slate-900">{auditsLoading ? '—' : (auditSnapshot?.total ?? 0).toLocaleString()}</p><p className="text-xs text-slate-500">Completed audits</p></div>
+          <div className="rounded-lg bg-white p-3"><p className="text-2xl font-bold text-slate-900">{auditsLoading ? '—' : auditSnapshot?.average === null || auditSnapshot?.average === undefined ? '—' : `${auditSnapshot.average.toFixed(1)}/100`}</p><p className="text-xs text-slate-500">Average score · scored records among latest 100 completed audits</p></div>
+          <div className="rounded-lg bg-white p-3"><p className="text-sm font-semibold text-slate-900">{auditsLoading ? 'Loading…' : auditSnapshot?.latest ? new Date(auditSnapshot.latest).toLocaleDateString() : 'No audits yet'}</p><p className="text-xs text-slate-500">Most recent completed audit</p></div>
         </div>
       </Card>
 

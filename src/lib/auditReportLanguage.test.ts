@@ -50,4 +50,18 @@ describe('client-friendly audit language', () => {
       'We found an issue. Make website images load faster and remove unnecessary website code that may slow down loading to make it easier for search engines to explore your website.',
     )
   })
+
+  it('keeps technical explanations aligned with the actual Lighthouse check', () => {
+    expect(auditFindingBusinessTitle({ audit_id: 'image-aspect-ratio', title: 'Image elements have explicit width and height' }))
+      .toBe('Some images may not keep their intended proportions')
+    expect(auditFindingBusinessImpact({ audit_id: 'image-aspect-ratio' }))
+      .toContain('does not indicate a loading delay')
+    expect(auditFindingBusinessTitle({ audit_id: 'heading-order', title: 'Heading elements are not in a sequentially-descending order' }))
+      .toBe('Some heading levels may be out of sequence')
+    expect(auditFindingBusinessTitle({ audit_id: 'doctype', title: 'Page has the HTML doctype' }))
+      .toBe('The page may be using a browser compatibility mode')
+    expect(auditFindingTitle({ audit_id: 'list', title: 'Lists do not contain only list item elements' }))
+      .toBe('Some page list markup may need review')
+  })
+
 })

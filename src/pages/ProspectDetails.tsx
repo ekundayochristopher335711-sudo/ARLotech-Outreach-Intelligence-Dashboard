@@ -9,6 +9,7 @@ import { toast } from 'sonner'
 import { type Prospect, type WebsiteAnalysis } from '@/types'
 import { analyzeWebsite } from '@/lib/websiteAnalysis'
 import { ensureWebsiteProspect } from '@/lib/websiteProspects'
+import { ProspectRelationshipWorkspace } from '@/components/prospects/ProspectRelationshipWorkspace'
 import { format } from 'date-fns'
 import {
   Users,
@@ -22,6 +23,11 @@ import {
   ArrowLeft,
   RotateCw,
   Loader2,
+  Clock3,
+  TrendingUp,
+  TrendingDown,
+  Minus,
+  MessageSquare,
 } from 'lucide-react'
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -36,6 +42,31 @@ function asRecordArray(value: unknown): Record<string, unknown>[] {
 
 function asString(value: unknown): string | null {
   return typeof value === 'string' && value.trim() ? value : null
+}
+
+type EngagementEvent = {
+  id: string
+  kind: 'activity' | 'email'
+  title: string
+  detail: string
+  at: string
+}
+
+type ActivityLogRow = {
+  id: string
+  event_type: string
+  description: string
+  created_at: string | null
+}
+
+type EmailMessageRow = {
+  id: string
+  direction: string
+  subject: string | null
+  status: string
+  sent_at: string | null
+  received_at: string | null
+  created_at: string | null
 }
 
 export function ProspectDetails() {
@@ -106,6 +137,49 @@ export function ProspectDetails() {
     },
     enabled: !!id,
   })
+
+  const engagementQuery = useQuery<EngagementEvent[]>({
+    queryKey: ['/prospect', id, 'engagement-timeline'],
+    queryFn: async () => {
+      const userId = await getCurrentUserId()
+      const [activityResult, messageResult] = await Promise.all([
+        supabase.from('activity_logs').select('id, event_type, description, created_at').eq('user_id', userId).eq('prospect_id', id).order('created_at', { ascending: false }).limit(40),
+        supabase.from('email_messages').select('id, direction, subject, status, sent_at, received_at, created_at').eq('user_id', userId).eq('prospect_id', id).order('created_at', { ascending: false }).limit(40),
+      ])
+      if (activityResult.error) throw activityResult.error
+      if (messageResult.error) throw messageResult.error
+      const activityRows = (activityResult.data || []) as ActivityLogRow[]
+      const messageRows = (messageResult.data || []) as EmailMessageRow[]
+      const activityEvents = activityRows.flatMap((event): EngagementEvent[] => {
+        if (!event.created_at) return []
+        return [{
+        id: `activity-${event.id}`,
+        kind: 'activity' as const,
+        title: event.description,
+        detail: event.event_type.replace(/[_-]/g, ' '),
+        at: event.created_at,
+        }]
+      })
+      const emailEvents = messageRows.flatMap((message): EngagementEvent[] => {
+        const at = message.direction === 'inbound'
+          ? message.received_at || message.created_at
+          : message.sent_at || message.created_at
+        if (!at) return []
+        return [{
+          id: `email-${message.id}`,
+          kind: 'email',
+          title: message.direction === 'inbound' ? `Reply received: ${message.subject || 'No subject'}` : `Email ${message.status}: ${message.subject || 'No subject'}`,
+          detail: message.direction === 'inbound' ? 'Inbound message' : 'Outbound message',
+          at,
+        }]
+      })
+      return [...activityEvents, ...emailEvents].sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime()).slice(0, 50)
+    },
+    enabled: Boolean(id),
+  })
+  const engagementEvents: EngagementEvent[] = engagementQuery.data ?? []
+  const engagementLoading = engagementQuery.isLoading
+  const engagementError = engagementQuery.error
 
   const deleteMutation = useMutation({
     mutationFn: async () => {
@@ -354,11 +428,36 @@ export function ProspectDetails() {
         </Card>
       </div>
 
+      <ProspectRelationshipWorkspace prospect={prospect} />
+
       <section aria-labelledby="prospect-website-analyses-heading" className="space-y-3">
         <div>
           <h2 id="prospect-website-analyses-heading" className="text-lg font-semibold text-slate-800">Website analysis history</h2>
-          <p className="mt-1 text-sm text-slate-500">All saved website reviews linked to this prospect.</p>
+          <p className="mt-1 text-sm text-slate-500">All saved website reviews linked to this prospect, with score movement between completed audits.</p>
         </div>
+        {(() => {
+          const scored = (websiteAnalyses as WebsiteAnalysis[]).filter((item: WebsiteAnalysis) =>
+            item.analysis_status === 'completed' && typeof item.overall_score === 'number',
+          )
+          const latest = scored[0]
+          const previous = scored[1]
+          if (!latest) return null
+          const delta = previous ? Number(latest.overall_score) - Number(previous.overall_score) : null
+          const DeltaIcon = delta === null ? Minus : delta > 0 ? TrendingUp : delta < 0 ? TrendingDown : Minus
+          return (
+            <Card className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Latest website health score</p>
+                <div className="mt-1 flex items-baseline gap-2"><span className="text-3xl font-bold text-slate-900">{latest.overall_score}/100</span><span className="text-xs text-slate-500">{latest.analyzed_at ? format(new Date(latest.analyzed_at), 'MMM d, yyyy') : 'Date unavailable'}</span></div>
+              </div>
+              <div className="rounded-lg bg-slate-50 px-4 py-3">
+                <p className="text-xs text-slate-500">Change from previous completed audit</p>
+                <p className={`mt-1 flex items-center gap-1.5 text-lg font-semibold ${delta === null ? 'text-slate-600' : delta > 0 ? 'text-emerald-700' : delta < 0 ? 'text-rose-700' : 'text-slate-700'}`}><DeltaIcon className="h-5 w-5" />{delta === null ? 'No comparison yet' : `${delta > 0 ? '+' : ''}${delta.toFixed(1)} points`}</p>
+                {previous && <p className="text-xs text-slate-500">Previous: {previous.overall_score}/100 · {previous.analyzed_at ? format(new Date(previous.analyzed_at), 'MMM d, yyyy') : 'date unavailable'}</p>}
+              </div>
+            </Card>
+          )
+        })()}
         {analysesError && (
           <p role="alert" className="text-sm text-red-600">
             Could not load website analyses: {analysesError instanceof Error ? analysesError.message : 'Unknown error'}
@@ -402,12 +501,12 @@ export function ProspectDetails() {
                 <div className="mt-4 space-y-4 border-t border-slate-100 pt-4">
                   {analysis.error_message && <p className="text-sm text-red-600">{analysis.error_message}</p>}
                   {categoryScores && (
-                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                      {(['performance', 'seo', 'accessibility', 'best-practices'] as const).map((category) => (
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+                      {(['visual', 'performance', 'seo', 'accessibility', 'best-practices'] as const).map((category) => (
                         <div key={category} className="rounded-lg border border-slate-200 p-3">
                           <p className="text-xs capitalize text-slate-500">{category.replace('-', ' ')}</p>
                           <p className="mt-1 font-semibold text-slate-800">
-                            {String(categoryScores[category] ?? 'Unavailable')}
+                            {String(categoryScores[category === 'visual' ? 'visual_design' : category] ?? 'Unavailable')}
                           </p>
                         </div>
                       ))}
@@ -457,6 +556,21 @@ export function ProspectDetails() {
             )
           })
         )}
+      </section>
+
+      <section aria-labelledby="prospect-engagement-heading" className="space-y-3">
+        <div><h2 id="prospect-engagement-heading" className="text-lg font-semibold text-slate-800">Engagement timeline</h2><p className="mt-1 text-sm text-slate-500">A combined view of recorded outreach messages and prospect activity.</p></div>
+        {engagementError && <p role="alert" className="text-sm text-red-600">Could not load engagement history: {engagementError.message}</p>}
+        <Card className="p-4">
+          {engagementLoading ? <div className="h-20 animate-pulse rounded bg-slate-100" /> : engagementEvents.length === 0 ? <p className="text-sm text-slate-500">No recorded engagement yet. Activity will appear here as outreach and prospect events are logged.</p> : (
+            <ol className="space-y-4">
+              {engagementEvents.map((event) => <li key={event.id} className="flex gap-3">
+                <span className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${event.kind === 'email' ? 'bg-blue-50 text-blue-700' : 'bg-slate-100 text-slate-600'}`}>{event.kind === 'email' ? <MessageSquare className="h-4 w-4" /> : <Clock3 className="h-4 w-4" />}</span>
+                <div className="min-w-0 flex-1"><p className="break-words text-sm font-medium text-slate-800">{event.title}</p><p className="mt-0.5 text-xs capitalize text-slate-500">{event.detail} · {format(new Date(event.at), 'MMM d, yyyy · h:mm a')}</p></div>
+              </li>)}
+            </ol>
+          )}
+        </Card>
       </section>
 
       <Card className="p-4">
