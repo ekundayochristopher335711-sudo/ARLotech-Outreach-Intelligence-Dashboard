@@ -1,13 +1,32 @@
 const internalReferencePattern = /\b(?:visual|finding|opportunity|strength|context-page)(?:[-\s:]?\d+)\b/i;
 const firstPersonSingularPattern = /\b(?:i|me|my|mine|myself)\b/i;
 const requiredFeedbackQuestion = "Could you share what you would like your website to help visitors do?";
+const requiredServiceSentence =
+  "We design and improve websites so businesses can present their services clearly and make it easier for visitors to find information or get in touch.";
+const requiredAttachmentSentence = "We’ve attached the website review PDF for your reference.";
 
-export function normalizeGeneratedFeedbackQuestion(body: string): string {
-  const sentences = body.match(/[^.!?]+(?:[.!?]+|$)/g) ?? [body];
+export function normalizeGenericEmailContent(body: string, includeReport: boolean): string {
+  const signatureStart = body.search(/\n\n(?:kind regards|best regards|regards|sincerely|thanks),?\s*\n/i);
+  const content = signatureStart < 0 ? body : body.slice(0, signatureStart);
+  const signature = signatureStart < 0 ? "" : body.slice(signatureStart);
+  const sentences = content.match(/[^.!?]+(?:[.!?]+|$)/g) ?? [content];
   const statements = sentences
     .map((sentence) => sentence.trim())
-    .filter((sentence) => sentence && !sentence.includes("?"));
-  return [...statements, requiredFeedbackQuestion].join(" ");
+    .filter((sentence) =>
+      sentence &&
+      !sentence.includes("?") &&
+      (includeReport || !/\b(?:attached|attachment|attaching|attach|pdf|report)\b/i.test(sentence))
+    );
+  const statementText = statements.join(" ");
+  const describesService =
+    /\bwe\b.{0,160}\b(?:design|build|develop|improve)\b.{0,100}\bwebsites?\b/i.test(statementText) ||
+    /\b(?:design|build|develop|improve)\b.{0,100}\bwebsites?\b.{0,100}\b(?:we|our)\b/i.test(statementText);
+  const hasBenefit = /\b(?:clear(?:ly|er)?|professional(?:ly)?|easier|easy|visitors|get in touch)\b/i.test(statementText);
+  const hasAttachedReport = /(?:attached pdf|pdf.{0,30}attached|we[’']ve attached|we have attached|please see the attached)/i.test(statementText);
+  const requiredStatements = [...statements];
+  if (!describesService || !hasBenefit) requiredStatements.push(requiredServiceSentence);
+  if (includeReport && !hasAttachedReport) requiredStatements.push(requiredAttachmentSentence);
+  return `${[...requiredStatements, requiredFeedbackQuestion].join(" ")}${signature}`;
 }
 
 export function getGenericCopyViolation(copy: string): "internal_reference" | "first_person_singular" | null {

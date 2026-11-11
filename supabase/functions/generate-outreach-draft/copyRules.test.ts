@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   getGenericCopyViolation,
   getGenericEmailContentViolations,
-  normalizeGeneratedFeedbackQuestion,
+  normalizeGenericEmailContent,
 } from "./copyRules.ts";
 
 describe("generic email copy rules", () => {
@@ -44,14 +44,37 @@ describe("generic email copy rules", () => {
     expect(getGenericCopyViolation(body)).toBeNull();
   });
 
-  it("normalizes generated copy to one standard feedback question", () => {
-    const body = normalizeGeneratedFeedbackQuestion(
-      "Hello. Would you like us to help? We design and improve websites for clearer information. What would you like your website to do?",
+  it("normalizes generated copy to required service content and one feedback question", () => {
+    const body = normalizeGenericEmailContent(
+      "Hello. Would you like us to help? What would you like your website to do?",
+      false,
     );
 
     expect(body).toBe(
-      "Hello. We design and improve websites for clearer information. Could you share what you would like your website to help visitors do?",
+      "Hello. We design and improve websites so businesses can present their services clearly and make it easier for visitors to find information or get in touch. Could you share what you would like your website to help visitors do?",
     );
+    expect((body.match(/\?/g) ?? []).length).toBe(1);
+    expect(getGenericEmailContentViolations(body)).toEqual([]);
+  });
+
+  it("adds a missing report statement and preserves the sender signature", () => {
+    const body = normalizeGenericEmailContent(
+      "Hello. We design and improve websites. Could you share your website goals?\n\nKind regards,\nArlotech",
+      true,
+    );
+
+    expect(body).toContain("We’ve attached the website review PDF for your reference.");
+    expect(body.endsWith("\n\nKind regards,\nArlotech")).toBe(true);
+    expect(getGenericEmailContentViolations(body, true)).toEqual([]);
+  });
+
+  it("removes attachment claims when no report will be sent", () => {
+    const body = normalizeGenericEmailContent(
+      "Hello. We design and improve websites for clearer information. The website review PDF is attached. Could you share your website goals?",
+      false,
+    );
+
+    expect(body).not.toMatch(/attached|website review PDF/i);
     expect((body.match(/\?/g) ?? []).length).toBe(1);
   });
 });
