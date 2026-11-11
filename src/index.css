@@ -554,3 +554,241 @@ html {
 .app-shell.theme-blacksite .app-main label,
 .app-shell.theme-blacksite .app-main button{min-width:0;max-width:100%;overflow-wrap:anywhere;line-height:1.45}
 .app-shell.theme-blacksite .app-main button{white-space:normal}
+
+/* ARLOTECH UI refresh — presentation-only layer; existing page logic is unchanged. */
+.app-shell.theme-standard {
+  --app-bg: #f5f7fb;
+  --app-panel: #ffffff;
+  --app-panel-2: #f8fafc;
+  --app-border: #e7ebf1;
+  --app-text: #172033;
+  --app-muted: #778196;
+  --app-accent: #087e8b;
+  --app-accent-soft: #e8f5f5;
+  --app-shadow: 0 8px 28px rgba(22, 34, 54, .045);
+}
+.app-shell.theme-standard .app-sidebar { width: 258px; box-shadow: 8px 0 30px rgba(20,35,55,.025); }
+.app-shell.theme-standard .sidebar-brand-row { height: 76px; padding-inline: 22px; }
+.app-shell.theme-standard .sidebar-brand-image { max-width: 35px; max-height: 35px; object-fit: contain; }
+.app-shell.theme-standard .sidebar-section-label { padding: 23px 24px 9px; font-size: 9px; letter-spacing: .14em; }
+.app-shell.theme-standard .sidebar-nav { padding: 8px 13px 16px; }
+.app-shell.theme-standard .sidebar-nav a { min-height: 43px; padding: 11px 13px !important; border-radius: 10px !important; font-size: 12.5px !important; font-weight: 600; }
+.app-shell.theme-standard .sidebar-nav a[aria-current="page"] { box-shadow: 0 5px 12px rgba(8,126,139,.17); }
+.app-shell.theme-standard .sidebar-footer { padding: 16px 17px 19px; }
+.app-shell.theme-standard .app-topbar { height: 68px !important; padding-inline: 30px; border-bottom: 1px solid var(--app-border); }
+.app-shell.theme-standard .app-topbar .topbar-logo-image { max-height: 29px; max-width: 140px; object-fit: contain; }
+.app-shell.theme-standard .topbar-system-status { font-size: 9px; letter-spacing: .09em; }
+.app-shell.theme-standard .app-main { width: 100%; max-width: 1640px; margin-inline: auto; padding: 34px clamp(20px, 3vw, 46px) 52px !important; }
+.app-shell.theme-standard .app-main h1 { font-size: clamp(25px, 2.3vw, 32px); line-height: 1.2; font-weight: 750; letter-spacing: -.045em; color: #172033 !important; }
+.app-shell.theme-standard .app-main h2 { font-size: 19px; line-height: 1.35; font-weight: 700; letter-spacing: -.03em; }
+.app-shell.theme-standard .app-main h3 { font-size: 14px; font-weight: 700; letter-spacing: -.015em; }
+.app-shell.theme-standard .app-main p { line-height: 1.6; }
+.app-shell.theme-standard .app-main .rounded-xl.border,
+.app-shell.theme-standard .app-main .rounded-xl.border-slate-200,
+.app-shell.theme-standard .app-main .rounded-lg.border { border-radius: 15px; box-shadow: 0 5px 20px rgba(20,35,55,.035); }
+.app-shell.theme-standard .app-main .rounded-xl.border:hover,
+.app-shell.theme-standard .app-main .rounded-lg.border:hover { border-color: #d6e0e8 !important; }
+.app-shell.theme-standard .app-main button:not(:disabled) { transition: transform .16s ease, box-shadow .16s ease, background .16s ease; }
+.app-shell.theme-standard .app-main button[class*="bg-arlotech"] { box-shadow: 0 4px 10px rgba(8,126,139,.13); font-weight: 650; }
+.app-shell.theme-standard .app-main button[class*="bg-arlotech"]:hover { transform: translateY(-1px); box-shadow: 0 7px 16px rgba(8,126,139,.18); }
+.app-shell.theme-standard .app-main input,
+.app-shell.theme-standard .app-main select,
+.app-shell.theme-standard .app-main textarea { min-height: 40px; border-radius: 9px; box-shadow: 0 1px 2px rgba(20,35,55,.025); }
+.app-shell.theme-standard .app-main input:focus,
+.app-shell.theme-standard .app-main select:focus,
+.app-shell.theme-standard .app-main textarea:focus { outline: none; border-color: #45a5ad !important; box-shadow: 0 0 0 3px rgba(8,126,139,.11); }
+.app-shell.theme-standard .app-main table { border-collapse: separate; border-spacing: 0; }
+.app-shell.theme-standard .app-main table thead th { padding-top: 13px; padding-bottom: 13px; background: #f7f9fc; }
+.app-shell.theme-standard .app-main table tbody td { padding-top: 13px; padding-bottom: 13px; }
+.app-shell.theme-standard .app-main .empty-state { min-height: 230px; border: 1px dashed #dce4ec; border-radius: 14px; background: rgba(255,255,255,.55); }
+.app-shell.theme-standard .app-main .empty-state-icon { background: #edf5f6; color: #087e8b; }
+.app-shell.theme-standard .app-main .grid { row-gap: 20px; }
+.app-shell.theme-standard .app-main [role="dialog"] { border-radius: 18px; }
+.app-shell.theme-standard .app-main .shadow-sm { box-shadow: 0 5px 20px rgba(20,35,55,.04) !important; }
+.app-shell.theme-standard .app-main .bg-slate-50 { background: #f8fafc !important; }
+.app-shell.theme-standard .app-main .text-xs { letter-spacing: .005em; }
+
+/* Keep the alternate command theme intact while improving spacing and legibility. */
+.app-shell.theme-blacksite .app-sidebar { width: 258px; }
+.app-shell.theme-blacksite .app-topbar { height: 68px !important; padding-inline: 30px; }
+.app-shell.theme-blacksite .app-main { max-width: 1640px; padding: 34px clamp(20px, 3vw, 46px) 52px !important; }
+.app-shell.theme-blacksite .app-main .rounded-xl.border,
+.app-shell.theme-blacksite .app-main .rounded-lg.border { border-radius: 8px; }
+.app-shell.theme-blacksite .app-main input,
+.app-shell.theme-blacksite .app-main select,
+.app-shell.theme-blacksite .app-main textarea { border-radius: 4px; }
+
+@media (max-width: 1023px) {
+  .app-shell.theme-standard .app-main,
+  .app-shell.theme-blacksite .app-main { padding: 24px 18px 36px !important; }
+  .app-shell .app-topbar { padding-inline: 16px !important; }
+  .app-shell .topbar-system-status { display: none; }
+}
+@media (max-width: 640px) {
+  .app-shell .app-main h1 { font-size: 25px; }
+  .app-shell .app-main .grid { row-gap: 13px; }
+  .app-shell .app-main .overflow-x-auto { border-radius: 12px; }
+  .app-shell .app-main table { min-width: 620px; }
+}
+
+/* ================================================================
+   ARLOTECH // APPLICATION-WIDE UI REFRESH
+   Shared visual language for every authenticated workspace section.
+   Intentionally presentation-only: no business logic or data changes.
+   ================================================================ */
+:root {
+  --ui-ink: #152b35;
+  --ui-muted: #667985;
+  --ui-line: #e4ebef;
+  --ui-surface: #ffffff;
+  --ui-canvas: #f5f8fa;
+  --ui-brand: #087e8b;
+  --ui-brand-dark: #066575;
+  --ui-brand-wash: #e8f5f6;
+  --ui-radius: 16px;
+  --ui-shadow: 0 8px 26px rgba(18, 49, 61, .055);
+  --ui-shadow-hover: 0 14px 34px rgba(18, 49, 61, .10);
+}
+
+html, body, #root { min-height: 100%; }
+body { background: var(--ui-canvas); color: var(--ui-ink); }
+button, input, select, textarea { font: inherit; }
+button { -webkit-tap-highlight-color: transparent; }
+:focus-visible { outline: 3px solid rgba(8,126,139,.28); outline-offset: 2px; }
+
+.app-shell.theme-standard {
+  --app-bg: var(--ui-canvas);
+  --app-panel: var(--ui-surface);
+  --app-panel-2: #f7fafb;
+  --app-border: var(--ui-line);
+  --app-text: var(--ui-ink);
+  --app-muted: var(--ui-muted);
+  --app-accent: var(--ui-brand);
+  --app-accent-soft: var(--ui-brand-wash);
+  --app-shadow: var(--ui-shadow);
+}
+.app-shell.theme-standard .app-workspace {
+  background: radial-gradient(ellipse at 88% -8%, rgba(8,126,139,.075), transparent 34%), var(--ui-canvas);
+}
+.app-shell .app-sidebar { width: 258px !important; flex: 0 0 258px; }
+.app-shell .sidebar-brand-row { height: 76px !important; padding-inline: 22px !important; }
+.app-shell .sidebar-brand-image { max-width: 36px; max-height: 36px; object-fit: contain; }
+.app-shell .sidebar-brand-copy { font-size: 11px !important; letter-spacing: .11em !important; line-height: 1.35; }
+.app-shell .sidebar-brand-copy span { font-size: 8px !important; letter-spacing: .16em !important; }
+.app-shell .sidebar-section-label { padding: 25px 22px 9px !important; font-size: 9px !important; letter-spacing: .14em !important; }
+.app-shell .sidebar-nav { padding: 8px 13px 16px !important; }
+.app-shell .sidebar-nav a { min-height: 43px; padding: 11px 13px !important; border-radius: 11px !important; font-size: 12px !important; font-weight: 600 !important; }
+.app-shell .sidebar-nav a[aria-current="page"] { box-shadow: 0 5px 14px rgba(8,126,139,.18) !important; }
+.app-shell .sidebar-footer { padding: 15px 16px 18px !important; }
+.app-shell .sidebar-node { border-radius: 12px !important; padding: 11px !important; background: var(--app-panel-2); }
+.app-shell .app-topbar { height: 70px !important; padding-inline: clamp(16px, 3vw, 34px) !important; }
+.app-shell .topbar-logo-image { height: 29px; width: auto; max-width: 150px; object-fit: contain; }
+.app-shell .topbar-system-status { font: 600 10px/1.2 Inter, sans-serif !important; letter-spacing: .08em !important; }
+.app-shell .app-main { padding: clamp(18px, 2.6vw, 34px) clamp(16px, 3vw, 38px) 48px !important; max-width: 1800px; width: 100%; margin-inline: auto; }
+
+/* Consistent page hierarchy across Dashboard, Prospects, Audits, Campaigns,
+   Drafts, Replies, Follow-ups, Analytics, Growth Center, Activity and Settings. */
+.app-shell.theme-standard .app-main h1 { color: var(--ui-ink) !important; font-size: clamp(25px, 2.3vw, 32px) !important; line-height: 1.15 !important; font-weight: 750 !important; letter-spacing: -.045em !important; }
+.app-shell.theme-standard .app-main h2 { font-size: clamp(17px, 1.5vw, 21px) !important; font-weight: 700 !important; letter-spacing: -.025em !important; }
+.app-shell.theme-standard .app-main h3 { font-size: 15px !important; font-weight: 700 !important; letter-spacing: -.015em !important; }
+.app-shell.theme-standard .app-main p { line-height: 1.55; }
+.app-shell.theme-standard .app-main > div > .flex.items-start.gap-3,
+.app-shell.theme-standard .app-main > div > .flex.items-center.justify-between:first-child { margin-bottom: 25px; }
+.app-shell.theme-standard .app-main .text-sm.text-slate-500 { line-height: 1.55; }
+
+/* Cards, panels, metric tiles and chart containers. */
+.app-shell.theme-standard .app-main .rounded-xl.border,
+.app-shell.theme-standard .app-main .rounded-2xl.border,
+.app-shell.theme-standard .app-main .rounded-lg.border {
+  border-color: var(--ui-line) !important;
+  border-radius: var(--ui-radius) !important;
+  box-shadow: var(--ui-shadow) !important;
+}
+.app-shell.theme-standard .app-main .rounded-xl.border:hover,
+.app-shell.theme-standard .app-main .rounded-2xl.border:hover { border-color: #d4e2e7 !important; }
+.app-shell.theme-standard .app-main .shadow-sm { box-shadow: var(--ui-shadow) !important; }
+.app-shell.theme-standard .app-main .bg-white { background: #fff !important; }
+.app-shell.theme-standard .app-main .bg-slate-50 { background: #f8fafb !important; }
+.app-shell.theme-standard .app-main [class*="grid"] > .rounded-xl,
+.app-shell.theme-standard .app-main [class*="grid"] > .rounded-2xl { min-width: 0; }
+.app-shell.theme-standard .app-main .p-5 { padding: 21px !important; }
+.app-shell.theme-standard .app-main .p-6 { padding: 24px !important; }
+.app-shell.theme-standard .app-main .p-4 { padding: 18px !important; }
+
+/* Buttons and interactive controls. */
+.app-shell.theme-standard .app-main button:not(:disabled) { transition: transform .16s ease, box-shadow .16s ease, background-color .16s ease, border-color .16s ease; }
+.app-shell.theme-standard .app-main button:not(:disabled):active { transform: translateY(1px); }
+.app-shell.theme-standard .app-main button.bg-arlotech,
+.app-shell.theme-standard .app-main a.bg-arlotech { background: var(--ui-brand) !important; border-radius: 10px !important; box-shadow: 0 5px 12px rgba(8,126,139,.14); }
+.app-shell.theme-standard .app-main button.bg-arlotech:hover,
+.app-shell.theme-standard .app-main a.bg-arlotech:hover { background: var(--ui-brand-dark) !important; box-shadow: 0 7px 17px rgba(8,126,139,.2); }
+.app-shell.theme-standard .app-main button.border,
+.app-shell.theme-standard .app-main a.border { border-radius: 10px; }
+.app-shell.theme-standard .app-main input,
+.app-shell.theme-standard .app-main select,
+.app-shell.theme-standard .app-main textarea { min-height: 40px; border-radius: 10px !important; border-color: #dce6eb !important; box-shadow: none; }
+.app-shell.theme-standard .app-main textarea { min-height: 100px; }
+.app-shell.theme-standard .app-main input:focus,
+.app-shell.theme-standard .app-main select:focus,
+.app-shell.theme-standard .app-main textarea:focus { border-color: var(--ui-brand) !important; box-shadow: 0 0 0 3px rgba(8,126,139,.10) !important; outline: none; }
+.app-shell.theme-standard .app-main label { font-size: 12px; font-weight: 650; color: #425762; }
+
+/* Tables and dense data surfaces. */
+.app-shell.theme-standard .app-main table { width: 100%; border-collapse: separate; border-spacing: 0; }
+.app-shell.theme-standard .app-main table thead th { background: #f7fafb !important; padding: 13px 15px !important; font-size: 9px !important; font-weight: 750 !important; letter-spacing: .11em !important; color: #758791 !important; white-space: nowrap; }
+.app-shell.theme-standard .app-main table thead th:first-child { border-radius: 10px 0 0 10px; }
+.app-shell.theme-standard .app-main table thead th:last-child { border-radius: 0 10px 10px 0; }
+.app-shell.theme-standard .app-main table tbody td { padding: 14px 15px !important; border-bottom: 1px solid #edf1f3 !important; font-size: 12px; vertical-align: middle; }
+.app-shell.theme-standard .app-main table tbody tr:last-child td { border-bottom: 0 !important; }
+.app-shell.theme-standard .app-main .table-row:hover,
+.app-shell.theme-standard .app-main tbody tr:hover { background: #f8fbfc !important; }
+
+/* Status chips, tabs, filters, empty states, and dialogs. */
+.app-shell.theme-standard .app-main .status-badge,
+.app-shell.theme-standard .app-main [class*="rounded-full"][class*="text-xs"] { letter-spacing: .01em; }
+.app-shell.theme-standard .app-main [role="tablist"] { display: flex; flex-wrap: wrap; gap: 5px; padding: 5px; border: 1px solid var(--ui-line); border-radius: 12px; background: #f7fafb; }
+.app-shell.theme-standard .app-main [role="tab"] { border-radius: 9px; padding: 8px 12px; font-size: 12px; font-weight: 650; }
+.app-shell.theme-standard .app-main [role="dialog"] { border-radius: 18px !important; box-shadow: 0 24px 80px rgba(12,35,44,.2) !important; }
+.app-shell.theme-standard .app-main .empty-state { min-height: 230px; border: 1px dashed #dce6eb; border-radius: 15px; background: rgba(255,255,255,.55); }
+.app-shell.theme-standard .app-main .empty-state-icon { background: var(--ui-brand-wash); color: var(--ui-brand); }
+
+/* Website Intelligence: make score and evidence areas read as an audit product. */
+.app-shell.theme-standard .app-main [class*="score"],
+.app-shell.theme-standard .app-main [class*="Score"] { font-variant-numeric: tabular-nums; }
+.app-shell.theme-standard .app-main img { max-width: 100%; }
+.app-shell.theme-standard .app-main pre,
+.app-shell.theme-standard .app-main code { border-radius: 8px; }
+
+/* Motion is subtle and respects accessibility preferences. */
+@media (prefers-reduced-motion: no-preference) {
+  .app-shell.theme-standard .app-main .rounded-xl.border,
+  .app-shell.theme-standard .app-main .rounded-2xl.border { transition: box-shadow .18s ease, border-color .18s ease, transform .18s ease; }
+  .app-shell.theme-standard .app-main .rounded-xl.border:hover { box-shadow: var(--ui-shadow-hover) !important; }
+}
+@media (max-width: 1023px) {
+  .app-shell .app-sidebar { width: min(290px, 86vw) !important; flex-basis: auto; }
+  .app-shell .app-main { padding: 20px 16px 36px !important; }
+  .app-shell .topbar-system-status { display: none !important; }
+}
+@media (max-width: 640px) {
+  .app-shell .app-topbar { height: 62px !important; gap: 10px !important; }
+  .app-shell .topbar-logo-image { max-width: 118px; height: 25px; }
+  .app-shell .topbar-mark { display: none !important; }
+  .app-shell.theme-standard .app-main h1 { font-size: 25px !important; }
+  .app-shell.theme-standard .app-main .p-5,
+  .app-shell.theme-standard .app-main .p-6 { padding: 16px !important; }
+  .app-shell.theme-standard .app-main table { min-width: 620px; }
+  .app-shell.theme-standard .app-main .overflow-x-auto { max-width: 100%; }
+}
+
+/* Keep the alternate BLACKSITE theme coherent while applying the same
+   component polish without flattening its dark visual identity. */
+.app-shell.theme-blacksite .app-main .rounded-xl.border,
+.app-shell.theme-blacksite .app-main .rounded-2xl.border,
+.app-shell.theme-blacksite .app-main .rounded-lg.border { border-radius: 10px !important; }
+.app-shell.theme-blacksite .app-main input,
+.app-shell.theme-blacksite .app-main select,
+.app-shell.theme-blacksite .app-main textarea { border-radius: 7px !important; }
+.app-shell.theme-blacksite .app-main table thead th { letter-spacing: .12em; }
+.app-shell.theme-blacksite .app-main button { transition: filter .15s ease, transform .15s ease; }
+.app-shell.theme-blacksite .app-main button:hover { filter: brightness(1.08); }
