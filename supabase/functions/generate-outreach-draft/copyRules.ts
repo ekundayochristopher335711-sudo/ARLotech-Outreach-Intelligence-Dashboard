@@ -1,9 +1,13 @@
 const internalReferencePattern = /\b(?:visual|finding|opportunity|strength|context-page)(?:[-\s:]?\d+)\b/i;
 const firstPersonSingularPattern = /\b(?:i|me|my|mine|myself)\b/i;
+const realisticBenefitPattern =
+  /\b(?:clear(?:ly|er)?|professional(?:ly)?|easier|easy|visitors|get in touch|find|navigate|book|contact|access)\b/i;
 const requiredFeedbackQuestion = "Could you share what you would like your website to help visitors do?";
 const requiredServiceSentence =
-  "We design and improve websites so businesses can present their services clearly and make it easier for visitors to find information or get in touch.";
+  "We design and improve websites to help visitors understand services and get in touch more easily.";
 const requiredAttachmentSentence = "We’ve attached the website review PDF for your reference.";
+const feedbackRequestPattern =
+  /\b(?:feedback|goals?|priorities|thoughts|views|share|tell us|let us know)\b|\b(?:what|how|which|where|when)\b.{0,160}\b(?:website|site|visitors?|customers?|business|help|want|hope|like|need|experience|services?|booking|contact)\b/i;
 
 export function normalizeEmailSalutation(body: string, contactName: string): string {
   const signatureStart = body.search(/\n\n(?:kind regards|best regards|regards|sincerely|thanks),?\s*\n/i);
@@ -17,7 +21,7 @@ export function normalizeEmailSalutation(body: string, contactName: string): str
   return `${greeting}${remainder ? `\n\n${remainder}` : ""}${signature}`;
 }
 
-export function normalizeGenericEmailContent(
+export function normalizePersonalizedEmailContent(
   body: string,
   includeReport: boolean,
   contactName = "",
@@ -27,7 +31,11 @@ export function normalizeGenericEmailContent(
   const signature = signatureStart < 0 ? "" : body.slice(signatureStart);
   const sentences = content.match(/[^.!?]+(?:[.!?]+|$)/g) ?? [content];
   const statements: string[] = [];
-  let hasServiceBenefit = false;
+  const feedbackQuestions = sentences
+    .map((sentence) => sentence.trim())
+    .filter((sentence) => sentence.includes("?") && feedbackRequestPattern.test(sentence));
+  const feedbackQuestion = feedbackQuestions.at(-1) || requiredFeedbackQuestion;
+  let hasServiceDescription = false;
   for (const rawSentence of sentences) {
     const sentence = rawSentence.trim();
     if (
@@ -39,23 +47,23 @@ export function normalizeGenericEmailContent(
     ) {
       continue;
     }
-    const isServiceBenefit = /\bwebsites?\b/i.test(sentence) &&
-      /\b(?:design|build|develop|improve|creat|present|offerings?|services?|navigation|visitors?|information|clear|intuitive|easier|easy|get in touch)\b/i.test(sentence);
-    if (hasServiceBenefit && isServiceBenefit) continue;
+    const isServiceDescription =
+      /\b(?:we|our team)\b.{0,80}\b(?:design|build|develop|improve|creat)\w*\b.{0,80}\bwebsites?\b/i.test(sentence);
+    if (hasServiceDescription && isServiceDescription) continue;
     statements.push(sentence);
-    hasServiceBenefit ||= isServiceBenefit;
+    hasServiceDescription ||= isServiceDescription;
   }
   const statementText = statements.join(" ");
   const describesService =
     /\bwe\b.{0,160}\b(?:design|build|develop|improve)\b.{0,100}\bwebsites?\b/i.test(statementText) ||
     /\b(?:design|build|develop|improve)\b.{0,100}\bwebsites?\b.{0,100}\b(?:we|our)\b/i.test(statementText);
-  const hasBenefit = /\b(?:clear(?:ly|er)?|professional(?:ly)?|easier|easy|visitors|get in touch)\b/i.test(statementText);
+  const hasBenefit = realisticBenefitPattern.test(statementText);
   const hasAttachedReport = /(?:attached pdf|pdf.{0,30}attached|we[’']ve attached|we have attached|please see the attached)/i.test(statementText);
   const requiredStatements = [...statements];
   if (!describesService || !hasBenefit) requiredStatements.push(requiredServiceSentence);
   if (includeReport && !hasAttachedReport) requiredStatements.push(requiredAttachmentSentence);
   return normalizeEmailSalutation(
-    `${[...requiredStatements, requiredFeedbackQuestion].join(" ")}${signature}`,
+    `${[...requiredStatements, feedbackQuestion].join(" ")}${signature}`,
     contactName,
   );
 }
@@ -72,14 +80,10 @@ export function getGenericEmailContentViolations(body: string, includeReport = f
     /\bwe\b.{0,160}\b(?:design|build|develop|improve)\b.{0,100}\bwebsites?\b/i.test(body) ||
     /\b(?:design|build|develop|improve)\b.{0,100}\bwebsites?\b.{0,100}\b(?:we|our)\b/i.test(body);
   if (!describesService) violations.push("Describe what Arlotech does: website design, development, or improvement.");
-  if (!/\b(?:clear(?:ly|er)?|professional(?:ly)?|easier|easy|visitors|get in touch)\b/i.test(body)) {
+  if (!realisticBenefitPattern.test(body)) {
     violations.push("Explain a realistic general benefit, such as clearer presentation or easier navigation/contact.");
   }
-  if (
-    !/\bfeedback\b/i.test(body) &&
-    !/\b(?:share|tell us|let us know)\b.{0,100}\b(?:goals|priorities|thoughts|views|website)\b/i.test(body) &&
-    !/\bwhat\b.{0,100}\b(?:like|want|hope)\b.{0,100}\b(?:website|visitors)\b/i.test(body)
-  ) {
+  if (!feedbackRequestPattern.test(body)) {
     violations.push("Ask the recipient for feedback about their website goals or priorities.");
   }
   const mentionsAttachment = /(?:attached pdf|pdf.{0,30}attached|we[’']ve attached|we have attached|please see the attached)/i.test(body);

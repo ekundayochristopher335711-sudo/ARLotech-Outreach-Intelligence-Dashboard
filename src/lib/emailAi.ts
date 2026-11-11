@@ -82,8 +82,8 @@ export async function generateAiOutreachDraft(input: {
     observationsUsed,
     qualityChecks: [
       input.includeReport
-        ? 'AI draft uses the saved contact name and matching website-review observations where relevant.'
-        : 'AI draft uses the saved contact name only; no matching website-review findings were available.',
+        ? 'AI draft uses saved prospect and website context plus matching website-review observations where relevant.'
+        : 'AI draft uses saved prospect and website context; no matching website-review findings were available.',
       input.includeReport ? 'A matching website review PDF is referenced for attachment.' : 'No report attachment is referenced.',
     ],
     includesReportReference: input.includeReport ?? false,

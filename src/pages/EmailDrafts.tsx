@@ -236,7 +236,7 @@ function validateAiPreview(
   if (!/\bwe\b.{0,160}\b(?:design|build|develop|improve)\b.{0,100}\bwebsites?\b/i.test(body)) {
     errors.push('Explain that Arlotech designs, builds, develops, or improves websites.')
   }
-  if (!/\b(?:clear(?:ly|er)?|professional(?:ly)?|easier|easy|visitors|get in touch)\b/i.test(body)) {
+  if (!/\b(?:clear(?:ly|er)?|professional(?:ly)?|easier|easy|visitors|get in touch|find|navigate|book|contact|access)\b/i.test(body)) {
     errors.push('Explain a realistic benefit of the website services.')
   }
   if (!/\bfeedback\b/i.test(body) && !/\b(?:share|tell us|let us know)\b.{0,100}\b(?:goals|priorities|thoughts|views|website)\b/i.test(body)) {
@@ -1576,7 +1576,7 @@ export function EmailDraftsPage() {
           <h2 className="text-lg font-semibold text-slate-800">{localStorage.getItem('arlotech-login-mode') === 'blacksite' ? 'BATCH TRANSMISSION ASSEMBLY' : 'Outreach batch drafts'}</h2>
           <p className="mt-1 text-sm text-slate-500">
             Generate AI-assisted, evidence-based drafts, review or edit each one, and save it when ready. Generation never sends email. AI batches are limited to {MAX_AI_GENERATION_BATCH_SIZE} and 40 AI requests per rolling 24 hours; sending is processed in batches of {MAX_SEND_REQUEST_SIZE}, up to 50 per rolling 24 hours.
-            The AI uses a saved contact name in the greeting and, when available, verified observations from the matching website review. The AI receives the saved audit data, not the finished PDF file. Sending still requires an eligible recipient and a matching audit with actionable evidence.
+            The AI uses the saved contact name, relevant business details, website URL, category, location, notes, saved page context, and—when available—verified observations from the matching website review. It receives the saved audit data, not the finished PDF file. Sending still requires an eligible recipient and a matching audit with actionable evidence.
           </p>
         </div>
 
@@ -2032,7 +2032,7 @@ export function EmailDraftsPage() {
                         <div>
                           <h4 className="text-sm font-semibold text-slate-800">Chat with AI to edit this draft</h4>
                           <p className="mt-1 text-xs text-slate-500">
-                            Ask for changes in plain language. The AI keeps the collective “we” voice, uses matching audit evidence when available, and only mentions a PDF when one will be attached.
+                            Ask for changes in plain language. The AI keeps the collective “we” voice, uses the saved prospect and website context plus matching audit evidence when available, and only mentions a PDF when one will be attached.
                           </p>
                         </div>
                         {!!preview.aiChatMessages?.length && (
