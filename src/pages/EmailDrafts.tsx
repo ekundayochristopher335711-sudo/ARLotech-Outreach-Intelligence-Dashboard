@@ -33,6 +33,7 @@ import {
 import type { Campaign, EmailDraft, Prospect, WebsiteAnalysis } from '@/types'
 import { assessEmailQuality } from '@/lib/growthIntelligence'
 import { containsEmailJargon, containsExternalAuditReference } from '@/lib/emailCopy'
+import { getOutreachFunctionError } from '@/lib/outreachFunctionError'
 import { mapWithConcurrency } from '@/lib/mapWithConcurrency'
 import {
   AI_EMAIL_APPROACHES,
@@ -195,17 +196,6 @@ function isSendOutreachResponse(data: unknown): data is SendOutreachResponse {
       'status' in result &&
       ['sent', 'skipped', 'failed'].includes(String(result.status)),
   )
-}
-
-async function getOutreachFunctionError(error: unknown) {
-  const fallbackMessage = error instanceof Error ? error.message : 'Could not send outreach batch.'
-  if (!error || typeof error !== 'object' || !('context' in error) || !(error.context instanceof Response)) {
-    return fallbackMessage
-  }
-  const responseBody = await error.context.clone().json().catch(() => null)
-  return responseBody && typeof responseBody === 'object' && 'error' in responseBody && typeof responseBody.error === 'string'
-    ? responseBody.error
-    : fallbackMessage
 }
 
 function validateAiPreview(

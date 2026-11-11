@@ -26,6 +26,22 @@ describe('extractPhoneNumbers', () => {
     )).toContain('+2348031234567')
   })
 
+  it('extracts numbers split across HTML elements and encoded whitespace', () => {
+    expect(extractPhoneNumbers(
+      ['<span>0803</span><span>&nbsp;123</span><span>4567</span>'],
+      'https://example.ng',
+      null,
+    )).toContain('+2348031234567')
+  })
+
+  it('decodes HTML-encoded international prefixes in telephone links', () => {
+    expect(extractPhoneNumbers(
+      ['<a href="tel:&#43;234&#8209;803&#8209;123&#8209;4567">Call</a>'],
+      'https://example.com',
+      null,
+    )).toContain('+2348031234567')
+  })
+
   it('keeps already international numbers and does not apply the Nigerian prefix to another country', () => {
     expect(extractPhoneNumbers(
       ['+44 20 7946 0958', '020 7946 0958'],

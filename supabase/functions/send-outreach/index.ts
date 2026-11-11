@@ -3,6 +3,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { outreachEmailHtml, sentEmailBody } from '../_shared/outreachEmailTemplate.ts'
 import { createUnsubscribeToken, UNSUBSCRIBE_CONFIRMATION_URL } from '../_shared/unsubscribe.ts'
 import { formatSenderAddress, hasActionableWebsiteFinding, resolveReplyToAddress } from './eligibility.ts'
+import { getOutreachErrorMessage } from './errorMessage.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -475,9 +476,7 @@ serve(async (req) => {
 
     return manualMode ? jsonResponse({ result: results[0] }) : jsonResponse({ results })
   } catch (error) {
-    return jsonResponse(
-      { error: error instanceof Error ? error.message : 'The outreach batch could not be processed.' },
-      500,
-    )
+    console.error('send-outreach failed:', error)
+    return jsonResponse({ error: getOutreachErrorMessage(error) }, 500)
   }
 })

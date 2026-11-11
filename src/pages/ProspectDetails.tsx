@@ -10,7 +10,9 @@ import { type Prospect, type WebsiteAnalysis } from '@/types'
 import { analyzeWebsite } from '@/lib/websiteAnalysis'
 import { ensureWebsiteProspect } from '@/lib/websiteProspects'
 import { ProspectRelationshipWorkspace } from '@/components/prospects/ProspectRelationshipWorkspace'
+import { VisualReviewPanel } from '@/components/website-intelligence/VisualReviewPanel'
 import { format } from 'date-fns'
+import type { ScreenshotReview } from '@/lib/visualReview'
 import {
   Users,
   Mail,
@@ -475,6 +477,12 @@ export function ProspectDetails() {
           websiteAnalyses.map((analysis: WebsiteAnalysis, index: number) => {
             const analysisDetails = asRecord(analysis.analysis_details)
             const categoryScores = asRecord(analysis.category_scores)
+            const visualAudit = asRecord(analysisDetails?.visual_audit)
+            const visualScore = typeof visualAudit?.visual_score === 'number'
+              ? visualAudit.visual_score
+              : typeof categoryScores?.visual_design === 'number'
+                ? categoryScores.visual_design
+                : 'Unavailable'
             const opportunities = asRecordArray(analysisDetails?.optimization_opportunities)
 
             return (
@@ -506,12 +514,18 @@ export function ProspectDetails() {
                         <div key={category} className="rounded-lg border border-slate-200 p-3">
                           <p className="text-xs capitalize text-slate-500">{category.replace('-', ' ')}</p>
                           <p className="mt-1 font-semibold text-slate-800">
-                            {String(categoryScores[category === 'visual' ? 'visual_design' : category] ?? 'Unavailable')}
+                            {String(category === 'visual'
+                              ? visualScore
+                              : (categoryScores[category] ?? 'Unavailable'))}
                           </p>
                         </div>
                       ))}
                     </div>
                   )}
+                  <VisualReviewPanel
+                    audit={analysisDetails?.screenshot_review as ScreenshotReview | undefined}
+                    visualAudit={visualAudit}
+                  />
                   <div>
                     <h3 className="text-sm font-semibold text-slate-700">Findings ({analysis.findings.length})</h3>
                     {analysis.findings.length ? (

@@ -1,5 +1,36 @@
-const PHONE_CANDIDATE_PATTERN = /(?<![\w])(?:\+|00)?\d(?:[\d\s()./-]{4,}\d)(?![\w])/g
+const PHONE_CANDIDATE_PATTERN = /(?<![\w])(?:\+|00)?\d(?:[\d\s()./\-\u2010-\u2015\u2212]{4,}\d)(?![\w])/g
 const PHONE_LINK_PATTERN = /tel:([^"'<>\s]+)/gi
+const HTML_ENTITY_PATTERN = /&(#(?:x[\da-f]+|\d+)|[a-z][a-z\d]+);/gi
+
+const HTML_PHONE_ENTITIES: Record<string, string> = {
+  amp: '&',
+  emsp: ' ',
+  ensp: ' ',
+  hairsp: ' ',
+  mdash: '-',
+  minus: '-',
+  nbsp: ' ',
+  ndash: '-',
+  plus: '+',
+  thinsp: ' ',
+}
+
+function decodeHtmlEntities(value: string): string {
+  return value.replace(HTML_ENTITY_PATTERN, (entity, reference: string) => {
+    if (reference.startsWith('#')) {
+      const isHex = reference[1]?.toLowerCase() === 'x'
+      const codePoint = Number.parseInt(reference.slice(isHex ? 2 : 1), isHex ? 16 : 10)
+      return Number.isInteger(codePoint) && codePoint > 0 && codePoint <= 0x10ffff
+        ? String.fromCodePoint(codePoint)
+        : entity
+    }
+    return HTML_PHONE_ENTITIES[reference.toLowerCase()] ?? entity
+  })
+}
+
+function phoneSearchText(source: string): string {
+  return decodeHtmlEntities(source.replace(/<[^>]*>/g, ' ')).replace(/\s+/g, ' ')
+}
 
 interface PhoneCountry {
   region: string
@@ -127,11 +158,12 @@ export function extractPhoneNumbers(sources: string[], pageUrl: string, language
 
   for (const source of sources) {
     for (const match of source.matchAll(PHONE_LINK_PATTERN)) {
+      const encodedCandidate = decodeHtmlEntities(match[1].split('?', 1)[0])
       let candidate: string
       try {
-        candidate = decodeURIComponent(match[1].split(/[?#]/, 1)[0])
+        candidate = decodeURIComponent(encodedCandidate)
       } catch {
-        candidate = match[1].split(/[?#]/, 1)[0]
+        candidate = encodedCandidate
       }
       const phone = normalizePhoneCandidate(candidate, country)
       if (phone) phones.add(phone)
@@ -139,9 +171,12 @@ export function extractPhoneNumbers(sources: string[], pageUrl: string, language
   }
 
   for (const source of sources) {
-    for (const match of source.matchAll(PHONE_CANDIDATE_PATTERN)) {
-      const phone = normalizePhoneCandidate(match[0], country)
-      if (phone) phones.add(phone)
+    const text = phoneSearchText(source)
+    for (const candidateSource of text === source ? [source] : [text, source]) {
+      for (const match of candidateSource.matchAll(PHONE_CANDIDATE_PATTERN)) {
+        const phone = normalizePhoneCandidate(match[0], country)
+        if (phone) phones.add(phone)
+      }
     }
   }
 
