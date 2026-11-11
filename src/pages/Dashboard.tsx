@@ -252,7 +252,7 @@ export function DashboardPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-slate-800">{blacksite ? 'COMMAND DECK' : 'Dashboard'}</h1>
@@ -268,25 +268,29 @@ export function DashboardPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
         <MetricCard
-          label={blacksite ? 'Registered Targets' : 'Total Prospects'}
+          label="Total Prospects"
           value={metrics?.total_prospects ?? 0}
+          descriptor="All prospects"
           icon={<svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.768 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>}
         />
         <MetricCard
-          label={blacksite ? 'Targets Contacted' : 'Contacted Prospects'}
+          label="Contacted"
           value={metrics?.prospects_contacted ?? 0}
+          descriptor="Reached prospects"
           icon={<svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.253-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>}
         />
         <MetricCard
-          label={blacksite ? 'Transmissions Sent' : 'Emails Sent'}
+          label="Emails Sent"
           value={metrics?.emails_sent ?? 0}
+          descriptor="Total sent"
           icon={<svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>}
         />
         <MetricCard
-          label={blacksite ? 'Signals Intercepted' : 'Replies Received'}
+          label="Successful Responses"
           value={metrics?.replies_received ?? 0}
+          descriptor="Positive responses"
           icon={<svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z"/></svg>}
         />
       </div>
@@ -320,7 +324,7 @@ export function DashboardPage() {
         </div>
       </Card>
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <Card className="lg:col-span-2">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold text-slate-800">{blacksite ? 'Operational Ledger' : 'Recent Activity'}</h2>

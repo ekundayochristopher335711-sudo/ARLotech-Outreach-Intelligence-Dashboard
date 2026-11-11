@@ -110,12 +110,12 @@ export function ActivityFeed({ activity }: { activity: ActivityLogEntry[] }) {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       {activity.map((item) => {
         const Icon = eventIcons[item.event_type] || Activity
         return (
-          <div key={item.id} className="flex flex-wrap items-start gap-3">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-arlotech/10 text-arlotech">
+          <div key={item.id} className="flex flex-wrap items-start gap-2 border-b border-slate-100 pb-2 last:border-b-0 last:pb-0">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-arlotech/10 text-arlotech mt-0.5">
               <Icon className="h-4 w-4" />
             </div>
             <div className="flex-1 min-w-0">
