@@ -13,7 +13,9 @@
   - Persists visual score, assessment, findings, model, timestamp, coverage, and usage under `analysis_details.visual_audit`.
 - Connected the existing screenshot capture + private storage workflow to the new Edge Function. Visual-analysis failure does not discard a successful technical audit; it is recorded as a failed visual-analysis state.
 - Updated the Website Intelligence screenshot panel to show AI visual score, explanation, evidence-backed findings, severity, device, confidence, and improvement type.
-- Extended the client-facing PDF report with a separate AI visual design assessment and individual visual findings. The existing Lighthouse technical score remains distinct.
+- Added the versioned unified score (`unified-v1`) to new audits: Visual Design 40%, Performance 18%, SEO 15%, Accessibility 15%, and Best Practices 12%. Missing categories are excluded and the remaining weights are normalized; the score is marked provisional.
+- Kept the Lighthouse-only technical score and category scores separate. Historical audits retain their stored technical-only score methodology.
+- Updated the dashboard and PDF to use the same score calculation and show a category-by-category weighted contribution breakdown.
 - Added a migration to restore owner-scoped private screenshot object policies and index visual-analysis status.
 - Documented Edge Function secrets and deployment commands in README and `.env.example`.
 
@@ -25,12 +27,15 @@ The visual audit migration has been applied and `analyze-website-visuals` is dep
 
 The function relies on Supabase's standard `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY` Edge Function environment values.
 
+The unified-score changes in this source update do not require a database migration. They are not yet pushed or deployed; the frontend must be deployed before new audits use the unified score.
+
 ## Verification status
 
-- `npm test` passed: 26 test files, 173 tests.
+- `npm test` passed: 26 test files, 180 tests.
 - `npm run build` passed.
 - `npm run lint` passed with existing warnings in `Prospects.tsx` and `EmailDrafts.tsx`.
+- Unified score and PDF tests pass, including the 79.70 → 80 example and provisional normalization.
 - Static review and deployment do not verify a live authenticated screenshot-analysis request or PDF output.
 - Rotate credentials that may have been exposed by the previous secret-list command before running an end-to-end test. Do not share replacement values in chat.
 - The Edge Function was deployed, but Deno runtime/type validation was unavailable locally.
-- Full cross-application UI redesign and end-to-end testing of every outreach workflow remain outside the verified scope of this source update.
+- The broader application-wide redesign requested in the attached brief and end-to-end testing of every outreach workflow remain outside the verified scope of this source update.

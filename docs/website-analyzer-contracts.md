@@ -118,7 +118,7 @@ The function accepts an authenticated user's audit ID, verifies ownership, reads
   "user_id": "uuid",
   "prospect_id": "uuid or null",
   "website_url": "https://example.com",
-  "overall_score": 87,
+  "overall_score": 89,
   "performance_score": 91,
   "accessibility_score": 95,
   "seo_score": 88,
@@ -141,7 +141,29 @@ The function accepts an authenticated user's audit ID, verifies ownership, reads
     { "id": "pos-0", "title": "positive observation", "evidence": "measured or extracted evidence", "potential_benefit": "", "priority": "low" }
   ],
   "analysis_details": {
-    "score_explanation": "weighted Lighthouse category score",
+    "score_explanation": "Unified website score: 89/100 (Excellent).",
+    "technical_score": {
+      "methodology": "Weighted Lighthouse category score",
+      "weights": { "performance": 30, "seo": 25, "accessibility": 25, "best-practices": 20 },
+      "value": 91,
+      "missing_categories": []
+    },
+    "unified_score": {
+      "version": "unified-v1",
+      "score": 89,
+      "unrounded_score": 89.27,
+      "provisional": false,
+      "interpretation": "Very Good",
+      "available_categories": ["visual_design", "performance", "seo", "accessibility", "best-practices"],
+      "unavailable_categories": [],
+      "breakdown": {
+        "visual_design": { "score": 86, "configured_weight_percent": 40, "applied_weight_percent": 40, "weighted_contribution": 34.4 },
+        "performance": { "score": 91, "configured_weight_percent": 18, "applied_weight_percent": 18, "weighted_contribution": 16.38 },
+        "seo": { "score": 88, "configured_weight_percent": 15, "applied_weight_percent": 15, "weighted_contribution": 13.2 },
+        "accessibility": { "score": 95, "configured_weight_percent": 15, "applied_weight_percent": 15, "weighted_contribution": 14.25 },
+        "best-practices": { "score": 92, "configured_weight_percent": 12, "applied_weight_percent": 12, "weighted_contribution": 11.04 }
+      }
+    },
     "optimization_opportunities": [],
     "diagnostics": [],
     "screenshot_review": { "status": "completed", "pages": [] },
@@ -153,6 +175,8 @@ The function accepts an authenticated user's audit ID, verifies ownership, reads
   "analyzed_at": "2026-01-01T00:00:00.000Z"
 }
 ```
+
+New audits use AI Visual Design 40%, Performance 18%, SEO 15%, Accessibility 15%, and Best Practices 12%. The sum is rounded to a whole-number overall score. If one or more categories are unavailable, the score is provisional and the remaining category weights are normalized; missing values are never treated as zero or perfect. `technical_score` remains a separate Lighthouse-only value. Historical audits retain their stored score methodology.
 
 ## Security requirements
 

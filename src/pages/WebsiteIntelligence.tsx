@@ -13,7 +13,78 @@ import { useAccessibleDialog } from '@/hooks/useAccessibleDialog'
 import { VisualReviewPanel } from '@/components/website-intelligence/VisualReviewPanel'
 import { ensureWebsiteProspect } from '@/lib/websiteProspects'
 import { auditFindingTitle, auditFindingWhy, auditFindingRecommendation, clientFriendlyAuditText } from '@/lib/auditReportLanguage'
-import { lighthouseCategoryLabel, rateCategoryScore, rateLighthouseFinding } from '@/lib/websiteAudit'
+import {
+  calculateUnifiedWebsiteScore,
+  lighthouseCategoryLabel,
+  rateCategoryScore,
+  rateLighthouseFinding,
+  unifiedScoreCategories,
+  UNIFIED_WEBSITE_SCORE_VERSION,
+  UNIFIED_WEBSITE_SCORE_WEIGHTS,
+} from '@/lib/websiteAudit'
+
+function websiteScoreDisplay(analysis: any) {
+  const unified = analysis?.analysis_details?.unified_score
+  if (unified?.version === UNIFIED_WEBSITE_SCORE_VERSION) {
+    const calculated = calculateUnifiedWebsiteScore(unifiedScoreCategories(
+      analysis.category_scores,
+      analysis.analysis_details?.visual_audit?.visual_score,
+    ))
+    return {
+      ...calculated,
+      score: calculated.score,
+      isUnified: true,
+      label: calculated.provisional ? 'Provisional website score' : 'Overall website score',
+    }
+  }
+  return {
+    score: typeof analysis?.overall_score === 'number' ? analysis.overall_score : null,
+    provisional: false,
+    interpretation: null,
+    isUnified: false,
+    label: analysis?.analysis_details?.technical_score?.methodology
+      ? 'Earlier technical score'
+      : 'Earlier saved score (calculation unverified)',
+  }
+}
+
+function WebsiteScoreBreakdown({ analysis }: { analysis: any }) {
+  const score = websiteScoreDisplay(analysis)
+  if (!score.isUnified || !('breakdown' in score)) return null
+
+  const labels: Record<keyof typeof UNIFIED_WEBSITE_SCORE_WEIGHTS, string> = {
+    visual_design: 'Visual Design',
+    performance: 'Performance',
+    seo: 'SEO',
+    accessibility: 'Accessibility',
+    'best-practices': 'Best Practices',
+  }
+
+  return (
+    <div className="rounded-lg border border-slate-200 p-3">
+      <h3 className="text-sm font-semibold text-slate-700">Unified score breakdown</h3>
+      {score.interpretation && <p className="mt-1 text-xs font-medium text-slate-700">{score.interpretation}</p>}
+      <p className="mt-1 text-xs text-slate-500">
+        {score.provisional
+          ? `Provisional: missing categories are excluded and available weights are normalized. Unavailable: ${score.unavailable_categories.join(', ')}.`
+          : 'Each category is normalized to a 0–100 scale and contributes according to its weight.'}
+      </p>
+      <div className="mt-2 space-y-1">
+        {(Object.keys(UNIFIED_WEBSITE_SCORE_WEIGHTS) as Array<keyof typeof UNIFIED_WEBSITE_SCORE_WEIGHTS>).map((category) => {
+          const item = score.breakdown[category]
+          return (
+            <div key={category} className="flex flex-wrap justify-between gap-x-3 text-xs text-slate-600">
+              <span>{labels[category]}: {item.score === null ? 'Unavailable' : `${item.score}/100`}</span>
+              <span>
+                {item.score === null ? 'Not included' : `${item.configured_weight_percent}% weight${score.provisional ? ` (${item.applied_weight_percent.toFixed(1)}% applied)` : ''} · ${item.weighted_contribution?.toFixed(2)} points`}
+              </span>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
 
 export function WebsiteIntelligencePage() {
   const queryClient = useQueryClient()
@@ -193,23 +264,35 @@ export function WebsiteIntelligencePage() {
           {lastResult.overallScore !== undefined && (
             <div>
               <div className="flex justify-between text-sm text-slate-600 mb-1">
-                <span>Overall website score</span>
+                <span>{websiteScoreDisplay(lastResult.record).label}</span>
                 <span className="font-semibold">
-                  {typeof lastResult.overallScore === 'number' ? `${lastResult.overallScore}/100` : 'Unavailable'}
+                  {websiteScoreDisplay(lastResult.record).score !== null
+                    ? `${websiteScoreDisplay(lastResult.record).score}/100`
+                    : 'Unavailable'}
                 </span>
               </div>
-              {typeof lastResult.overallScore === 'number' && (
+              {websiteScoreDisplay(lastResult.record).score !== null && (
                 <div className="h-2 rounded-full bg-slate-100">
                   <div
-                    className={`h-2 rounded-full ${lastResult.overallScore >= 90 ? 'bg-green-500' : lastResult.overallScore >= 70 ? 'bg-lime-500' : lastResult.overallScore >= 50 ? 'bg-amber-500' : 'bg-red-500'}`}
-                    style={{ width: `${lastResult.overallScore}%` }}
+                    className={`h-2 rounded-full ${websiteScoreDisplay(lastResult.record).score >= 90 ? 'bg-green-500' : websiteScoreDisplay(lastResult.record).score >= 70 ? 'bg-lime-500' : websiteScoreDisplay(lastResult.record).score >= 50 ? 'bg-amber-500' : 'bg-red-500'}`}
+                    style={{ width: `${websiteScoreDisplay(lastResult.record).score}%` }}
                   />
                 </div>
               )}
             </div>
           )}
 
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <WebsiteScoreBreakdown analysis={lastResult.record} />
+
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+            <div className="rounded-lg border border-slate-200 p-3">
+              <p className="text-xs text-slate-500">Visual Design · 40%</p>
+              <p className="text-lg font-bold text-slate-800">
+                {typeof lastResult.record?.analysis_details?.visual_audit?.visual_score === 'number'
+                  ? lastResult.record.analysis_details.visual_audit.visual_score
+                  : 'Unavailable'}
+              </p>
+            </div>
             {(['performance', 'seo', 'accessibility', 'best-practices'] as const).map((k) => {
               const score = lastResult.pagespeed?.lighthouseResult?.categories?.[k]?.score
               const percent = typeof score === 'number' && Number.isFinite(score) && score >= 0 && score <= 1
@@ -352,19 +435,26 @@ export function WebsiteIntelligencePage() {
               {analysis.overall_score !== null && (
                 <div className="mb-3">
                   <div className="flex justify-between text-sm text-slate-600 mb-1">
-                    <span>{analysis.analysis_details?.technical_score?.methodology ? 'Overall website score' : 'Earlier saved score (calculation unverified)'}</span>
-                    <span>{analysis.overall_score}/100</span>
+                    <span>{websiteScoreDisplay(analysis).label}</span>
+                    <span>{websiteScoreDisplay(analysis).score}/100</span>
                   </div>
                   <div className="h-2 rounded-full bg-slate-100">
                     <div
-                      className={`h-2 rounded-full ${(analysis.overall_score ?? 0) >= 70 ? 'bg-green-500' : (analysis.overall_score ?? 0) >= 40 ? 'bg-amber-500' : 'bg-red-500'}`}
-                      style={{ width: `${(analysis.overall_score ?? 0) * 1.0}%` }}
+                      className={`h-2 rounded-full ${(websiteScoreDisplay(analysis).score ?? 0) >= 70 ? 'bg-green-500' : (websiteScoreDisplay(analysis).score ?? 0) >= 40 ? 'bg-amber-500' : 'bg-red-500'}`}
+                      style={{ width: `${(websiteScoreDisplay(analysis).score ?? 0) * 1.0}%` }}
                     />
                   </div>
+                  {websiteScoreDisplay(analysis).isUnified && websiteScoreDisplay(analysis).provisional && (
+                    <p className="mt-1 text-xs text-amber-700">Some scoring categories were unavailable; this score is provisional.</p>
+                  )}
                 </div>
               )}
               {analysis.overall_score === null && (
-                <p className="mb-3 text-xs text-amber-700">Technical score unavailable; one or more category scores were not returned.</p>
+                <p className="mb-3 text-xs text-amber-700">
+                  {websiteScoreDisplay(analysis).isUnified
+                    ? 'A score is unavailable because none of the scoring categories returned a valid result.'
+                    : 'Technical score unavailable; one or more category scores were not returned.'}
+                </p>
               )}
 
               {analysis.category_scores && (
@@ -453,17 +543,23 @@ export function WebsiteIntelligencePage() {
             {selected.overall_score !== null && (
               <div className="mb-4">
                 <div className="flex justify-between text-sm text-slate-600 mb-1">
-                  <span>{selected.analysis_details?.technical_score?.methodology ? 'Overall website score' : 'Earlier saved score (calculation unverified)'}</span>
-                  <span>{selected.overall_score}/100</span>
+                  <span>{websiteScoreDisplay(selected).label}</span>
+                  <span>{websiteScoreDisplay(selected).score}/100</span>
                 </div>
                 <div className="h-2 rounded-full bg-slate-100">
-                  <div className={`h-2 rounded-full ${selected.overall_score >= 90 ? 'bg-green-500' : selected.overall_score >= 70 ? 'bg-lime-500' : selected.overall_score >= 50 ? 'bg-amber-500' : 'bg-red-500'}`} style={{ width: `${selected.overall_score}%` }} />
+                  <div className={`h-2 rounded-full ${(websiteScoreDisplay(selected).score ?? 0) >= 90 ? 'bg-green-500' : (websiteScoreDisplay(selected).score ?? 0) >= 70 ? 'bg-lime-500' : (websiteScoreDisplay(selected).score ?? 0) >= 50 ? 'bg-amber-500' : 'bg-red-500'}`} style={{ width: `${websiteScoreDisplay(selected).score ?? 0}%` }} />
                 </div>
               </div>
             )}
             {selected.overall_score === null && (
-              <p className="mb-4 text-sm text-amber-700">We could not calculate an overall website score because PageSpeed did not return results for every required area.</p>
+              <p className="mb-4 text-sm text-amber-700">
+                {websiteScoreDisplay(selected).isUnified
+                  ? 'We could not calculate a score because none of the scoring categories returned a valid result.'
+                  : 'We could not calculate an overall website score because PageSpeed did not return results for every required area.'}
+              </p>
             )}
+
+            <WebsiteScoreBreakdown analysis={selected} />
 
             {selected.category_scores && (
               <div className="mb-4">

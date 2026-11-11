@@ -32,9 +32,21 @@ import {
 } from '@/lib/emailDraftGenerator'
 import type { Campaign, EmailDraft, Prospect, WebsiteAnalysis } from '@/types'
 import { assessEmailQuality } from '@/lib/growthIntelligence'
+import { containsEmailJargon, containsExternalAuditReference } from '@/lib/emailCopy'
+import { mapWithConcurrency } from '@/lib/mapWithConcurrency'
+import {
+  AI_EMAIL_APPROACHES,
+  generateAiOutreachDraft,
+  regenerateAiSubjectSuggestions,
+  rewriteAiOutreachDraft,
+  type AiEmailApproach,
+  type AiEmailContextReference,
+  type AiEmailRewriteAction,
+} from '@/lib/emailAi'
 
 const MAX_OUTREACH_BATCH_SIZE = 50
 const MAX_SEND_REQUEST_SIZE = 10
+const MAX_AI_GENERATION_BATCH_SIZE = 10
 const MAX_ATTACHMENT_BASE64_LENGTH = 700_000
 const MAX_BATCH_ATTACHMENT_LENGTH = 4_500_000
 const SIGNATURE_STORAGE_KEY = 'arlotech-email-signature'
@@ -112,6 +124,14 @@ interface SendOutreachMutationResult extends SendOutreachResponse {
 
 interface GeneratedOutreachPreview extends OutreachPreview {
   generatedDraft: GeneratedEmailDraft
+  aiApproach?: AiEmailApproach
+  aiConfidence?: 'high' | 'medium' | 'low'
+  aiRecommendedCallToAction?: string
+  aiSenderName?: string
+  aiSenderBusiness?: string
+  aiSenderEmail?: string
+  aiWebsiteContext?: AiEmailContextReference[]
+  savedDraftId?: string
 }
 
 interface SentOutreachContext {
@@ -182,6 +202,40 @@ async function getOutreachFunctionError(error: unknown) {
     : fallbackMessage
 }
 
+function validateAiPreview(draft: GeneratedEmailDraft, prospect: OutreachProspect) {
+  const body = draft.body.trim()
+  const errors: string[] = []
+  if (draft.subjectSuggestions.length !== 3 || draft.subjectSuggestions.some((item) => !item.trim() || item.length > 200)) {
+    errors.push('The AI did not return three valid subject suggestions.')
+  }
+  if (!body) errors.push('The AI returned an empty email.')
+  if ((body.match(/\?/g) ?? []).length !== 1) errors.push('The email must end with one clear, low-pressure question.')
+  if (
+    /guarantee(?:d|s)?|will\s+(?:double|triple|increase)\s+(?:your\s+)?(?:revenue|sales|enquiries|leads)/i.test(body)
+  ) {
+    errors.push('The email makes an unsupported business-results promise.')
+  }
+  if (containsEmailJargon(body) || containsExternalAuditReference(body) || /https?:\/\/|www\./i.test(body)) {
+    errors.push('Remove technical jargon, external audit references, or unsupported links from the email.')
+  }
+  if (/your website review is attached|the attached pdf|we[’']ve attached|i[’']ve attached|we have attached|please see the attached/i.test(body)) {
+    errors.push('The email mentions an attachment that will not be sent.')
+  }
+  if (/we (?:user )?tested your website|our user testing|conversion test(?:ing)? showed/i.test(body)) {
+    errors.push('The email claims website testing that was not performed.')
+  }
+  if (
+    prospect.business_name_verified &&
+    prospect.business_name.trim() &&
+    !body.toLowerCase().includes(prospect.business_name.trim().toLowerCase())
+  ) {
+    errors.push('The email does not include the verified business name.')
+  }
+  const wordCount = body.split(/\s+/).filter(Boolean).length
+  if (wordCount < 40 || wordCount > 250) errors.push('Keep the email concise (approximately 80–160 words unless context requires more).')
+  return errors
+}
+
 export function EmailDraftsPage() {
   const queryClient = useQueryClient()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -193,14 +247,25 @@ export function EmailDraftsPage() {
   const [editingDraft, setEditingDraft] = useState<EmailDraft | null>(null)
   const [subject, setSubject] = useState('')
   const [body, setBody] = useState('')
+  const [draftAnalysisId, setDraftAnalysisId] = useState('')
   const [manualRecipient, setManualRecipient] = useState('')
   const [manualSubject, setManualSubject] = useState('')
   const [manualBody, setManualBody] = useState('')
   const [manualComplianceConfirmed, setManualComplianceConfirmed] = useState(false)
   const [manualSendResult, setManualSendResult] = useState<OutreachSendResult | null>(null)
   const [campaignId, setCampaignId] = useState('')
+  const [outreachCampaignId, setOutreachCampaignId] = useState('')
   const [prospectId, setProspectId] = useState('')
   const [outreachPreviews, setOutreachPreviews] = useState<GeneratedOutreachPreview[]>([])
+  const [generatorMode, setGeneratorMode] = useState<'ai' | 'local'>('ai')
+  const [aiApproach, setAiApproach] = useState<AiEmailApproach>('audit_based')
+  const [aiGenerating, setAiGenerating] = useState(false)
+  const [aiActionId, setAiActionId] = useState<string | null>(null)
+  const [selectedEmailRanges, setSelectedEmailRanges] = useState<Record<string, { start: number; end: number }>>({})
+  const [draftSearch, setDraftSearch] = useState('')
+  const [draftStatusFilter, setDraftStatusFilter] = useState('all')
+  const [draftProspectFilter, setDraftProspectFilter] = useState('all')
+  const [draftCampaignFilter, setDraftCampaignFilter] = useState('all')
   const [outreachBatchId, setOutreachBatchId] = useState('')
   const [complianceConfirmed, setComplianceConfirmed] = useState(false)
   const [outreachResults, setOutreachResults] = useState<OutreachSendResult[]>([])
@@ -481,29 +546,76 @@ export function EmailDraftsPage() {
       toast.error(`Send up to ${MAX_OUTREACH_BATCH_SIZE} prospects per batch.`)
       return
     }
+    if (generatorMode === 'ai' && selectedProspects.length > MAX_AI_GENERATION_BATCH_SIZE) {
+      toast.error(`Generate AI drafts for up to ${MAX_AI_GENERATION_BATCH_SIZE} prospects at a time. The rule-based fallback can prepare up to ${MAX_OUTREACH_BATCH_SIZE}.`)
+      return
+    }
     const blockedProspects = selectedProspects.filter(getDraftBlockReason)
     if (blockedProspects.length > 0) {
       toast.error('Remove ineligible prospects before preparing the batch.')
       return
     }
     try {
-      const previews = selectedProspects.map((prospect) => {
+      setAiGenerating(true)
+      const outcomes = await mapWithConcurrency(selectedProspects, generatorMode === 'ai' ? 3 : 1, async (prospect) => {
+        try {
         const savedAnalysis = analysisByProspect.get(prospect.id)
         const analysis = hasMatchingWebsiteAnalysis(prospect, savedAnalysis) ? savedAnalysis : undefined
-        const preview = createOutreachPreview(prospect, analysis)
+        const preview: OutreachPreview = generatorMode === 'ai'
+          ? {
+            prospect_id: prospect.id,
+            analysis_id: analysis?.id ?? null,
+            subject: '',
+            body: '',
+            has_website_report: false,
+            suitability: analysis ? getOutreachSuitability(analysis) : 'Incomplete Audit',
+            internal_note: analysis
+              ? 'AI draft for review. It does not claim an attachment.'
+              : 'No matching saved audit was available; verify all website-specific claims before use.',
+          }
+          : createOutreachPreview(prospect, analysis)
         let generatedDraft: GeneratedEmailDraft
-        if (followUpStage !== 'none') {
+        let aiConfidence: GeneratedOutreachPreview['aiConfidence']
+        let aiRecommendedCallToAction: string | undefined
+        let aiSenderName: string | undefined
+        let aiSenderBusiness: string | undefined
+        let aiSenderEmail: string | undefined
+        let generatedAnalysisId = preview.analysis_id
+        if (generatorMode === 'ai') {
           const previousEmail = sentEmailRows.find((message) => message.prospect_id === prospect.id)
-          if (!previousEmail) {
+          if (followUpStage !== 'none' && !previousEmail) {
             throw new Error(`No previously sent email is available for ${prospect.business_name}'s follow-up.`)
           }
-          generatedDraft = generateFollowUpDraft(
-            previousEmail,
-            prospect,
+          const result = await generateAiOutreachDraft({
+            prospectId: prospect.id,
+            approach: aiApproach,
+            tone: generatorTone,
+            length: generatorLength,
+            senderContext,
             followUpStage,
-            effectiveSignature,
-            !!prospect.website && !!analysis,
-          )
+          })
+          if (result.prospect.website !== prospect.website) {
+            throw new Error(`${prospect.business_name}: the AI response did not match the saved website URL.`)
+          }
+          if (
+            prospect.business_name_verified &&
+            result.prospect.businessName !== prospect.business_name
+          ) {
+            throw new Error(`${prospect.business_name}: the AI response did not match the verified business name.`)
+          }
+          generatedDraft = result
+          aiConfidence = result.personalizationConfidence
+          aiRecommendedCallToAction = result.recommendedCallToAction
+          aiSenderName = result.sender.name
+          aiSenderBusiness = result.sender.business
+          aiSenderEmail = result.sender.email
+          generatedAnalysisId = result.analysisId
+          const errors = validateAiPreview(generatedDraft, prospect)
+          if (errors.length) throw new Error(`${prospect.business_name}: ${errors.join(' ')}`)
+        } else if (followUpStage !== 'none') {
+          const previousEmail = sentEmailRows.find((message) => message.prospect_id === prospect.id)
+          if (!previousEmail) throw new Error(`No previously sent email is available for ${prospect.business_name}'s follow-up.`)
+          generatedDraft = generateFollowUpDraft(previousEmail, prospect, followUpStage, effectiveSignature, !!prospect.website && !!analysis)
         } else {
           generatedDraft = generateProfessionalEmailDraft({
             prospect,
@@ -517,32 +629,179 @@ export function EmailDraftsPage() {
           })
         }
         const generatedSubject = generatedDraft.subjectSuggestions[0] || ''
-        const validation = validateProfessionalEmailDraft(
-          generatedDraft,
-          prospect,
-          !!analysis && hasMatchingWebsiteAnalysis(prospect, analysis),
-          generatedSubject,
-        )
-        if (validation.errors.length) {
-          throw new Error(`${prospect.business_name}: ${validation.errors.join(' ')}`)
+        if (generatorMode === 'local') {
+          const validation = validateProfessionalEmailDraft(
+            generatedDraft,
+            prospect,
+            !!analysis && hasMatchingWebsiteAnalysis(prospect, analysis),
+            generatedSubject,
+          )
+          if (validation.errors.length) throw new Error(`${prospect.business_name}: ${validation.errors.join(' ')}`)
         }
         if (generatedSubject.length > 200 || generatedDraft.body.length > 12_000) {
           throw new Error(`${prospect.business_name}'s generated email exceeds the sending limits. Shorten it before preparing the batch.`)
         }
         return {
-          ...preview,
-          subject: generatedSubject,
-          body: generatedDraft.body,
-          generatedDraft,
+          preview: {
+            ...preview,
+            analysis_id: generatedAnalysisId,
+            subject: generatedSubject,
+            body: generatedDraft.body,
+            generatedDraft,
+            ...(generatorMode === 'ai'
+              ? { aiApproach, aiConfidence, aiRecommendedCallToAction, aiSenderName, aiSenderBusiness, aiSenderEmail }
+              : {}),
+          },
+          error: null,
+        }
+        } catch (error) {
+          return {
+            preview: null,
+            error: `${prospect.business_name}: ${error instanceof Error ? error.message : 'Email generation failed.'}`,
+          }
         }
       })
+      const previews = outcomes.flatMap((outcome) => outcome.preview ? [outcome.preview] : [])
+      const failures = outcomes.flatMap((outcome) => outcome.error ? [outcome.error] : [])
+      if (previews.length === 0) {
+        toast.error(failures.join('\n') || 'No email drafts could be generated.')
+        return
+      }
       setOutreachPreviews(previews)
+      setSelectedEmailRanges({})
       setOutreachResults([])
       setOutreachBatchId(crypto.randomUUID())
       setComplianceConfirmed(false)
-      toast.success(`Generated ${previews.length} personalized email${previews.length === 1 ? '' : 's'} for review. They will not be saved as drafts.`)
+      if (failures.length) {
+        toast.warning(`Generated ${previews.length} drafts; ${failures.length} failed. Nothing was saved or sent.`)
+        toast.error(failures.slice(0, 3).join('\n'))
+      } else {
+        toast.success(`Generated ${previews.length} email${previews.length === 1 ? '' : 's'} for review. Nothing was saved or sent.`)
+      }
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Could not generate outreach emails.')
+    } finally {
+      setAiGenerating(false)
+    }
+  }
+
+  const rewriteAiPreview = async (preview: GeneratedOutreachPreview, action: AiEmailRewriteAction) => {
+    const selection = selectedEmailRanges[preview.prospect_id]
+    const selectedText = selection
+      ? preview.body.slice(selection.start, selection.end)
+      : ''
+    if (action === 'rewrite_selection' && !selectedText.trim()) {
+      toast.error('Select a paragraph or sentence in the email body first.')
+      return
+    }
+    if (action === 'rewrite_selection') {
+      const signatureStart = preview.body.lastIndexOf('\n\nKind regards,\n')
+      if (signatureStart >= 0 && selection && selection.end > signatureStart) {
+        toast.error('The configured sender signature cannot be rewritten.')
+        return
+      }
+    }
+    if (!preview.aiApproach) return
+    setAiActionId(preview.prospect_id)
+    try {
+      const result = await rewriteAiOutreachDraft({
+        prospectId: preview.prospect_id,
+        approach: preview.aiApproach,
+        action,
+        body: preview.body,
+        selectedText,
+      })
+      const nextBody = action === 'rewrite_selection' && selection
+        ? `${preview.body.slice(0, selection.start)}${result.body}${preview.body.slice(selection.end)}`
+        : result.body
+      setOutreachPreviews((current) => current.map((item) => {
+        if (item.prospect_id !== preview.prospect_id) return item
+        return {
+          ...item,
+          body: nextBody,
+          aiRecommendedCallToAction: result.recommendedCallToAction,
+          aiWebsiteContext: result.websiteContextUsed,
+          generatedDraft: {
+            ...item.generatedDraft,
+            body: nextBody,
+            subjectSuggestions: result.subjectSuggestions,
+            observationsUsed: result.observationsUsed,
+            wordCount: nextBody.split(/\s+/).filter(Boolean).length,
+          },
+        }
+      }))
+      setComplianceConfirmed(false)
+      toast.success('Email revised. Review the updated draft before sending.')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not rewrite this email.')
+    } finally {
+      setAiActionId(null)
+    }
+  }
+
+  const generateAnotherAiVersion = async (preview: GeneratedOutreachPreview) => {
+    if (!preview.aiApproach) return
+    if (!window.confirm('Replace this preview with a newly generated version? Your current edits will be replaced.')) return
+    setAiActionId(preview.prospect_id)
+    try {
+      const result = await generateAiOutreachDraft({
+        prospectId: preview.prospect_id,
+        approach: preview.aiApproach,
+        tone: generatorTone,
+        length: generatorLength,
+        senderContext,
+        followUpStage,
+      })
+      const prospect = outreachProspectRows.find((item) => item.id === preview.prospect_id)
+      if (!prospect) throw new Error('This prospect is no longer available.')
+      if (result.prospect.website !== prospect.website) throw new Error('The AI response website did not match the saved prospect.')
+      if (prospect.business_name_verified && result.prospect.businessName !== prospect.business_name) {
+        throw new Error('The AI response business name did not match the verified prospect record.')
+      }
+      const errors = validateAiPreview(result, prospect)
+      if (errors.length) throw new Error(errors.join(' '))
+      setOutreachPreviews((current) => current.map((item) => item.prospect_id === preview.prospect_id
+        ? {
+          ...item,
+          analysis_id: result.analysisId,
+          subject: result.subjectSuggestions[0] || '',
+          body: result.body,
+          generatedDraft: result,
+          aiConfidence: result.personalizationConfidence,
+          aiRecommendedCallToAction: result.recommendedCallToAction,
+          aiWebsiteContext: result.websiteContextUsed,
+          aiSenderName: result.sender.name,
+          aiSenderBusiness: result.sender.business,
+          aiSenderEmail: result.sender.email,
+          savedDraftId: undefined,
+        }
+        : item))
+      setComplianceConfirmed(false)
+      toast.success('A new version is ready for review.')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not generate another version.')
+    } finally {
+      setAiActionId(null)
+    }
+  }
+
+  const regenerateAiSubjects = async (preview: GeneratedOutreachPreview) => {
+    if (!preview.aiApproach) return
+    setAiActionId(preview.prospect_id)
+    try {
+      const subjectSuggestions = await regenerateAiSubjectSuggestions({
+        prospectId: preview.prospect_id,
+        approach: preview.aiApproach,
+        body: preview.body,
+      })
+      setOutreachPreviews((current) => current.map((item) => item.prospect_id === preview.prospect_id
+        ? { ...item, generatedDraft: { ...item.generatedDraft, subjectSuggestions } }
+        : item))
+      toast.success('Three new subject suggestions are ready. Choose one to replace the current subject.')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not generate new subject lines.')
+    } finally {
+      setAiActionId(null)
     }
   }
 
@@ -604,14 +863,17 @@ export function EmailDraftsPage() {
           includesReportReference: reportOmitted ? false : preview.generatedDraft.includesReportReference,
           wordCount: body.trim().split(/\s+/).filter(Boolean).length,
         }
-        const validation = validateProfessionalEmailDraft(
-          generatedDraft,
-          prospect,
-          !!analysis && hasMatchingWebsiteAnalysis(prospect, analysis),
-          preview.subject,
-        )
-        if (validation.errors.length) {
-          throw new Error(`${prospect.business_name}: ${validation.errors.join(' ')}`)
+        if (preview.aiApproach) {
+          const validationErrors = validateAiPreview(generatedDraft, prospect)
+          if (validationErrors.length) throw new Error(`${prospect.business_name}: ${validationErrors.join(' ')}`)
+        } else {
+          const validation = validateProfessionalEmailDraft(
+            generatedDraft,
+            prospect,
+            !!analysis && hasMatchingWebsiteAnalysis(prospect, analysis),
+            preview.subject,
+          )
+          if (validation.errors.length) throw new Error(`${prospect.business_name}: ${validation.errors.join(' ')}`)
         }
         if (!preview.subject.trim() || preview.subject.length > 200 || !body.trim() || body.length > 12_000) {
           throw new Error(`${prospect.business_name}'s email has an empty or over-limit subject or message.`)
@@ -658,9 +920,12 @@ export function EmailDraftsPage() {
       if (currentBatch.length) batches.push(currentBatch)
 
       const inlineLogo = await createInlineEmailLogo()
+      const batchSenderName = pendingPreviews[0]?.aiApproach
+        ? pendingPreviews[0].aiSenderName || ''
+        : effectiveSignature.senderName
       for (const batch of batches) {
         const { data, error } = await functionClient.functions.invoke('send-outreach', {
-          body: { batchId: outreachBatchId, emails: batch, complianceConfirmed, inlineLogo, senderName: effectiveSignature.senderName },
+          body: { batchId: outreachBatchId, emails: batch, complianceConfirmed, inlineLogo, senderName: batchSenderName },
         })
         if (error) throw new Error(await getOutreachFunctionError(error))
         if (!isSendOutreachResponse(data)) {
@@ -684,12 +949,38 @@ export function EmailDraftsPage() {
       const failedCount = data.results.length - sentCount
       if (failedCount > 0) toast.error(`Sent ${sentCount}; ${failedCount} were skipped or failed.`)
       else toast.success(`Sent ${sentCount} personalized email${sentCount === 1 ? '' : 's'}.`)
+      const sentDrafts = outreachPreviews.filter((preview) =>
+        preview.savedDraftId &&
+        data.results.some((result) => result.prospect_id === preview.prospect_id && result.status === 'sent'),
+      )
+      for (const preview of sentDrafts) {
+        if (!preview.savedDraftId) continue
+        try {
+          const userId = await getCurrentUserId()
+          const { error: statusError } = await supabase.from('email_drafts')
+            .update({
+              status: 'sent',
+              subject: preview.subject.trim(),
+              body: preview.body.trim(),
+            })
+            .eq('id', preview.savedDraftId)
+            .eq('user_id', userId)
+          if (statusError) {
+            const prospect = outreachProspectRows.find((item) => item.id === preview.prospect_id)
+            toast.error(`Email sent to ${prospect?.business_name || 'prospect'}, but its saved draft status could not be updated: ${statusError.message}`)
+          }
+        } catch (statusError) {
+          const message = statusError instanceof Error ? statusError.message : 'Account access failed.'
+          toast.error(`Email sent to ${preview.prospect_id}, but its saved draft status could not be updated: ${message}`)
+        }
+      }
       if (data.omittedReports.length > 0) {
         toast.warning(`Website PDFs were omitted for these email attempts: ${data.omittedReports.join('; ')}.`)
       }
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['/email-messages'] }),
         queryClient.invalidateQueries({ queryKey: ['/prospects'] }),
+        queryClient.invalidateQueries({ queryKey: ['/email-drafts'] }),
         queryClient.invalidateQueries({ queryKey: ['/dashboard/metrics'] }),
       ])
       const unsentPreviews = outreachPreviews.filter((preview) =>
@@ -855,9 +1146,13 @@ export function EmailDraftsPage() {
         body: body.trim(),
         campaign_id: campaignId || null,
         prospect_id: prospectId || null,
+        website_analysis_id: draftAnalysisId || null,
       }
       const result = editingDraft
-        ? await supabase.from('email_drafts').update(values).eq('id', editingDraft.id).eq('user_id', userId)
+        ? await supabase.from('email_drafts')
+          .update({ ...values, status: 'draft', approved_at: null })
+          .eq('id', editingDraft.id)
+          .eq('user_id', userId)
         : await supabase.from('email_drafts').insert({ ...values, user_id: userId, status: 'draft' })
       if (result.error) throw result.error
     },
@@ -886,6 +1181,73 @@ export function EmailDraftsPage() {
     onError: (err: Error) => toast.error(err.message || 'Could not delete draft'),
   })
 
+  const savePreviewDraftMutation = useMutation({
+    mutationFn: async (preview: GeneratedOutreachPreview) => {
+      if (preview.aiApproach) {
+        const prospect = outreachProspectRows.find((item) => item.id === preview.prospect_id)
+        if (!prospect) throw new Error('This prospect is no longer available.')
+        if (!preview.subject.trim() || preview.subject.length > 200) {
+          throw new Error('Choose a non-empty subject within the 200-character limit before saving.')
+        }
+        const validationErrors = validateAiPreview({
+          ...preview.generatedDraft,
+          body: preview.body,
+        }, prospect)
+        if (validationErrors.length) throw new Error(validationErrors.join(' '))
+      }
+      const userId = await getCurrentUserId()
+      const values = {
+        subject: preview.subject.trim(),
+        body: preview.body.trim(),
+        prospect_id: preview.prospect_id,
+        campaign_id: outreachCampaignId || null,
+        website_analysis_id: preview.analysis_id,
+        template_type: preview.aiApproach || generatorStrategy,
+        generation_source: preview.aiApproach ? 'ai' : 'rules',
+        status: 'draft',
+        approved_at: null,
+      }
+      const result = preview.savedDraftId
+        ? await supabase.from('email_drafts')
+          .update(values)
+          .eq('id', preview.savedDraftId)
+          .eq('user_id', userId)
+          .select('id')
+          .single()
+        : await supabase.from('email_drafts')
+          .insert({ ...values, user_id: userId })
+          .select('id')
+          .single()
+      if (result.error) throw result.error
+      return { prospectId: preview.prospect_id, draftId: result.data.id, updated: !!preview.savedDraftId }
+    },
+    onSuccess: async (result: { prospectId: string; draftId: string; updated: boolean }) => {
+      const { prospectId, draftId, updated } = result
+      setOutreachPreviews((current) => current.map((preview) =>
+        preview.prospect_id === prospectId ? { ...preview, savedDraftId: draftId } : preview,
+      ))
+      await queryClient.invalidateQueries({ queryKey: ['/email-drafts'] })
+      toast.success(updated ? 'Saved draft changes.' : 'Saved as a review-only draft.')
+    },
+    onError: (saveError: Error) => toast.error(saveError.message || 'Could not save this email draft.'),
+  })
+
+  const updateDraftStatusMutation = useMutation({
+    mutationFn: async ({ draft, status }: { draft: EmailDraft; status: 'draft' | 'ready_for_review' | 'approved' }) => {
+      const userId = await getCurrentUserId()
+      const { error } = await supabase.from('email_drafts')
+        .update({
+          status,
+          approved_at: status === 'approved' ? new Date().toISOString() : null,
+        })
+        .eq('id', draft.id)
+        .eq('user_id', userId)
+      if (error) throw error
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['/email-drafts'] }),
+    onError: (statusError: Error) => toast.error(statusError.message || 'Could not update draft status.'),
+  })
+
   const closeForm = () => {
     setShowForm(false)
     setEditingDraft(null)
@@ -893,6 +1255,7 @@ export function EmailDraftsPage() {
     setBody('')
     setCampaignId('')
     setProspectId('')
+    setDraftAnalysisId('')
   }
 
   const openEditForm = (draft: EmailDraft) => {
@@ -901,6 +1264,7 @@ export function EmailDraftsPage() {
     setBody(draft.body)
     setCampaignId(draft.campaign_id || '')
     setProspectId(draft.prospect_id || '')
+    setDraftAnalysisId(draft.website_analysis_id || '')
     setShowForm(true)
   }
 
@@ -979,6 +1343,7 @@ export function EmailDraftsPage() {
     setBody(draft.body)
     setCampaignId(draft.campaign_id || '')
     setProspectId(draft.prospect_id || '')
+    setDraftAnalysisId(draft.website_analysis_id || '')
     setShowForm(true)
   }
 
@@ -992,6 +1357,22 @@ export function EmailDraftsPage() {
 
   const campaignOptions = (campaigns || []) as Pick<Campaign, 'id' | 'name'>[]
   const draftRows = (drafts || []) as EmailDraft[]
+  const draftAnalysisOptions = outreachAnalysisRows.filter((analysis) =>
+    analysis.prospect_id === prospectId &&
+    (prospectId ? hasMatchingWebsiteAnalysis(
+      outreachProspectRows.find((prospect) => prospect.id === prospectId) || { website: null },
+      analysis,
+    ) : false),
+  )
+  const filteredDraftRows = draftRows.filter((draft) => {
+    const prospect = outreachProspectRows.find((item) => item.id === draft.prospect_id)
+    const matchesSearch = !draftSearch.trim() ||
+      `${draft.subject} ${draft.body} ${prospect?.business_name || ''}`.toLowerCase().includes(draftSearch.trim().toLowerCase())
+    return matchesSearch &&
+      (draftStatusFilter === 'all' || draft.status === draftStatusFilter) &&
+      (draftProspectFilter === 'all' || draft.prospect_id === draftProspectFilter) &&
+      (draftCampaignFilter === 'all' || draft.campaign_id === draftCampaignFilter)
+  })
 
   return (
     <div className="space-y-6">
@@ -1123,12 +1504,47 @@ export function EmailDraftsPage() {
         <div>
           <h2 className="text-lg font-semibold text-slate-800">{localStorage.getItem('arlotech-login-mode') === 'blacksite' ? 'BATCH TRANSMISSION ASSEMBLY' : 'Personalized outreach batch'}</h2>
           <p className="mt-1 text-sm text-slate-500">
-            Choose the writing style, select prospects with website links, then review each personalized draft. These previews are not saved to Drafts. Sending is processed in safe batches of {MAX_SEND_REQUEST_SIZE}, up to the account limit of 50 per rolling 24 hours.
-            A website link is required to generate a draft. Contact and audit data are optional for drafting, but sends still require an eligible recipient and a matching audit with an evidence-backed finding.
+            Generate evidence-aware drafts, review or edit each one, and save it when ready. Generation never sends email. AI batches are limited to {MAX_AI_GENERATION_BATCH_SIZE} and 40 AI requests per rolling 24 hours; sending is processed in batches of {MAX_SEND_REQUEST_SIZE}, up to 50 per rolling 24 hours.
+            A website link is required. AI generation uses saved prospect, audit, notes, profile, and communication history when available. Sending still requires an eligible recipient and a matching audit with actionable evidence.
           </p>
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <label className="block space-y-1">
+            <span className="text-sm font-medium text-slate-700">Generator</span>
+            <select
+              value={generatorMode}
+              onChange={(event) => setGeneratorMode(event.target.value as 'ai' | 'local')}
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+            >
+              <option value="ai">AI personalized (recommended)</option>
+              <option value="local">Rule-based fallback</option>
+            </select>
+            <span className="block text-xs text-slate-500">The fallback is manual selection only; AI failures are never silently replaced.</span>
+          </label>
+          {generatorMode === 'ai' ? (
+            <label className="block space-y-1">
+              <span className="text-sm font-medium text-slate-700">AI email approach</span>
+              <select
+                value={aiApproach}
+                onChange={(event) => setAiApproach(event.target.value as AiEmailApproach)}
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+              >
+                {AI_EMAIL_APPROACHES.map((approach) => (
+                  <option key={approach} value={approach}>
+                    {{
+                      professional: 'Professional',
+                      friendly: 'Friendly',
+                      audit_based: 'Audit-based',
+                      value_first: 'Value-first',
+                      short: 'Short',
+                      website_redesign: 'Website redesign',
+                    }[approach]}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : (
           <label className="block space-y-1">
             <span className="text-sm font-medium text-slate-700">Message type</span>
             <select
@@ -1142,6 +1558,7 @@ export function EmailDraftsPage() {
             </select>
             <span className="block text-xs leading-5 text-slate-500">{strategyDescriptions[generatorStrategy]}</span>
           </label>
+          )}
           <label className="block space-y-1">
             <span className="text-sm font-medium text-slate-700">Tone</span>
             <select
@@ -1183,6 +1600,17 @@ export function EmailDraftsPage() {
             </select>
             <span className="block text-xs text-slate-500">Follow-ups use the most recently sent email for each selected prospect.</span>
           </label>
+          <label className="block space-y-1">
+            <span className="text-sm font-medium text-slate-700">Campaign for saved drafts (optional)</span>
+            <select
+              value={outreachCampaignId}
+              onChange={(event) => setOutreachCampaignId(event.target.value)}
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+            >
+              <option value="">No campaign</option>
+              {campaignOptions.map((campaign) => <option key={campaign.id} value={campaign.id}>{campaign.name}</option>)}
+            </select>
+          </label>
         </div>
         <label className="block space-y-1">
           <span className="text-sm font-medium text-slate-700">Extra context or offer details (optional)</span>
@@ -1198,6 +1626,9 @@ export function EmailDraftsPage() {
         </label>
         <details className="rounded-lg border border-slate-200 p-3">
           <summary className="cursor-pointer text-sm font-medium text-slate-700">Email signature</summary>
+          <p className="mt-2 text-xs text-slate-500">
+            AI-generated signatures use your account profile name, email, and company. Profile email is not invented; update the profile if a detail is missing.
+          </p>
           <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {([
               ['businessName', 'Business name'],
@@ -1313,12 +1744,13 @@ export function EmailDraftsPage() {
             variant="secondary"
             onClick={prepareOutreachPreviews}
             disabled={
+              aiGenerating ||
               validSelectedOutreachIds.length === 0 ||
               outreachProspectsLoading ||
               !!outreachProspectsError
             }
           >
-            <Sparkles className="h-4 w-4" /> Generate personalized emails
+            <Sparkles className="h-4 w-4" /> {aiGenerating ? 'Generating drafts…' : 'Generate personalized emails'}
           </Button>
         </div>
 
@@ -1327,10 +1759,10 @@ export function EmailDraftsPage() {
             <div>
               <h3 className="font-semibold text-slate-800">{localStorage.getItem('arlotech-login-mode') === 'blacksite' ? 'REVIEW PAYLOADS BEFORE DEPLOYMENT' : 'Review each generated email before sending'}</h3>
               <p className="mt-1 text-xs text-slate-500">
-                These temporary previews are not saved in Drafts. Your edits stay here until you leave; sent emails remain available in Replies and message history. Review names, recipient details, and claims; deliverability cannot be guaranteed.
+                These are unsent previews. Edits remain here until you save them as drafts or leave. Review recipient details and every claim; generation does not send anything.
               </p>
             </div>
-            {outreachPreviews.map((preview: OutreachPreview) => {
+            {outreachPreviews.map((preview: GeneratedOutreachPreview) => {
               const prospect = outreachProspectRows.find((item: OutreachProspect) => item.id === preview.prospect_id)
               if (!prospect) return null
               return (
@@ -1340,6 +1772,18 @@ export function EmailDraftsPage() {
                     <div className="min-w-0">
                       <p className="break-words text-sm font-medium text-slate-800">{prospect.business_name}</p>
                       <p className="break-all text-xs text-slate-500">{prospect.email}</p>
+                      {preview.aiApproach && (
+                        <p className="mt-1 text-xs text-slate-600">
+                          AI {preview.aiApproach.replaceAll('_', ' ')} approach
+                          {preview.aiConfidence ? ` · ${preview.aiConfidence} personalization confidence` : ''}
+                        </p>
+                      )}
+                      {preview.aiApproach && (
+                        <p className="mt-1 break-words text-xs text-slate-600">
+                          Sender identity: {preview.aiSenderName || 'No profile name set'} · {preview.aiSenderBusiness || 'ARLOTECH Digital Solutions'}
+                          {preview.aiSenderEmail ? ` · ${preview.aiSenderEmail}` : ' · No profile email available'}
+                        </p>
+                      )}
                       {hasPreviousSend(prospect) && (
                         <p className="mt-1 inline-block rounded-full border border-amber-300 bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-900">
                           Previously contacted — resend confirmation required
@@ -1378,25 +1822,158 @@ export function EmailDraftsPage() {
                       className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-arlotech focus:outline-none focus:ring-2 focus:ring-arlotech/20"
                     />
                   </label>
+                  {preview.aiApproach && (
+                    <div className="space-y-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-xs font-medium text-slate-600">Subject suggestions:</span>
+                        {preview.generatedDraft.subjectSuggestions.map((suggestion, index) => (
+                          <button
+                            key={`${preview.prospect_id}-subject-${index}`}
+                            type="button"
+                            onClick={() => {
+                              setComplianceConfirmed(false)
+                              setOutreachPreviews((current) => current.map((item) =>
+                                item.prospect_id === preview.prospect_id ? { ...item, subject: suggestion } : item,
+                              ))
+                            }}
+                            className="rounded-full border border-slate-300 px-2 py-1 text-left text-xs text-slate-700 hover:border-arlotech"
+                          >
+                            {suggestion}
+                          </button>
+                        ))}
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => regenerateAiSubjects(preview)}
+                          disabled={aiActionId === preview.prospect_id}
+                        >
+                          {aiActionId === preview.prospect_id ? 'Working…' : 'Regenerate subjects'}
+                        </Button>
+                      </div>
+                      {preview.generatedDraft.observationsUsed.length > 0 && (
+                        <p className="text-xs text-slate-600">
+                          Audit evidence used: {preview.generatedDraft.observationsUsed.join(' · ')}
+                        </p>
+                      )}
+                      {!!preview.aiWebsiteContext?.length && (
+                        <div className="text-xs text-slate-600">
+                          Website context used:{' '}
+                          {preview.aiWebsiteContext.map((page, index) => (
+                            <span key={page.id}>
+                              {index > 0 ? ' · ' : ''}
+                              <a
+                                href={page.source_url}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-arlotech underline underline-offset-2"
+                                title={page.title || page.source_url}
+                              >
+                                {page.source_label}
+                              </a>
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      {preview.aiRecommendedCallToAction && (
+                        <p className="text-xs text-slate-600">
+                          Suggested call to action: {preview.aiRecommendedCallToAction}
+                        </p>
+                      )}
+                    </div>
+                  )}
                   <label className="block space-y-1">
                     <span className="text-xs font-medium text-slate-600">Message</span>
                     <textarea
                       value={preview.body}
                       maxLength={12000}
+                      disabled={aiActionId === preview.prospect_id}
+                      onSelect={(event) => {
+                        const { selectionStart, selectionEnd } = event.currentTarget
+                        setSelectedEmailRanges((current) => ({
+                          ...current,
+                          [preview.prospect_id]: { start: selectionStart, end: selectionEnd },
+                        }))
+                      }}
                       onChange={(event) => {
                         setComplianceConfirmed(false)
                         setOutreachPreviews((current) =>
                           current.map((item) =>
                             item.prospect_id === preview.prospect_id
-                              ? { ...item, body: event.target.value }
+                              ? {
+                                ...item,
+                                body: event.target.value,
+                                generatedDraft: {
+                                  ...item.generatedDraft,
+                                  body: event.target.value,
+                                  wordCount: event.target.value.trim().split(/\s+/).filter(Boolean).length,
+                                },
+                              }
                               : item,
                           ),
                         )
                       }}
                       rows={8}
-                      className="w-full resize-y rounded-lg border border-slate-300 px-3 py-2 text-sm leading-6 focus:border-arlotech focus:outline-none focus:ring-2 focus:ring-arlotech/20"
+                      className="w-full resize-y rounded-lg border border-slate-300 px-3 py-2 text-sm leading-6 focus:border-arlotech focus:outline-none focus:ring-2 focus:ring-arlotech/20 disabled:bg-slate-50"
                     />
                   </label>
+                  {preview.aiApproach && (
+                    <>
+                      <div className="flex flex-wrap gap-2">
+                        {([
+                          ['shorten', 'Make shorter'],
+                          ['formal', 'More formal'],
+                          ['friendly', 'Friendlier'],
+                          ['persuasive', 'More persuasive'],
+                          ['change_cta', 'Change call to action'],
+                          ['rewrite_selection', 'Rewrite selected text'],
+                        ] as const).map(([action, label]) => (
+                          <Button
+                            key={action}
+                            variant="secondary"
+                            size="sm"
+                            onClick={() => rewriteAiPreview(preview, action)}
+                            disabled={aiActionId === preview.prospect_id}
+                          >
+                            {label}
+                          </Button>
+                        ))}
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => generateAnotherAiVersion(preview)}
+                          disabled={aiActionId === preview.prospect_id}
+                        >
+                          Generate another version
+                        </Button>
+                      </div>
+                    </>
+                  )}
+                  <div className="flex flex-wrap justify-end gap-2">
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={async () => {
+                        try {
+                          await navigator.clipboard.writeText(`Subject: ${preview.subject}\n\n${preview.body}`)
+                          toast.success('Email copied.')
+                        } catch (copyError) {
+                          toast.error(copyError instanceof Error ? `Could not copy email: ${copyError.message}` : 'Could not copy email.')
+                        }
+                      }}
+                    >
+                      <Copy className="h-3.5 w-3.5" /> Copy
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => savePreviewDraftMutation.mutate(preview)}
+                      disabled={savePreviewDraftMutation.isPending || !preview.subject.trim() || !preview.body.trim()}
+                    >
+                      {savePreviewDraftMutation.isPending
+                        ? 'Saving…'
+                        : preview.savedDraftId ? 'Save draft changes' : 'Save as draft'}
+                    </Button>
+                  </div>
                 </article>
               )
             })}
@@ -1497,7 +2074,7 @@ export function EmailDraftsPage() {
           </div>
           <Textarea label="Body" value={body} onChange={setBody} rows={6} />
           <div className="rounded-lg border border-slate-200 bg-slate-50 p-3"><div className="flex items-center justify-between"><p className="text-sm font-semibold text-slate-800">Email quality check</p><span className="text-sm font-bold text-slate-700">{draftQuality.score}/100</span></div><div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-200"><div className="h-full rounded-full bg-arlotech" style={{ width: `${draftQuality.score}%` }} /></div><div className="mt-2 grid gap-1 sm:grid-cols-2">{draftQuality.checks.map(check => <p key={check.label} className={`text-xs ${check.pass ? 'text-emerald-700' : check.severity === 'error' ? 'text-red-700' : 'text-amber-700'}`}>{check.pass ? '✓' : '•'} {check.label === 'No recent duplicate' ? 'No previous send to this address' : check.label}</p>)}</div><p className="mt-2 text-[11px] text-slate-500">Advisory checks only. Review the recipient, conversation history, consent and claims before sending.</p></div>
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             <div className="space-y-1">
               <label htmlFor="draft-campaign" className="block text-sm font-medium text-slate-700">Campaign (optional)</label>
               <select id="draft-campaign" value={campaignId} onChange={(event) => setCampaignId(event.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
@@ -1507,9 +2084,23 @@ export function EmailDraftsPage() {
             </div>
             <div className="space-y-1">
               <label htmlFor="draft-prospect" className="block text-sm font-medium text-slate-700">Prospect (optional)</label>
-              <select id="draft-prospect" value={prospectId} onChange={(event) => setProspectId(event.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
+              <select id="draft-prospect" value={prospectId} onChange={(event) => {
+                setProspectId(event.target.value)
+                setDraftAnalysisId('')
+              }} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
                 <option value="">No prospect</option>
                 {prospectOptions.map((prospect) => <option key={prospect.id} value={prospect.id}>{prospect.business_name}</option>)}
+              </select>
+            </div>
+            <div className="space-y-1">
+              <label htmlFor="draft-analysis" className="block text-sm font-medium text-slate-700">Website audit (optional)</label>
+              <select id="draft-analysis" value={draftAnalysisId} onChange={(event) => setDraftAnalysisId(event.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" disabled={!prospectId}>
+                <option value="">No linked audit</option>
+                {draftAnalysisOptions.map((analysis) => (
+                  <option key={analysis.id} value={analysis.id}>
+                    {analysis.website_url} · {analysis.analyzed_at ? new Date(analysis.analyzed_at).toLocaleDateString() : 'Date unavailable'}
+                  </option>
+                ))}
               </select>
             </div>
           </div>
@@ -1522,18 +2113,84 @@ export function EmailDraftsPage() {
         </Card>
       )}
 
+      <Card className="grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-4">
+        <label className="space-y-1">
+          <span className="text-xs font-medium text-slate-600">Search drafts</span>
+          <input
+            type="search"
+            value={draftSearch}
+            onChange={(event) => setDraftSearch(event.target.value)}
+            placeholder="Subject, message, or prospect"
+            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+          />
+        </label>
+        <label className="space-y-1">
+          <span className="text-xs font-medium text-slate-600">Status</span>
+          <select value={draftStatusFilter} onChange={(event) => setDraftStatusFilter(event.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
+            <option value="all">All statuses</option>
+            <option value="draft">Draft</option>
+            <option value="ready_for_review">Ready for Review</option>
+            <option value="approved">Approved</option>
+            <option value="sent">Sent</option>
+          </select>
+        </label>
+        <label className="space-y-1">
+          <span className="text-xs font-medium text-slate-600">Prospect</span>
+          <select value={draftProspectFilter} onChange={(event) => setDraftProspectFilter(event.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
+            <option value="all">All prospects</option>
+            {outreachProspectRows.map((prospect) => <option key={prospect.id} value={prospect.id}>{prospect.business_name}</option>)}
+          </select>
+        </label>
+        <label className="space-y-1">
+          <span className="text-xs font-medium text-slate-600">Campaign</span>
+          <select value={draftCampaignFilter} onChange={(event) => setDraftCampaignFilter(event.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
+            <option value="all">All campaigns</option>
+            <option value="">No campaign</option>
+            {campaignOptions.map((campaign) => <option key={campaign.id} value={campaign.id}>{campaign.name}</option>)}
+          </select>
+        </label>
+      </Card>
+
       <div className="space-y-3">
-        {draftRows.map((draft) => (
+        {filteredDraftRows.map((draft) => {
+          const draftProspect = outreachProspectRows.find((prospect) => prospect.id === draft.prospect_id)
+          const draftCampaign = campaignOptions.find((campaign) => campaign.id === draft.campaign_id)
+          const draftAnalysis = outreachAnalysisRows.find((analysis) => analysis.id === draft.website_analysis_id)
+          return (
           <Card key={draft.id} className="p-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0 flex-1">
                 <p className="font-medium text-slate-800">{draft.subject}</p>
                 <p className="mt-1 whitespace-pre-wrap text-sm text-slate-500 line-clamp-3">{draft.body}</p>
                 <p className="mt-2 text-xs text-slate-400">
-                  {draft.status} · Updated {new Date(draft.updated_at).toLocaleDateString()}
+                  {draft.status.replaceAll('_', ' ')} · Created {draft.created_at ? new Date(draft.created_at).toLocaleDateString() : 'date unavailable'}
+                  {draft.updated_at ? ` · Updated ${new Date(draft.updated_at).toLocaleDateString()}` : ''}
+                </p>
+                <p className="mt-1 break-words text-xs text-slate-500">
+                  {draftProspect ? `Prospect: ${draftProspect.business_name}` : 'No prospect linked'}
+                  {draftCampaign ? ` · Campaign: ${draftCampaign.name}` : ''}
+                  {draft.website_analysis_id ? ` · Audit: ${draftAnalysis?.website_url || 'linked audit'}` : ''}
                 </p>
               </div>
               <div className="flex gap-2">
+                <select
+                  aria-label={`Status for ${draft.subject}`}
+                  value={draft.status}
+                  onChange={(event) => {
+                    if (event.target.value === 'sent') return
+                    updateDraftStatusMutation.mutate({
+                      draft,
+                      status: event.target.value as 'draft' | 'ready_for_review' | 'approved',
+                    })
+                  }}
+                  className="rounded-lg border border-slate-300 px-2 py-1 text-xs"
+                  disabled={updateDraftStatusMutation.isPending || draft.status === 'sent'}
+                >
+                  <option value="draft">Draft</option>
+                  <option value="ready_for_review">Ready for Review</option>
+                  <option value="approved">Approved</option>
+                  {draft.status === 'sent' && <option value="sent">Sent</option>}
+                </select>
                 <Button variant="secondary" size="sm" onClick={() => openEditForm(draft)}>
                   <Pencil className="h-3.5 w-3.5" /> Edit
                 </Button>
@@ -1553,9 +2210,13 @@ export function EmailDraftsPage() {
               </div>
             </div>
           </Card>
-        ))}
+          )
+        })}
         {draftRows.length === 0 && (
           <Card className="p-6 text-center text-sm text-slate-500">No drafts yet. Create a draft to get started.</Card>
+        )}
+        {draftRows.length > 0 && filteredDraftRows.length === 0 && (
+          <Card className="p-6 text-center text-sm text-slate-500">No drafts match the selected search and filters.</Card>
         )}
       </div>
     </div>

@@ -1,13 +1,16 @@
 import { describe, expect, it } from 'vitest'
 import {
+  calculateUnifiedWebsiteScore,
   calculateTechnicalHealthScore,
   buildEvidenceBasedPositiveObservations,
   assessLighthouseMetric,
   classifyLighthouseAudits,
   extractCategoryScores,
+  interpretWebsiteScore,
   scoreToPercent,
   rateCategoryScore,
   summarizePageInspectionCoverage,
+  unifiedScoreCategories,
 } from './websiteAudit'
 import type { PageSpeedResult } from './websiteAnalysis'
 
@@ -53,6 +56,92 @@ describe('Lighthouse evidence and score handling', () => {
     expect(calculateTechnicalHealthScore(categories)).toBe(93)
     expect(calculateTechnicalHealthScore({ ...categories, accessibility: null })).toBeNull()
     expect(calculateTechnicalHealthScore({ ...categories, performance: 101 })).toBeNull()
+  })
+
+  it('calculates the specified unified score with visual design weighted at 40 percent', () => {
+    const score = calculateUnifiedWebsiteScore({
+      visual_design: 80,
+      performance: 75,
+      seo: 90,
+      accessibility: 70,
+      'best-practices': 85,
+    })
+
+    expect(score.score).toBe(80)
+    expect(score.unrounded_score).toBe(79.7)
+    expect(score.provisional).toBe(false)
+    expect(score.interpretation).toBe('Very Good')
+    expect(score.breakdown.visual_design).toEqual({
+      score: 80,
+      configured_weight_percent: 40,
+      applied_weight_percent: 40,
+      weighted_contribution: 32,
+    })
+    expect(score.breakdown['best-practices'].weighted_contribution).toBe(10.2)
+  })
+
+  it('normalizes available weights for provisional scores without treating missing categories as zero or perfect', () => {
+    const score = calculateUnifiedWebsiteScore({
+      visual_design: null,
+      performance: 75,
+      seo: 90,
+      accessibility: 70,
+      'best-practices': 85,
+    })
+
+    expect(score.score).toBe(80)
+    expect(score.provisional).toBe(true)
+    expect(score.unavailable_categories).toEqual(['visual_design'])
+    expect(score.breakdown.visual_design).toMatchObject({
+      score: null,
+      configured_weight_percent: 40,
+      applied_weight_percent: 0,
+      weighted_contribution: null,
+    })
+    expect(score.breakdown.performance.applied_weight_percent).toBe(30)
+  })
+
+  it('returns no score when every category is unavailable and rejects out-of-range values', () => {
+    const noScores = calculateUnifiedWebsiteScore({
+      visual_design: null,
+      performance: null,
+      seo: null,
+      accessibility: null,
+      'best-practices': null,
+    })
+    const invalidScore = calculateUnifiedWebsiteScore({
+      visual_design: 101,
+      performance: null,
+      seo: null,
+      accessibility: null,
+      'best-practices': null,
+    })
+
+    expect(noScores.score).toBeNull()
+    expect(noScores.unrounded_score).toBeNull()
+    expect(noScores.provisional).toBe(true)
+    expect(invalidScore.score).toBeNull()
+    expect(interpretWebsiteScore(95)).toBe('Excellent')
+    expect(interpretWebsiteScore(85)).toBe('Very Good')
+    expect(interpretWebsiteScore(75)).toBe('Good')
+    expect(interpretWebsiteScore(65)).toBe('Fair')
+    expect(interpretWebsiteScore(50)).toBe('Needs Improvement')
+    expect(interpretWebsiteScore(20)).toBe('Poor')
+  })
+
+  it('normalizes stored technical category values and the optional visual score', () => {
+    expect(unifiedScoreCategories({
+      performance: 80,
+      seo: null,
+      accessibility: 70,
+      'best-practices': 101,
+    }, 90)).toEqual({
+      visual_design: 90,
+      performance: 80,
+      seo: null,
+      accessibility: 70,
+      'best-practices': null,
+    })
   })
 
   it('rates Double C Plumbing metrics and category scores with shared thresholds', () => {

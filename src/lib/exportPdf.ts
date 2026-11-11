@@ -1,8 +1,12 @@
 import jsPDF from 'jspdf'
 import {
+  calculateUnifiedWebsiteScore,
   calculateTechnicalHealthScore,
   LIGHTHOUSE_CATEGORY_WEIGHTS,
   rateLighthouseFinding,
+  unifiedScoreCategories,
+  UNIFIED_WEBSITE_SCORE_VERSION,
+  UNIFIED_WEBSITE_SCORE_WEIGHTS,
 } from '@/lib/websiteAudit'
 import {
   auditFindingBusinessImpact,
@@ -535,7 +539,16 @@ function buildConsultantWebsiteAnalysisPdf(
     Number.isFinite(rec.overall_score)
       ? rec.overall_score
       : null
-  const score = calculateTechnicalHealthScore(scoreInputs) ?? legacyScore
+  const unifiedMetadata = rec.analysis_details?.unified_score
+  const unifiedScore = unifiedMetadata?.version === UNIFIED_WEBSITE_SCORE_VERSION
+      ? calculateUnifiedWebsiteScore(unifiedScoreCategories(
+          scoreInputs,
+          rec.analysis_details?.visual_audit?.visual_score,
+        ))
+      : null
+  const score = unifiedScore
+      ? unifiedScore.score
+      : calculateTechnicalHealthScore(scoreInputs) ?? legacyScore
   const findings: PdfFinding[] = Array.isArray(rec.findings) ? rec.findings : []
   const measuredCandidates = normalizePdfFindings(findings)
     .map((finding) => ({ ...finding, assessment_rating: rateLighthouseFinding(finding) }))
@@ -628,6 +641,17 @@ function buildConsultantWebsiteAnalysisPdf(
     )
   }
   report.addWebsiteHealthCard(score, scoreSummary, experienceSummary)
+  if (unifiedScore?.interpretation) {
+    report.addParagraph(
+      `${unifiedScore.interpretation}${unifiedScore.provisional ? ' — provisional, because one or more scoring categories were unavailable.' : ''}`,
+      { size: 8.5, bold: true, color: NAVY },
+    )
+  } else if (score !== null) {
+    report.addParagraph(
+      'This historical report retains its saved technical-only score methodology; it has not been recalculated using the newer unified weights.',
+      { size: 8, color: MUTED },
+    )
+  }
   report.addParagraph(
     reviewedAreas.length
       ? `Review areas included ${reviewedAreas.join('; ')}.`
@@ -638,6 +662,31 @@ function buildConsultantWebsiteAnalysisPdf(
     'The score is a guide to the areas reviewed, not a promise of search position, sales, or inquiries.',
     { size: 7.5, color: MUTED },
   )
+  if (unifiedScore) {
+    report.addSection('Website score breakdown')
+    report.addParagraph(
+      unifiedScore.provisional
+        ? `Provisional score: unavailable categories were excluded and the remaining weights were normalized. Unavailable: ${unifiedScore.unavailable_categories.join(', ')}.`
+        : 'Unified score uses the weighted categories below. Each category is normalized to a 0–100 scale.',
+      { size: 8.5 },
+    )
+    const categoryLabels: Record<keyof typeof UNIFIED_WEBSITE_SCORE_WEIGHTS, string> = {
+      visual_design: 'Visual Design',
+      performance: 'Performance',
+      seo: 'SEO',
+      accessibility: 'Accessibility',
+      'best-practices': 'Best Practices',
+    }
+    for (const category of Object.keys(UNIFIED_WEBSITE_SCORE_WEIGHTS) as Array<
+      keyof typeof UNIFIED_WEBSITE_SCORE_WEIGHTS
+    >) {
+      const details = unifiedScore.breakdown[category]
+      report.addParagraph(
+        `${categoryLabels[category]}: ${details.score === null ? 'Unavailable' : `${details.score}/100`} | Weight ${details.configured_weight_percent}%${unifiedScore.provisional && details.score !== null ? ` (applied ${details.applied_weight_percent.toFixed(1)}%)` : ''} | Weighted contribution ${details.weighted_contribution === null ? '—' : details.weighted_contribution.toFixed(2)}`,
+        { size: 8.5 },
+      )
+    }
+  }
 
   report.addSection(`Customer friction points (${topFindings.length})`)
   if (topFindings.length === 0) {

@@ -66,17 +66,17 @@ The Website Intelligence page orchestrates three Supabase Edge Functions:
 
 - `pagespeed-insights` — calls the Google PageSpeed Insights API (Lighthouse) for performance, accessibility, SEO and best-practices scores plus audit details.
 - `extract-content` — fetches the target page server-side and extracts title, meta, headings, text, links, images, schema.org, etc. For client-rendered pages, contact extraction also checks a small number of bounded same-origin JavaScript bundles for embedded email and telephone links.
-- `analyze-website-visuals` — after screenshots are saved, sends their image data to the OpenAI Responses API for a separate, evidence-based visual assessment. It requires server-side `OPENAI_API_KEY` and `OPENAI_VISION_MODEL` secrets; screenshots are not sent if no stored images are available.
+- `analyze-website-visuals` — after screenshots are saved, sends their image data to the OpenAI Responses API for a separate, evidence-based visual assessment. It requires the server-side `OPENAI_API_KEY`; `OPENAI_VISION_MODEL` is optional and defaults to `gpt-4.1-mini`. Screenshots are not sent if no stored images are available.
 
-The PageSpeed scores, extracted page details, and measured findings are stored in the `website_analyses` Supabase table.
+The PageSpeed scores, extracted page details, and measured findings are stored in the `website_analyses` Supabase table. The Lighthouse technical score remains distinct from the versioned unified score, which incorporates the visual score when available.
 
 After a successful analysis linked to a prospect, valid website-extracted email and phone values replace saved values. If the website yields no email or phone, the saved value is retained. The current extractor does not infer a person's name.
 
 Customer-facing PDFs use the official Arlotech Digital Solutions logo without an added frame. Website audit reports adapt to the confirmed findings, use one to three readable pages, and include a clear health overview, customer-focused explanations of the priority issues, and a low-pressure contact invitation. They avoid repeating findings, raw file paths, developer-only wording, do-it-yourself instructions, and estimated savings that could be mistaken for guaranteed results. Verified prospect names are used only when explicitly confirmed.
 
-The displayed ArloTech composite score is the rounded arithmetic mean of available Lighthouse category scores; it is not an official Lighthouse score. Prospect business names default to unverified and appear as the report recipient only after an account user verifies them in the prospect record.
+New audits use a versioned unified score: Visual Design 40%, Performance 18%, SEO 15%, Accessibility 15%, and Best Practices 12%. The displayed score is rounded to a whole number and is not an official Lighthouse score. If a category is unavailable, the dashboard labels the result provisional and normalizes the weights of the available categories rather than treating missing data as zero or perfect. The PDF uses the same calculation and breakdown. Historical audits retain their saved score and original technical-only methodology. Prospect business names default to unverified and appear as the report recipient only after an account user verifies them in the prospect record.
 
-Website Intelligence can also save PageSpeed screenshots from the homepage (desktop and mobile where available) and up to three same-origin pages. If the initial HTML contains no page links, JavaScript-rendered navigation may require a browser-based crawler and will not be discovered by this bounded pass. Screenshots are saved in a private, user-scoped Supabase Storage bucket and sent to the configured OpenAI vision model for a separate visual assessment. Do not use this feature on screenshots containing information you do not want sent to OpenAI. Visual findings are model-generated suggestions that should be checked by a person; static screenshots cannot verify menus, forms, or other interactive states. Missing configuration or a failed visual assessment does not discard the technical audit or screenshots. This optional review makes additional PageSpeed requests. The **Re-analyze all websites** action refreshes the primary-page technical and content analysis without running this optional multi-page screenshot review. Bulk analysis progress survives refresh, can be paused between groups of three sites and resumed later, and can be closed from the completed progress panel.
+Website Intelligence can also save PageSpeed screenshots from the homepage (desktop and mobile where available) and up to three same-origin pages. If the initial HTML contains no page links, JavaScript-rendered navigation may require a browser-based crawler and will not be discovered by this bounded pass. Screenshots are saved in a private, user-scoped Supabase Storage bucket and sent to the configured OpenAI vision model for a separate visual assessment. Do not use this feature on screenshots containing information you do not want sent to OpenAI. Visual findings are model-generated suggestions that should be checked by a person; static screenshots cannot verify menus, forms, or other interactive states. Missing configuration or a failed visual assessment does not discard the technical audit or screenshots; the unified score is then provisional if the visual category is unavailable. This review makes additional PageSpeed requests. The **Re-analyze all websites** action refreshes the primary-page technical and content analysis without running the multi-page screenshot review. Bulk analysis progress survives refresh, can be paused between groups of three sites and resumed later, and can be closed from the completed progress panel.
 
 Before deploying screenshot review, apply the pending migrations and deploy the `extract-content` function. Migration `20261027220000_create_visual_audit_screenshots.sql` creates the private screenshot bucket.
 
@@ -102,6 +102,21 @@ npx supabase functions deploy analyze-website-visuals
 ## Resend outreach
 
 Verify a sender domain in Resend, then configure these secrets for the linked Supabase project. Use a valid sender address from the verified domain, a reply address configured for Resend Receiving, and your business's postal address. Never put the Resend API key in `.env`, a `VITE_` variable, source control, or browser code.
+
+### AI-personalized email drafts
+
+The Email Drafts page can generate AI-assisted drafts using the account-owned prospect profile, latest matching website audit, visual observations, notes, sender profile, and recent communication history. Completed audits also save bounded, source-labeled text from the homepage and up to three relevant same-origin pages; this snapshot helps identify supported services and website purpose without fetching the site again during drafting. Generated previews show which saved pages informed the email. Choose one of six approaches: professional, friendly, audit-based, value-first, short, or website redesign. The interface supports subject suggestions, selected-text rewrites, tone/CTA changes, and explicit generation of another version. AI failures are shown to the user; the rule-based generator is available only when selected as the fallback.
+
+Drafts remain unsent until an operator reviews and explicitly sends them. Users can save, search, filter, edit, duplicate, delete, and set review/approval statuses; a saved draft becomes Sent only after the send function confirms success. Saved drafts can be linked to a prospect, campaign, and matching website audit. The AI endpoint uses the authenticated user's Supabase access token and row-level security, never accepts prospect/audit content from the browser, and keeps the OpenAI key server-side. AI generation is limited to 10 prospects per batch and 40 generation/edit/subject requests per account per rolling 24 hours.
+
+Apply the migration and deploy the Edge Function before using AI generation:
+
+```sh
+npm run supabase:migrate
+npx supabase functions deploy generate-outreach-draft
+```
+
+The function uses the existing server-side `OPENAI_API_KEY`. `OPENAI_EMAIL_MODEL` can optionally select a text-generation model; when unset, it uses `OPENAI_VISION_MODEL` and then the function's existing `gpt-4.1-mini` default. The sender name, email, and company come from the signed-in user's profile, with `ARLOTECH Digital Solutions` as the business-name fallback. The generated draft is not saved or sent unless the user chooses those actions.
 
 Generate a separate signing secret with at least 32 random bytes. Keep the same value configured while links from previously sent emails may still be used:
 

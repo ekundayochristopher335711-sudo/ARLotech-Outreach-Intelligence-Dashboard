@@ -80,6 +80,7 @@ export interface EmailDraft {
   user_id: string
   prospect_id: string | null
   campaign_id: string | null
+  website_analysis_id: string | null
   subject: string
   body: string
   template_type: string

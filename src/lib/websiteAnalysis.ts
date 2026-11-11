@@ -11,12 +11,20 @@ import {
 } from '@/lib/visualReview'
 import {
   buildEvidenceBasedPositiveObservations,
+  calculateUnifiedWebsiteScore,
   calculateTechnicalHealthScore,
   classifyLighthouseAudits,
+  explainUnifiedWebsiteScore,
   extractCategoryScores,
   summarizePageInspectionCoverage,
+  unifiedScoreCategories,
 } from '@/lib/websiteAudit'
 import { mapWithConcurrency } from '@/lib/mapWithConcurrency'
+import {
+  buildWebsiteContextSnapshot,
+  selectRelevantWebsitePages,
+  type WebsiteContextPageInput,
+} from '@/lib/websiteContext'
 
 export interface ExtractedContent {
   url: string
@@ -45,6 +53,54 @@ export interface ExtractedContent {
   }
   h1Count: number
   contacts?: { emails: string[]; phones: string[] }
+}
+
+async function collectWebsiteContext(
+  requestedUrl: string,
+  content: ExtractedContent,
+  contentExtractionError?: string,
+) {
+  const homepageUrl = content.finalUrl || requestedUrl
+  const homepage: WebsiteContextPageInput = {
+    label: 'Homepage',
+    url: homepageUrl,
+    status: content.status,
+    title: content.title,
+    metaDescription: content.metaDescription,
+    headings: content.headings,
+    textExcerpt: content.textExcerpt,
+    ...(contentExtractionError
+      ? { error: contentExtractionError }
+      : content.status < 200 || content.status >= 300
+        ? { error: `The page returned HTTP ${content.status}.` }
+        : {}),
+  }
+  const selectedPages = selectRelevantWebsitePages(homepageUrl, content.navigationPages ?? [])
+  const additionalPages = await mapWithConcurrency(selectedPages, 2, async (page) => {
+    try {
+      const extracted = await extractContent(page.url)
+      return {
+        label: page.label,
+        url: extracted.finalUrl || page.url,
+        status: extracted.status,
+        title: extracted.title,
+        metaDescription: extracted.metaDescription,
+        headings: extracted.headings,
+        textExcerpt: extracted.textExcerpt,
+        ...(extracted.status < 200 || extracted.status >= 300
+          ? { error: `The page returned HTTP ${extracted.status}.` }
+          : {}),
+      } satisfies WebsiteContextPageInput
+    } catch (error) {
+      return {
+        label: page.label,
+        url: page.url,
+        error: error instanceof Error ? error.message : 'Page content extraction failed.',
+      } satisfies WebsiteContextPageInput
+    }
+  })
+
+  return buildWebsiteContextSnapshot([homepage, ...additionalPages])
 }
 
 export async function refreshProspectContactsFromWebsite(
@@ -161,6 +217,7 @@ export async function analyzeWebsite(
     }
   }
 
+  const websiteContextPromise = collectWebsiteContext(url, content, contentExtractionError)
   let pagespeed: PageSpeedResult
   let desktopError: string | undefined
   let mobileError: string | undefined
@@ -180,6 +237,7 @@ export async function analyzeWebsite(
       `Website analysis could not access the site. Content extraction failed: ${contentExtractionError}; PageSpeed desktop failed: ${desktopError}; PageSpeed mobile failed: ${mobileError}`,
     )
   }
+  const websiteContext = await websiteContextPromise
 
   const visualPages: Array<{
     page_url: string
@@ -272,7 +330,11 @@ export async function analyzeWebsite(
   }
 
   const categoryScores = extractCategoryScores(pagespeed)
-  const overall = calculateTechnicalHealthScore(categoryScores)
+  const technicalOverall = calculateTechnicalHealthScore(categoryScores)
+  const initialUnifiedScore = calculateUnifiedWebsiteScore(
+    unifiedScoreCategories(categoryScores, null),
+  )
+  let overall = initialUnifiedScore.score
   const perfScore = categoryScores.performance
   const seoScore = categoryScores.seo
   const lighthouseFindings = classifyLighthouseAudits(pagespeed).map((finding) => ({
@@ -391,18 +453,18 @@ export async function analyzeWebsite(
     limitations,
   }
 
-  const scoreExplanation = overall === null
-    ? `A technical health score is unavailable because Lighthouse did not return valid scores for every required category${missingCategories.length ? ` (${missingCategories.join(', ')})` : ''}.`
-    : `Technical health score: ${overall}/100, calculated from Lighthouse category scores using Performance 30%, SEO 25%, Accessibility 25%, and Best Practices 20%.`
+  const scoreExplanation = explainUnifiedWebsiteScore(initialUnifiedScore)
   const analysisDetails = {
     score_explanation: scoreExplanation,
     technical_score: {
       methodology: 'Weighted Lighthouse category score',
       weights: { performance: 30, seo: 25, accessibility: 25, 'best-practices': 20 },
-      value: overall,
+      value: technicalOverall,
       missing_categories: missingCategories,
     },
+    unified_score: initialUnifiedScore,
     audit_completeness: auditCompleteness,
+    website_context: websiteContext,
     html_inspection: {
       requested_url: content.url,
       final_url: content.finalUrl,
@@ -433,7 +495,7 @@ export async function analyzeWebsite(
       user_id: userId,
       prospect_id: prospectId,
       website_url: url,
-      overall_score: overall,
+      overall_score: initialUnifiedScore.score,
       performance_score: perfScore,
       accessibility_score: categoryScores.accessibility ?? null,
       seo_score: seoScore,
@@ -583,7 +645,29 @@ export async function analyzeWebsite(
           .single()
         if (refreshError) throw refreshError
         if (!refreshed) throw new Error('The completed visual audit could not be reloaded.')
-        finalRecord = refreshed
+        const refreshedDetails = (refreshed.analysis_details || {}) as Record<string, unknown>
+        const visualAudit = refreshedDetails.visual_audit as { visual_score?: unknown } | undefined
+        const unifiedScore = calculateUnifiedWebsiteScore(
+          unifiedScoreCategories(refreshed.category_scores, visualAudit?.visual_score),
+        )
+        const { data: scoredRecord, error: scoreUpdateError } = await supabase
+          .from('website_analyses')
+          .update({
+            overall_score: unifiedScore.score,
+            analysis_details: {
+              ...refreshedDetails,
+              unified_score: unifiedScore,
+              score_explanation: explainUnifiedWebsiteScore(unifiedScore),
+            },
+          })
+          .eq('id', data.id)
+          .eq('user_id', userId)
+          .select()
+          .single()
+        if (scoreUpdateError) throw scoreUpdateError
+        if (!scoredRecord) throw new Error('The unified website score could not be saved.')
+        finalRecord = scoredRecord
+        overall = unifiedScore.score
       }
     }
 

@@ -24,11 +24,11 @@ The generated message remains editable before saving or sending. Operators shoul
 
 Website audit reports now start with an executive summary, a compact score/findings snapshot, and a prioritized reading of the results. They include a practical three-step improvement plan and a clear Arlotech next step without presenting the report as a quotation or guaranteeing results.
 
-Where a saved visual review is available, the PDF includes its visual score, assessment, and evidence-backed findings separately from the Lighthouse technical results. Visual findings are model-generated and should be reviewed by a person. Screenshots cannot verify interactive controls.
+Where a saved visual review is available, the PDF includes its visual score, assessment, and evidence-backed findings separately from the Lighthouse technical results. New reports use the versioned unified score: Visual Design 40%, Performance 18%, SEO 15%, Accessibility 15%, and Best Practices 12%. Missing categories are excluded and the remaining weights are normalized; the report labels these results provisional. The dashboard and PDF share the same score calculation and category breakdown. Historical reports preserve their saved technical-only score methodology. Visual findings are model-generated and should be reviewed by a person. Screenshots cannot verify interactive controls.
 
 ## Safety and data behavior
 
-- The database schema stores visual assessment data separately under `analysis_details.visual_audit`; it does not change the Lighthouse technical score.
+- The database stores visual assessment data under `analysis_details.visual_audit` and a versioned unified score under `analysis_details.unified_score`. Lighthouse category scores and their technical-only score remain separately available.
 - Visual assessment findings are presented separately from measured and page-inspection findings.
 - Email drafts remain editable and are not automatically sent by generation.
 - Screenshot URLs are short-lived and are not stored in the report data. The screenshots are sent to the configured vision provider when visual analysis runs.

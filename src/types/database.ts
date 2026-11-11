@@ -196,6 +196,7 @@ export type Database = {
           template_type: string
           updated_at: string | null
           user_id: string
+          website_analysis_id: string | null
         }
         Insert: {
           approved_at?: string | null
@@ -210,6 +211,7 @@ export type Database = {
           template_type?: string
           updated_at?: string | null
           user_id: string
+          website_analysis_id?: string | null
         }
         Update: {
           approved_at?: string | null
@@ -224,6 +226,7 @@ export type Database = {
           template_type?: string
           updated_at?: string | null
           user_id?: string
+          website_analysis_id?: string | null
         }
         Relationships: [
           {
@@ -238,6 +241,13 @@ export type Database = {
             columns: ["prospect_id"]
             isOneToOne: false
             referencedRelation: "prospects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "email_drafts_website_analysis_id_fkey"
+            columns: ["website_analysis_id"]
+            isOneToOne: false
+            referencedRelation: "website_analyses"
             referencedColumns: ["id"]
           },
         ]
@@ -784,7 +794,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      consume_outreach_ai_generation: {
+        Args: Record<PropertyKey, never>
+        Returns: boolean
+      }
     }
     Enums: {
       [_ in never]: never

@@ -7,7 +7,19 @@ export const LIGHTHOUSE_CATEGORY_WEIGHTS = {
   'best-practices': 0.2,
 } as const
 
+export const UNIFIED_WEBSITE_SCORE_VERSION = 'unified-v1'
+
+export const UNIFIED_WEBSITE_SCORE_WEIGHTS = {
+  visual_design: 0.4,
+  performance: 0.18,
+  seo: 0.15,
+  accessibility: 0.15,
+  'best-practices': 0.12,
+} as const
+
+export type UnifiedWebsiteScoreCategory = keyof typeof UNIFIED_WEBSITE_SCORE_WEIGHTS
 export type LighthouseCategory = keyof typeof LIGHTHOUSE_CATEGORY_WEIGHTS
+export type UnifiedWebsiteScoreCategories = Record<UnifiedWebsiteScoreCategory, number | null>
 export type FindingClassification =
   | 'verified_issue'
   | 'optimization_opportunity'
@@ -15,6 +27,29 @@ export type FindingClassification =
   | 'positive_observation'
 
 export type AssessmentRating = 'Good' | 'Needs Improvement' | 'Poor'
+export type WebsiteScoreInterpretation =
+  | 'Excellent'
+  | 'Very Good'
+  | 'Good'
+  | 'Fair'
+  | 'Needs Improvement'
+  | 'Poor'
+
+export interface UnifiedWebsiteScore {
+  version: typeof UNIFIED_WEBSITE_SCORE_VERSION
+  score: number | null
+  unrounded_score: number | null
+  provisional: boolean
+  interpretation: WebsiteScoreInterpretation | null
+  available_categories: UnifiedWebsiteScoreCategory[]
+  unavailable_categories: UnifiedWebsiteScoreCategory[]
+  breakdown: Record<UnifiedWebsiteScoreCategory, {
+    score: number | null
+    configured_weight_percent: number
+    applied_weight_percent: number
+    weighted_contribution: number | null
+  }>
+}
 
 const CATEGORY_SCORE_THRESHOLDS = {
   good: 90,
@@ -164,6 +199,98 @@ export function calculateTechnicalHealthScore(
     0,
   )
   return Math.round(weightedScore)
+}
+
+export function interpretWebsiteScore(score: number): WebsiteScoreInterpretation {
+  if (score >= 90) return 'Excellent'
+  if (score >= 80) return 'Very Good'
+  if (score >= 70) return 'Good'
+  if (score >= 60) return 'Fair'
+  if (score >= 40) return 'Needs Improvement'
+  return 'Poor'
+}
+
+export function calculateUnifiedWebsiteScore(
+  categories: UnifiedWebsiteScoreCategories,
+): UnifiedWebsiteScore {
+  const entries = Object.entries(UNIFIED_WEBSITE_SCORE_WEIGHTS) as Array<
+    [UnifiedWebsiteScoreCategory, number]
+  >
+  const validScore = (score: unknown): score is number =>
+    typeof score === 'number' && Number.isFinite(score) && score >= 0 && score <= 100
+  const availableCategories = entries
+    .filter(([category]) => validScore(categories[category]))
+    .map(([category]) => category)
+  const unavailableCategories = entries
+    .filter(([category]) => !validScore(categories[category]))
+    .map(([category]) => category)
+  const availableWeight = entries.reduce(
+    (total, [category, weight]) => total + (validScore(categories[category]) ? weight : 0),
+    0,
+  )
+
+  const breakdown = Object.fromEntries(entries.map(([category, configuredWeight]) => {
+    const score = validScore(categories[category]) ? categories[category] : null
+    const appliedWeight = score === null || availableWeight === 0
+      ? 0
+      : configuredWeight / availableWeight
+    return [category, {
+      score,
+      configured_weight_percent: configuredWeight * 100,
+      applied_weight_percent: appliedWeight * 100,
+      weighted_contribution: score === null ? null : score * appliedWeight,
+    }]
+  })) as UnifiedWebsiteScore['breakdown']
+
+  const unroundedScore = availableWeight === 0
+    ? null
+    : entries.reduce((total, [category]) => {
+        const detail = breakdown[category]
+        return total + (detail.weighted_contribution ?? 0)
+      }, 0)
+  const score = unroundedScore === null ? null : Math.round(unroundedScore)
+
+  return {
+    version: UNIFIED_WEBSITE_SCORE_VERSION,
+    score,
+    unrounded_score: unroundedScore === null ? null : Number(unroundedScore.toFixed(2)),
+    provisional: unavailableCategories.length > 0,
+    interpretation: score === null ? null : interpretWebsiteScore(score),
+    available_categories: availableCategories,
+    unavailable_categories: unavailableCategories,
+    breakdown,
+  }
+}
+
+export function unifiedScoreCategories(
+  lighthouseCategories: Partial<Record<LighthouseCategory, unknown>> | null | undefined,
+  visualScore: unknown,
+): UnifiedWebsiteScoreCategories {
+  const categoryScore = (value: unknown) =>
+    typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 100
+      ? value
+      : null
+
+  return {
+    visual_design: categoryScore(visualScore),
+    performance: categoryScore(lighthouseCategories?.performance),
+    seo: categoryScore(lighthouseCategories?.seo),
+    accessibility: categoryScore(lighthouseCategories?.accessibility),
+    'best-practices': categoryScore(lighthouseCategories?.['best-practices']),
+  }
+}
+
+export function explainUnifiedWebsiteScore(score: UnifiedWebsiteScore) {
+  if (score.score === null) {
+    return `A unified website score is unavailable because none of the five scoring categories returned a valid score. Unavailable: ${score.unavailable_categories.join(', ')}.`
+  }
+  const unavailable = score.unavailable_categories.length
+    ? ` Unavailable categories: ${score.unavailable_categories.join(', ')}.`
+    : ''
+  const provisional = score.provisional
+    ? ' This provisional score proportionally normalizes the weights of the available categories.'
+    : ''
+  return `Unified website score: ${score.score}/100 (${score.interpretation}). Weights: visual design 40%, performance 18%, SEO 15%, accessibility 15%, and best practices 12%.${provisional}${unavailable}`
 }
 
 export function summarizePageInspectionCoverage(

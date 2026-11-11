@@ -152,6 +152,73 @@ describe('website audit PDF', () => {
     expect(report).not.toContain('The review did not record a separate positive observation')
   })
 
+  it('uses the unified visual-and-technical score and includes its matching weighted breakdown', async () => {
+    const report = pdfText(await createWebsiteAnalysisPdfBase64({
+      overall_score: 80,
+      category_scores: {
+        performance: 75,
+        seo: 90,
+        accessibility: 70,
+        'best-practices': 85,
+      },
+      analysis_details: {
+        unified_score: {
+          version: 'unified-v1',
+          score: 80,
+          provisional: false,
+        },
+        visual_audit: { status: 'completed', visual_score: 80 },
+      },
+      findings: [],
+    }))
+
+    expect(report).toContain('80 / 100')
+    expect(report).toContain('WEBSITE SCORE BREAKDOWN')
+    expect(report).toContain('Visual Design: 80/100 | Weight 40% | Weighted contribution 32.00')
+    expect(report).toContain('Performance: 75/100 | Weight 18% | Weighted contribution 13.50')
+    expect(report).toContain('Best Practices: 85/100 | Weight 12% | Weighted contribution 10.20')
+  })
+
+  it('labels incomplete unified scores provisional and normalizes available weights in the PDF', async () => {
+    const report = pdfText(await createWebsiteAnalysisPdfBase64({
+      overall_score: 80,
+      category_scores: {
+        performance: 75,
+        seo: 90,
+        accessibility: 70,
+        'best-practices': 85,
+      },
+      analysis_details: {
+        unified_score: { version: 'unified-v1', score: 80, provisional: true },
+      },
+      findings: [],
+    }))
+
+    expect(report).toContain('Provisional score: unavailable categories were excluded and the remaining weights were normalized.')
+    expect(report).toContain('Visual Design: Unavailable | Weight 40% | Weighted contribution')
+    expect(report).toContain('Performance: 75/100 | Weight 18% (applied 30.0%) | Weighted contribution 22.50')
+  })
+
+  it('preserves a historical saved score and labels its legacy methodology', async () => {
+    const report = pdfText(await createWebsiteAnalysisPdfBase64({
+      overall_score: 74,
+      category_scores: {
+        performance: 74,
+        seo: 74,
+        accessibility: 74,
+        'best-practices': 74,
+      },
+      analysis_details: {
+        technical_score: { methodology: 'Weighted Lighthouse category score' },
+      },
+      findings: [],
+    }))
+
+    expect(report).toContain('74 / 100')
+    expect(report).toContain('This historical report retains its saved technical-only score methodology')
+    expect(report).not.toContain('WEBSITE SCORE BREAKDOWN')
+  })
+
   it('uses the verified recipient name and official Arlotech logo in the PDF header', async () => {
     const reportBase64 = await createWebsiteAnalysisPdfBase64({
       website_url: 'https://example.com',
