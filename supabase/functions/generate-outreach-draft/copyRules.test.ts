@@ -77,4 +77,17 @@ describe("generic email copy rules", () => {
     expect(body).not.toMatch(/attached|website review PDF/i);
     expect((body.match(/\?/g) ?? []).length).toBe(1);
   });
+
+  it("removes repeated service pitches and indirect feedback asks", () => {
+    const body = normalizeGenericEmailContent(
+      "Hello. At ARLOTECH Digital Solutions, we design and improve websites so visitors can understand services clearly and get in touch more easily. Our team focuses on creating websites that help businesses present their offerings clearly while making navigation intuitive for visitors. We’ve attached the website review PDF for your reference. We would love to learn what you would like your website to help visitors accomplish. We look forward to hearing your thoughts and exploring how we can assist with your website priorities. Could you share what you would like your website to help visitors do?\n\nKind regards,\nEkundayo Christopher\nARLOTECH",
+      true,
+    );
+
+    expect(body).toBe(
+      "Hello. At ARLOTECH Digital Solutions, we design and improve websites so visitors can understand services clearly and get in touch more easily. We’ve attached the website review PDF for your reference. Could you share what you would like your website to help visitors do?\n\nKind regards,\nEkundayo Christopher\nARLOTECH",
+    );
+    expect((body.match(/\?/g) ?? []).length).toBe(1);
+    expect(getGenericEmailContentViolations(body, true)).toEqual([]);
+  });
 });

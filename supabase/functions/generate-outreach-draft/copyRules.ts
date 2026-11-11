@@ -10,13 +10,24 @@ export function normalizeGenericEmailContent(body: string, includeReport: boolea
   const content = signatureStart < 0 ? body : body.slice(0, signatureStart);
   const signature = signatureStart < 0 ? "" : body.slice(signatureStart);
   const sentences = content.match(/[^.!?]+(?:[.!?]+|$)/g) ?? [content];
-  const statements = sentences
-    .map((sentence) => sentence.trim())
-    .filter((sentence) =>
-      sentence &&
-      !sentence.includes("?") &&
-      (includeReport || !/\b(?:attached|attachment|attaching|attach|pdf|report)\b/i.test(sentence))
-    );
+  const statements: string[] = [];
+  let hasServiceBenefit = false;
+  for (const rawSentence of sentences) {
+    const sentence = rawSentence.trim();
+    if (
+      !sentence ||
+      sentence.includes("?") ||
+      /\b(?:feedback|share|tell us|let us know|would love to learn|love to learn|look forward to hearing|hear your thoughts|website goals|website priorities|what you would like|what you want|what you hope)\b/i.test(sentence) ||
+      (!includeReport && /\b(?:attached|attachment|attaching|attach|pdf|report)\b/i.test(sentence))
+    ) {
+      continue;
+    }
+    const isServiceBenefit = /\bwebsites?\b/i.test(sentence) &&
+      /\b(?:design|build|develop|improve|creat|present|offerings?|services?|navigation|visitors?|information|clear|intuitive|easier|easy|get in touch)\b/i.test(sentence);
+    if (hasServiceBenefit && isServiceBenefit) continue;
+    statements.push(sentence);
+    hasServiceBenefit ||= isServiceBenefit;
+  }
   const statementText = statements.join(" ");
   const describesService =
     /\bwe\b.{0,160}\b(?:design|build|develop|improve)\b.{0,100}\bwebsites?\b/i.test(statementText) ||
