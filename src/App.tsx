@@ -5,11 +5,32 @@ import {
   Navigate,
   Routes,
   Route,
+  NavLink,
 } from 'react-router-dom'
-import { Menu, Activity, RadioTower, Crosshair, DatabaseZap } from 'lucide-react'
+import {
+  Activity,
+  BarChart3,
+  CalendarClock,
+  ClipboardList,
+  Crosshair,
+  DatabaseZap,
+  FileText,
+  Globe,
+  Home,
+  Mail,
+  Menu,
+  MessageCircle,
+  MoreHorizontal,
+  RadioTower,
+  Settings,
+  Sparkles,
+  Users,
+  X,
+} from 'lucide-react'
 import { AuthProvider } from '@/hooks/useAuth'
 import { useAuth } from '@/hooks/useAuthState'
 import { useLocation } from 'react-router-dom'
+import { useAccessibleDialog } from '@/hooks/useAccessibleDialog'
 import { Sidebar } from '@/components/layout/Sidebar'
 import { NotificationListener } from '@/components/notifications/NotificationListener'
 import { NotificationCenter } from '@/components/notifications/NotificationCenter'
@@ -35,6 +56,37 @@ const AnalyticsDashboard = lazy(() => import('@/pages/Analytics').then((module) 
 const GrowthCenterPage = lazy(() => import('@/pages/GrowthCenter').then((module) => ({ default: module.GrowthCenterPage })))
 const SettingsPage = lazy(() => import('@/pages/Settings').then((module) => ({ default: module.SettingsPage })))
 const UnsubscribePage = lazy(() => import('@/pages/Unsubscribe').then((module) => ({ default: module.UnsubscribePage })))
+
+const mobilePrimaryItems = [
+  { label: 'Home', path: '/', icon: Home, exact: true },
+  { label: 'Prospects', path: '/prospects', icon: Users },
+  { label: 'Audits', path: '/website-intelligence', icon: Globe },
+  { label: 'Outreach', path: '/email-drafts', icon: Mail },
+]
+
+const mobileMoreGroups = [
+  {
+    title: 'WORKSPACE',
+    items: [
+      { label: 'Activity', path: '/activity', icon: Activity },
+      { label: 'Campaigns', path: '/campaigns', icon: FileText },
+      { label: 'Replies', path: '/replies', icon: MessageCircle },
+      { label: 'Follow-ups', path: '/follow-ups', icon: CalendarClock },
+    ],
+  },
+  {
+    title: 'INTELLIGENCE',
+    items: [
+      { label: 'Website Intelligence', path: '/website-intelligence', icon: Globe },
+      { label: 'Analytics', path: '/analytics', icon: BarChart3 },
+      { label: 'Growth Center', path: '/growth-center', icon: Sparkles },
+    ],
+  },
+  {
+    title: 'MANAGEMENT',
+    items: [{ label: 'Settings', path: '/settings', icon: Settings }],
+  },
+]
 
 function PageLoading() {
   const blacksite = (() => { try { return localStorage.getItem('arlotech-login-mode') === 'blacksite' } catch { return false } })()
@@ -88,7 +140,9 @@ function PrivateRoute({ children }: { children: React.ReactNode }) {
 
 function AppShell() {
   const [mobileOpen, setMobileOpen] = useState(false)
+  const [moreOpen, setMoreOpen] = useState(false)
   const location = useLocation()
+  const morePanelRef = useAccessibleDialog<HTMLElement>(moreOpen, () => setMoreOpen(false), true)
   const [blacksite, setBlacksite] = useState(() => {
     try { return localStorage.getItem('arlotech-login-mode') === 'blacksite' } catch { return false }
   })
@@ -115,6 +169,10 @@ function AppShell() {
   }, [blacksite])
 
   const closeSidebar = () => setMobileOpen(false)
+  const closeMore = () => setMoreOpen(false)
+  const moreRouteIsActive = mobileMoreGroups.some((group) =>
+    group.items.some(({ path }) => location.pathname === path || location.pathname.startsWith(`${path}/`)),
+  )
   const blacksiteCopy: Record<string, { title: string; sub: string }> = {
     '/': { title: 'COMMAND DECK', sub: 'LIVE CAMPAIGN TELEMETRY' },
     '/activity': { title: 'OPERATIONAL LEDGER', sub: 'WORKSPACE CHANGE HISTORY' },
@@ -151,7 +209,7 @@ function AppShell() {
         <header className="app-topbar flex h-20 shrink-0 items-center gap-4 border-b border-slate-200 bg-white px-4 lg:px-8">
           <button
             type="button"
-            className="rounded-md p-2.5 text-slate-600 hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-arlotech lg:hidden"
+            className="mobile-menu-trigger rounded-md p-2.5 text-slate-600 hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-arlotech lg:hidden"
             onClick={() => setMobileOpen(true)}
             aria-label="Open navigation menu"
             aria-controls="app-sidebar"
@@ -172,7 +230,7 @@ function AppShell() {
         </header>
         <div className="min-w-0 flex-1 overflow-auto">
           {blacksite && <div className="blacksite-command-ribbon"><span><Crosshair size={13}/> {activeBlacksiteCopy.title}</span><span><DatabaseZap size={13}/> {activeBlacksiteCopy.sub}</span><span className="ribbon-trace">TRACE ROUTE // MASKED</span></div>}
-          <main className="app-main min-h-full p-4 lg:p-7">
+          <main className="app-main min-h-full p-4 pb-24 lg:p-7">
             <Suspense fallback={<PageLoading />}>
               <Routes>
                 <Route index element={<DashboardPage />} />
@@ -193,6 +251,86 @@ function AppShell() {
           </main>
         </div>
       </div>
+      <nav className="mobile-bottom-nav" aria-label="Primary mobile navigation">
+        {mobilePrimaryItems.map((item) => {
+          const Icon = item.icon
+          const active = item.exact
+            ? location.pathname === '/'
+            : location.pathname === item.path || location.pathname.startsWith(`${item.path}/`)
+          return (
+            <NavLink
+              key={item.path}
+              to={item.path}
+              end={item.exact}
+              onClick={closeMore}
+              className={`mobile-nav-item ${active ? 'is-active' : ''}`}
+              aria-current={active ? 'page' : undefined}
+            >
+              <Icon size={22} strokeWidth={active ? 2.4 : 2} />
+              <span>{item.label}</span>
+            </NavLink>
+          )
+        })}
+        <button
+          type="button"
+          className={`mobile-nav-item ${moreOpen || moreRouteIsActive ? 'is-active' : ''}`}
+          onClick={() => setMoreOpen(true)}
+          aria-expanded={moreOpen}
+          aria-controls="mobile-more-panel"
+        >
+          <MoreHorizontal size={22} strokeWidth={2.2} />
+          <span>More</span>
+        </button>
+      </nav>
+      {moreOpen && (
+        <div className="mobile-more-backdrop" role="presentation" onClick={closeMore}>
+          <section
+            ref={morePanelRef}
+            id="mobile-more-panel"
+            className="mobile-more-panel"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="mobile-more-title"
+            tabIndex={-1}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="mobile-more-header">
+              <div>
+                <span className="mobile-more-eyebrow">ARLOTECH WORKSPACE</span>
+                <h2 id="mobile-more-title">Everything in one place</h2>
+              </div>
+              <button type="button" onClick={closeMore} aria-label="Close more menu"><X size={22} /></button>
+            </div>
+            <div className="mobile-more-search-hint">
+              <ClipboardList size={17} />
+              <span>Explore your workspace tools</span>
+            </div>
+            {mobileMoreGroups.map((group) => (
+              <div className="mobile-more-group" key={group.title}>
+                <h3>{group.title}</h3>
+                <div className="mobile-more-grid">
+                  {group.items.map((item) => {
+                    const Icon = item.icon
+                    const active = location.pathname === item.path || location.pathname.startsWith(`${item.path}/`)
+                    return (
+                      <NavLink
+                        key={item.path}
+                        to={item.path}
+                        onClick={closeMore}
+                        className={`mobile-more-card ${active ? 'is-active' : ''}`}
+                        aria-current={active ? 'page' : undefined}
+                      >
+                        <span className="mobile-more-icon"><Icon size={22} /></span>
+                        <span>{item.label}</span>
+                      </NavLink>
+                    )
+                  })}
+                </div>
+              </div>
+            ))}
+          </section>
+        </div>
+      )}
     </div>
   )
 }
