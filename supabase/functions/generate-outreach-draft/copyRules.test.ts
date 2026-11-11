@@ -32,4 +32,11 @@ describe("generic email copy rules", () => {
       true,
     )).toContain("Tell the recipient the website review PDF is attached.");
   });
+
+  it("accepts the exact service, benefit, feedback, and report sentences required by the generator", () => {
+    const body = "We design and improve websites so visitors can understand services clearly and get in touch more easily. We’ve attached the website review PDF for your reference. Could you share what you would like your website to help visitors do?";
+
+    expect(getGenericEmailContentViolations(body, true)).toEqual([]);
+    expect(getGenericCopyViolation(body)).toBeNull();
+  });
 });

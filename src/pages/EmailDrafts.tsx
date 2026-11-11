@@ -1821,9 +1821,14 @@ export function EmailDraftsPage() {
               !!outreachProspectsError
             }
           >
-            <Sparkles className="h-4 w-4" /> {aiGenerating ? 'Generating drafts…' : 'Generate personalized emails'}
+            <Sparkles className="h-4 w-4" /> {aiGenerating ? 'Generating drafts…' : 'Generate generic emails'}
           </Button>
         </div>
+        {generatorMode === 'ai' && (
+          <p className="text-xs text-slate-500">
+            After generation, each preview includes a “Chat with AI to edit this draft” box below the message.
+          </p>
+        )}
 
         {outreachPreviews.length > 0 && (
           <div className="space-y-4 border-t border-slate-200 pt-4">
