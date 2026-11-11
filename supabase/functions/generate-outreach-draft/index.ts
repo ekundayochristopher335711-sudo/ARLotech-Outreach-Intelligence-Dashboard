@@ -1,5 +1,9 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { getGenericCopyViolation, getGenericEmailContentViolations } from "./copyRules.ts";
+import {
+  getGenericCopyViolation,
+  getGenericEmailContentViolations,
+  normalizeGeneratedFeedbackQuestion,
+} from "./copyRules.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -537,6 +541,15 @@ Do not include recipient names, businesses, website details, audit references, o
     ).find((item: { type?: string }) => item.type === "output_text")?.text;
     if (!outputText) throw new Error("The AI returned no structured email draft.");
     const modelOutput = JSON.parse(outputText);
+    if (
+      action === "generate" &&
+      modelOutput &&
+      typeof modelOutput === "object" &&
+      !Array.isArray(modelOutput) &&
+      typeof modelOutput.body === "string"
+    ) {
+      modelOutput.body = normalizeGeneratedFeedbackQuestion(modelOutput.body);
+    }
     const outputForValidation = action === "subjects" &&
         modelOutput && typeof modelOutput === "object" && !Array.isArray(modelOutput)
       ? { ...modelOutput, body: currentBody }

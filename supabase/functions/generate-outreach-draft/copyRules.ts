@@ -1,5 +1,14 @@
 const internalReferencePattern = /\b(?:visual|finding|opportunity|strength|context-page)(?:[-\s:]?\d+)\b/i;
 const firstPersonSingularPattern = /\b(?:i|me|my|mine|myself)\b/i;
+const requiredFeedbackQuestion = "Could you share what you would like your website to help visitors do?";
+
+export function normalizeGeneratedFeedbackQuestion(body: string): string {
+  const sentences = body.match(/[^.!?]+(?:[.!?]+|$)/g) ?? [body];
+  const statements = sentences
+    .map((sentence) => sentence.trim())
+    .filter((sentence) => sentence && !sentence.includes("?"));
+  return [...statements, requiredFeedbackQuestion].join(" ");
+}
 
 export function getGenericCopyViolation(copy: string): "internal_reference" | "first_person_singular" | null {
   if (internalReferencePattern.test(copy)) return "internal_reference";

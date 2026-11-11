@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { getGenericCopyViolation, getGenericEmailContentViolations } from "./copyRules.ts";
+import {
+  getGenericCopyViolation,
+  getGenericEmailContentViolations,
+  normalizeGeneratedFeedbackQuestion,
+} from "./copyRules.ts";
 
 describe("generic email copy rules", () => {
   it("rejects internal audit IDs and labels", () => {
@@ -38,5 +42,16 @@ describe("generic email copy rules", () => {
 
     expect(getGenericEmailContentViolations(body, true)).toEqual([]);
     expect(getGenericCopyViolation(body)).toBeNull();
+  });
+
+  it("normalizes generated copy to one standard feedback question", () => {
+    const body = normalizeGeneratedFeedbackQuestion(
+      "Hello. Would you like us to help? We design and improve websites for clearer information. What would you like your website to do?",
+    );
+
+    expect(body).toBe(
+      "Hello. We design and improve websites for clearer information. Could you share what you would like your website to help visitors do?",
+    );
+    expect((body.match(/\?/g) ?? []).length).toBe(1);
   });
 });
