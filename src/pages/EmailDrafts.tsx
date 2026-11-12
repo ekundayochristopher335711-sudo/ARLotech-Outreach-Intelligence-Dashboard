@@ -123,6 +123,11 @@ interface SendOutreachMutationResult extends SendOutreachResponse {
   omittedReports: string[]
 }
 
+interface SavedDraftSendMutationResult {
+  results: Array<{ draftId: string; result: OutreachSendResult }>
+  statusUpdateErrors: string[]
+}
+
 interface AiDraftChatMessage {
   role: 'user' | 'assistant'
   content: string
@@ -274,6 +279,10 @@ export function EmailDraftsPage() {
   const [outreachBatchId, setOutreachBatchId] = useState('')
   const [complianceConfirmed, setComplianceConfirmed] = useState(false)
   const [outreachResults, setOutreachResults] = useState<OutreachSendResult[]>([])
+  const [selectedDraftIds, setSelectedDraftIds] = useState<string[]>([])
+  const [savedDraftComplianceConfirmed, setSavedDraftComplianceConfirmed] = useState(false)
+  const [savedDraftBatchId, setSavedDraftBatchId] = useState('')
+  const [savedDraftSendResults, setSavedDraftSendResults] = useState<Record<string, OutreachSendResult>>({})
   const [generatorProspectId, setGeneratorProspectId] = useState(() => searchParams.get('prospectId') || '')
   const [generatorStrategy, setGeneratorStrategy] = useState<OutreachStrategy>('general_review')
   const [generatorTone, setGeneratorTone] = useState<OutreachTone>('professional')
@@ -509,6 +518,41 @@ export function EmailDraftsPage() {
   const hasPreviousSend = (prospect: OutreachProspect) =>
     alreadyEmailedProspects.has(prospect.id) ||
     (!!prospect.email && alreadyEmailedAddresses.has(prospect.email.trim().toLowerCase()))
+
+  const getSavedDraftSendBlockReason = (draft: EmailDraft) => {
+    if (savedDraftSendResults[draft.id]?.status === 'sent') return 'This draft has already been sent.'
+    if (draft.status === 'sent') return 'This draft has already been sent.'
+    if (!draft.prospect_id) return 'Link a prospect with an email address before sending.'
+    if (!draft.subject.trim() || draft.subject.length > 200 || !draft.body.trim() || draft.body.length > 12_000) {
+      return 'Add a subject and message within the sending limits.'
+    }
+    if (outreachProspectsLoading || outreachAnalysesLoading || suppressionLoading || sentHistoryLoading) {
+      return 'Loading recipient and sending eligibility.'
+    }
+    if (outreachProspectsError || outreachAnalysesError || suppressionError || sentHistoryError) {
+      return 'Sending eligibility could not be verified.'
+    }
+    const prospect = outreachProspectRows.find((item) => item.id === draft.prospect_id)
+    if (!prospect) return 'The linked prospect is unavailable.'
+    if (!prospect.email?.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(prospect.email.trim())) {
+      return 'The linked prospect needs a valid email address.'
+    }
+    if (prospect.do_not_contact) return 'This prospect is marked Do Not Contact.'
+    if (suppressedEmails.has(prospect.email.trim().toLowerCase())) return 'This address is on the suppression list.'
+    if (prospect.website) {
+      const eligibilityReason = getOutreachBlockReason(prospect)
+      if (eligibilityReason) return eligibilityReason
+      const currentAnalysis = analysisByProspect.get(prospect.id)
+      if (draft.website_analysis_id && draft.website_analysis_id !== currentAnalysis?.id) {
+        return 'The linked website audit is no longer current. Edit and save the draft against the latest audit.'
+      }
+    } else if (
+      /your website review is attached|the attached pdf|pdf.{0,30}attached|we[’']ve attached|i[’']ve attached|we have attached|please see the attached/i.test(draft.body)
+    ) {
+      return 'This email refers to an attached website review, but the prospect has no website to audit.'
+    }
+    return null
+  }
 
   const generatedSendBlockReason = selectedGeneratorProspect
     ? getOutreachBlockReason(selectedGeneratorProspect)
@@ -1199,6 +1243,173 @@ export function EmailDraftsPage() {
     onError: (error: Error) => toast.error(error.message || 'Could not send this email.'),
   })
 
+  const savedDraftSendMutation = useMutation({
+    mutationFn: async (draftsToSend: EmailDraft[]): Promise<SavedDraftSendMutationResult> => {
+      if (!savedDraftComplianceConfirmed) {
+        throw new Error('Confirm that you reviewed every recipient and have a lawful basis to contact them.')
+      }
+      if (draftsToSend.length === 0 || draftsToSend.length > MAX_OUTREACH_BATCH_SIZE) {
+        throw new Error(`Select between 1 and ${MAX_OUTREACH_BATCH_SIZE} drafts to send.`)
+      }
+      if (new Set(draftsToSend.map((draft) => draft.prospect_id)).size !== draftsToSend.length) {
+        throw new Error('Select only one draft per prospect in a bulk send.')
+      }
+
+      const emailPayload = await mapWithConcurrency(draftsToSend, 2, async (draft) => {
+        const blockReason = getSavedDraftSendBlockReason(draft)
+        if (blockReason) throw new Error(`${draft.subject || 'Draft'}: ${blockReason}`)
+        const prospect = outreachProspectRows.find((item) => item.id === draft.prospect_id)
+        if (!prospect) throw new Error('A selected prospect is no longer available.')
+
+        let attachment: { filename: string; content: string } | undefined
+        if (prospect.website) {
+          const analysis = analysisByProspect.get(prospect.id)
+          if (!analysis || !hasMatchingWebsiteAnalysis(prospect, analysis)) {
+            throw new Error(`${prospect.business_name}: a current website review is required before sending.`)
+          }
+          const content = await createAuditPdfAttachment(analysis, prospect)
+          if (content.length > MAX_ATTACHMENT_BASE64_LENGTH) {
+            throw new Error(`${prospect.business_name}: the website review PDF exceeds the 525 KB attachment limit.`)
+          }
+          const safeFilename = prospect.business_name
+            .replace(/[^a-z0-9-]/gi, '-')
+            .replace(/^-+|-+$/g, '')
+            .slice(0, 60)
+            .toLowerCase() || 'prospect'
+          attachment = { filename: `website-review-${safeFilename}.pdf`, content }
+        }
+
+        return {
+          draft,
+          payload: {
+            prospect_id: prospect.id,
+            subject: draft.subject.trim(),
+            body: draft.body.trim(),
+            ...(attachment ? { attachment } : {}),
+          },
+        }
+      })
+
+      const functionClient = supabase as typeof supabase & {
+        functions: {
+          invoke: (
+            name: string,
+            options: { body: unknown },
+          ) => Promise<{ data: unknown; error: Error | null }>
+        }
+      }
+      const batchId = savedDraftBatchId || crypto.randomUUID()
+      if (!savedDraftBatchId) setSavedDraftBatchId(batchId)
+      const inlineLogo = await createInlineEmailLogo()
+      let currentBatch: typeof emailPayload = []
+      let currentAttachmentLength = 0
+      const batches: typeof emailPayload[] = []
+
+      for (const email of emailPayload) {
+        const attachmentLength = email.payload.attachment?.content.length ?? 0
+        if (
+          currentBatch.length >= MAX_SEND_REQUEST_SIZE ||
+          currentAttachmentLength + attachmentLength > MAX_BATCH_ATTACHMENT_LENGTH
+        ) {
+          batches.push(currentBatch)
+          currentBatch = []
+          currentAttachmentLength = 0
+        }
+        currentBatch.push(email)
+        currentAttachmentLength += attachmentLength
+      }
+      if (currentBatch.length) batches.push(currentBatch)
+
+      return batches.reduce<Promise<SavedDraftSendMutationResult>>(async (previousPromise, batch) => {
+        const previous = await previousPromise
+        const { data, error } = await functionClient.functions.invoke('send-outreach', {
+          body: {
+            batchId,
+            emails: batch.map(({ payload }) => payload),
+            complianceConfirmed: true,
+            inlineLogo,
+            senderName: effectiveSignature.senderName,
+          },
+        })
+        if (error) throw new Error(await getOutreachFunctionError(error))
+        if (!isSendOutreachResponse(data)) {
+          const message = data && typeof data === 'object' && 'error' in data && typeof data.error === 'string'
+            ? data.error
+            : 'The send function returned an invalid response.'
+          throw new Error(message)
+        }
+        const batchProspectIds = new Set(batch.map(({ draft }) => draft.prospect_id))
+        const resultProspectIds = data.results.flatMap((result) =>
+          result.prospect_id ? [result.prospect_id] : [],
+        )
+        if (
+          data.results.length !== batch.length ||
+          resultProspectIds.length !== batch.length ||
+          new Set(resultProspectIds).size !== batch.length ||
+          resultProspectIds.some((id) => !batchProspectIds.has(id))
+        ) {
+          throw new Error('The send function returned mismatched results. Check email history before retrying.')
+        }
+        const batchResultByProspect = new Map(data.results.map((result) => [result.prospect_id, result]))
+        setSavedDraftSendResults((current) => {
+          const next = { ...current }
+          for (const { draft } of batch) {
+            const result = batchResultByProspect.get(draft.prospect_id)
+            if (result) next[draft.id] = result
+          }
+          return next
+        })
+        const sentDraftIds = batch.flatMap(({ draft }) =>
+          batchResultByProspect.get(draft.prospect_id)?.status === 'sent' ? [draft.id] : [],
+        )
+        let nextStatusUpdateErrors = previous.statusUpdateErrors
+        if (sentDraftIds.length) {
+          const userId = await getCurrentUserId()
+          const { error: updateError } = await supabase.from('email_drafts')
+            .update({ status: 'sent' })
+            .in('id', sentDraftIds)
+            .eq('user_id', userId)
+          if (updateError) {
+            nextStatusUpdateErrors = [...nextStatusUpdateErrors, updateError.message]
+          }
+        }
+        return {
+          results: [
+            ...previous.results,
+            ...batch.flatMap(({ draft }) => {
+              const result = batchResultByProspect.get(draft.prospect_id)
+              return result ? [{ draftId: draft.id, result }] : []
+            }),
+          ],
+          statusUpdateErrors: nextStatusUpdateErrors,
+        }
+      }, Promise.resolve({ results: [], statusUpdateErrors: [] }))
+    },
+    onSuccess: async ({ results, statusUpdateErrors }: SavedDraftSendMutationResult) => {
+      const sentDraftIds = results.filter(({ result }) => result.status === 'sent').map(({ draftId }) => draftId)
+      const unsuccessful = results.filter(({ result }) => result.status !== 'sent')
+      if (unsuccessful.length) {
+        toast.error(`Sent ${sentDraftIds.length}; ${unsuccessful.length} were skipped or failed. Review each draft's result.`)
+      } else {
+        toast.success(`Sent ${sentDraftIds.length} saved email${sentDraftIds.length === 1 ? '' : 's'}.`)
+      }
+      if (statusUpdateErrors.length) {
+        toast.error(`Some emails were sent, but their draft status could not be updated: ${statusUpdateErrors.join('; ')}`)
+      }
+      setSelectedDraftIds((current) => current.filter((id) => !sentDraftIds.includes(id)))
+      setSavedDraftComplianceConfirmed(false)
+      if (unsuccessful.length === 0) setSavedDraftBatchId('')
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['/email-drafts'] }),
+        queryClient.invalidateQueries({ queryKey: ['/email-messages'] }),
+        queryClient.invalidateQueries({ queryKey: ['/email-messages', 'outreach-sent'] }),
+        queryClient.invalidateQueries({ queryKey: ['/prospects'] }),
+        queryClient.invalidateQueries({ queryKey: ['/dashboard/metrics'] }),
+      ])
+    },
+    onError: (error: Error) => toast.error(error.message || 'Could not send the saved email drafts.'),
+  })
+
   const saveMutation = useMutation({
     mutationFn: async () => {
       const userId = await getCurrentUserId()
@@ -1434,6 +1645,49 @@ export function EmailDraftsPage() {
       (draftProspectFilter === 'all' || draft.prospect_id === draftProspectFilter) &&
       (draftCampaignFilter === 'all' || draft.campaign_id === draftCampaignFilter)
   })
+  const eligibleFilteredDrafts = filteredDraftRows.filter((draft) => !getSavedDraftSendBlockReason(draft))
+  const selectableFilteredDrafts = eligibleFilteredDrafts
+    .filter((draft, index, list) => list.findIndex((item) => item.prospect_id === draft.prospect_id) === index)
+    .slice(0, MAX_OUTREACH_BATCH_SIZE)
+  const selectedDrafts = selectedDraftIds.flatMap((id) => {
+    const draft = draftRows.find((item) => item.id === id)
+    return draft ? [draft] : []
+  })
+  const selectedDraftsCanSend =
+    selectedDrafts.length > 0 &&
+    selectedDrafts.length <= MAX_OUTREACH_BATCH_SIZE &&
+    selectedDrafts.every((draft) => !getSavedDraftSendBlockReason(draft))
+
+  const requestSavedDraftSend = (draftsToSend: EmailDraft[]) => {
+    if (!savedDraftComplianceConfirmed) {
+      toast.error('Confirm that you reviewed every recipient and have a lawful basis to contact them.')
+      return
+    }
+    if (draftsToSend.length > MAX_OUTREACH_BATCH_SIZE) {
+      toast.error(`Select up to ${MAX_OUTREACH_BATCH_SIZE} drafts per bulk send.`)
+      return
+    }
+    const blockedDraft = draftsToSend.find((draft) => getSavedDraftSendBlockReason(draft))
+    if (blockedDraft) {
+      toast.error(`${blockedDraft.subject || 'Draft'}: ${getSavedDraftSendBlockReason(blockedDraft)}`)
+      return
+    }
+    const duplicateProspect = new Set(draftsToSend.map((draft) => draft.prospect_id)).size !== draftsToSend.length
+    if (duplicateProspect) {
+      toast.error('Select only one draft per prospect in a bulk send.')
+      return
+    }
+    const previouslyContacted = draftsToSend.flatMap((draft) => {
+      const prospect = outreachProspectRows.find((item) => item.id === draft.prospect_id)
+      return prospect && hasPreviousSend(prospect) ? [`${prospect.business_name} (${prospect.email})`] : []
+    })
+    const warning = previouslyContacted.length
+      ? `\n\nPreviously contacted:\n${previouslyContacted.join('\n')}\nReview these messages carefully before resending.`
+      : ''
+    if (window.confirm(`Send ${draftsToSend.length} saved email${draftsToSend.length === 1 ? '' : 's'} now?${warning}`)) {
+      savedDraftSendMutation.mutate(draftsToSend)
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -2279,11 +2533,75 @@ export function EmailDraftsPage() {
         </label>
       </Card>
 
+      <Card className="space-y-4 p-4 sm:p-5">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="font-semibold text-slate-800">Send saved drafts</h2>
+            <p className="mt-1 text-xs text-slate-500">
+              Send one draft from its card or select several for a bulk send. Current website reviews are attached automatically.
+              Review recipients and confirm a lawful basis before sending.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={selectableFilteredDrafts.length === 0 || savedDraftSendMutation.isPending}
+              onClick={() => {
+                setSelectedDraftIds(selectableFilteredDrafts.map((draft) => draft.id))
+                setSavedDraftComplianceConfirmed(false)
+              }}
+            >
+              Select {selectableFilteredDrafts.length} eligible
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={selectedDraftIds.length === 0 || savedDraftSendMutation.isPending}
+              onClick={() => {
+                setSelectedDraftIds([])
+                setSavedDraftComplianceConfirmed(false)
+              }}
+            >
+              Clear selection
+            </Button>
+          </div>
+        </div>
+        <label className="flex items-start gap-2 text-sm text-slate-700">
+          <input
+            type="checkbox"
+            checked={savedDraftComplianceConfirmed}
+            onChange={(event) => setSavedDraftComplianceConfirmed(event.target.checked)}
+            disabled={savedDraftSendMutation.isPending}
+            className="mt-1 h-4 w-4 shrink-0 accent-arlotech"
+          />
+          <span>I reviewed the messages I intend to send and confirm I have a lawful basis to contact each recipient.</span>
+        </label>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-xs text-slate-500" aria-live="polite">
+            {selectedDraftIds.length} selected · Up to {MAX_OUTREACH_BATCH_SIZE} drafts per bulk send
+            {eligibleFilteredDrafts.length > selectableFilteredDrafts.length ? ` · Select first ${selectableFilteredDrafts.length} unique eligible drafts` : ''}
+          </p>
+          <Button
+            onClick={() => requestSavedDraftSend(selectedDrafts)}
+            disabled={!selectedDraftsCanSend || !savedDraftComplianceConfirmed || savedDraftSendMutation.isPending}
+          >
+            <Send className="h-4 w-4" />
+            {savedDraftSendMutation.isPending
+              ? 'Sending drafts…'
+              : `Send selected drafts${selectedDraftIds.length ? ` (${selectedDraftIds.length})` : ''}`}
+          </Button>
+        </div>
+      </Card>
+
       <div className="space-y-3">
         {filteredDraftRows.map((draft) => {
           const draftProspect = outreachProspectRows.find((prospect) => prospect.id === draft.prospect_id)
           const draftCampaign = campaignOptions.find((campaign) => campaign.id === draft.campaign_id)
           const draftAnalysis = outreachAnalysisRows.find((analysis) => analysis.id === draft.website_analysis_id)
+          const sendBlockReason = getSavedDraftSendBlockReason(draft)
+          const isDraftSelected = selectedDraftIds.includes(draft.id)
+          const draftSendResult = savedDraftSendResults[draft.id]
           return (
           <Card key={draft.id} className="p-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
@@ -2299,8 +2617,62 @@ export function EmailDraftsPage() {
                   {draftCampaign ? ` · Campaign: ${draftCampaign.name}` : ''}
                   {draft.website_analysis_id ? ` · Audit: ${draftAnalysis?.website_url || 'linked audit'}` : ''}
                 </p>
+                {sendBlockReason && draft.status !== 'sent' && (
+                  <p className="mt-1 text-xs text-amber-700">{sendBlockReason}</p>
+                )}
+                {draftSendResult && (
+                  <p
+                    className={`mt-2 text-xs ${draftSendResult.status === 'sent' ? 'text-emerald-700' : 'text-red-700'}`}
+                    role="status"
+                  >
+                    {draftSendResult.status === 'sent'
+                      ? `Sent to ${draftSendResult.recipient_email || draftProspect?.email || 'recipient'}.${draftSendResult.tracking_error ? ` History warning: ${draftSendResult.tracking_error}` : ''}`
+                      : draftSendResult.error || `Email ${draftSendResult.status}.`}
+                  </p>
+                )}
               </div>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                <label className="flex h-8 items-center gap-2 rounded-lg border border-slate-200 px-2 text-xs text-slate-600">
+                  <input
+                    type="checkbox"
+                    checked={isDraftSelected}
+                    disabled={!!sendBlockReason || savedDraftSendMutation.isPending}
+                    onChange={(event) => {
+                      const checked = event.currentTarget.checked
+                      setSavedDraftComplianceConfirmed(false)
+                      setSelectedDraftIds((current) => {
+                        if (!checked) return current.filter((id) => id !== draft.id)
+                        const duplicate = current.some((id) =>
+                          draftRows.some((item) => item.id === id && item.prospect_id === draft.prospect_id),
+                        )
+                        if (duplicate) {
+                          toast.error('Select only one draft per prospect in a bulk send.')
+                          return current
+                        }
+                        if (current.length >= MAX_OUTREACH_BATCH_SIZE) {
+                          toast.error(`Select up to ${MAX_OUTREACH_BATCH_SIZE} drafts per bulk send.`)
+                          return current
+                        }
+                        return [...current, draft.id]
+                      })
+                    }}
+                    aria-label={`Select ${draft.subject} for bulk sending`}
+                    className="h-4 w-4 accent-arlotech"
+                  />
+                  <span>Select</span>
+                </label>
+                <Button
+                  size="sm"
+                  disabled={
+                    !!sendBlockReason ||
+                    !savedDraftComplianceConfirmed ||
+                    savedDraftSendMutation.isPending
+                  }
+                  onClick={() => requestSavedDraftSend([draft])}
+                >
+                  <Send className="h-3.5 w-3.5" />
+                  {savedDraftSendMutation.isPending ? 'Sending…' : 'Send'}
+                </Button>
                 <select
                   aria-label={`Status for ${draft.subject}`}
                   value={draft.status}
