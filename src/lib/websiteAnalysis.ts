@@ -25,6 +25,7 @@ import {
   selectRelevantWebsitePages,
   type WebsiteContextPageInput,
 } from '@/lib/websiteContext'
+import { inferBusinessCategory, type BusinessCategoryWebsiteContent } from '@/lib/businessCategory'
 
 export interface ExtractedContent {
   url: string
@@ -126,6 +127,37 @@ export async function refreshProspectContactsFromWebsite(
     .maybeSingle()
   if (error) throw error
   if (!data) throw new Error('The prospect could not be found while updating website contacts.')
+}
+
+export async function refreshProspectCategoryFromWebsite(
+  prospectId: string,
+  userId: string,
+  content: BusinessCategoryWebsiteContent,
+) {
+  const inferred = inferBusinessCategory(content)
+  if (!inferred) return null
+
+  const { data: prospect, error: prospectError } = await supabase
+    .from('prospects')
+    .select('business_category')
+    .eq('id', prospectId)
+    .eq('user_id', userId)
+    .maybeSingle()
+  if (prospectError) throw prospectError
+  if (!prospect) throw new Error('The prospect could not be found while assigning its website category.')
+  if (prospect.business_category?.trim()) return null
+
+  let updateQuery = supabase
+    .from('prospects')
+    .update({ business_category: inferred.category })
+    .eq('id', prospectId)
+    .eq('user_id', userId)
+  updateQuery = prospect.business_category === null
+    ? updateQuery.is('business_category', null)
+    : updateQuery.eq('business_category', prospect.business_category)
+  const { data, error } = await updateQuery.select('id').maybeSingle()
+  if (error) throw error
+  return data ? inferred : null
 }
 
 export interface PageSpeedResult {
@@ -453,6 +485,9 @@ export async function analyzeWebsite(
     limitations,
   }
 
+  const businessCategoryInference = contentExtractionError
+    ? null
+    : inferBusinessCategory(content)
   const scoreExplanation = explainUnifiedWebsiteScore(initialUnifiedScore)
   const analysisDetails = {
     score_explanation: scoreExplanation,
@@ -465,6 +500,7 @@ export async function analyzeWebsite(
     unified_score: initialUnifiedScore,
     audit_completeness: auditCompleteness,
     website_context: websiteContext,
+    business_category_inference: businessCategoryInference,
     html_inspection: {
       requested_url: content.url,
       final_url: content.finalUrl,
@@ -515,11 +551,23 @@ export async function analyzeWebsite(
   if (error) throw error
 
   let contactUpdateError: string | undefined
+  let detectedBusinessCategory: string | undefined
+  let categoryUpdateError: string | undefined
   if (prospectId) {
     try {
       await refreshProspectContactsFromWebsite(prospectId, userId, content.contacts)
     } catch (error) {
       contactUpdateError = error instanceof Error ? error.message : 'Could not update prospect contact details.'
+    }
+    if (businessCategoryInference) {
+      try {
+        const category = await refreshProspectCategoryFromWebsite(prospectId, userId, content)
+        detectedBusinessCategory = category?.category
+      } catch (error) {
+        categoryUpdateError = error instanceof Error
+          ? error.message
+          : 'Could not update the prospect business category.'
+      }
     }
   }
 
@@ -680,6 +728,8 @@ export async function analyzeWebsite(
       perfScore,
       contentExtractionError,
       contactUpdateError,
+      detectedBusinessCategory,
+      categoryUpdateError,
     }
   }
 
@@ -692,5 +742,7 @@ export async function analyzeWebsite(
     perfScore,
     contentExtractionError,
     contactUpdateError,
+    detectedBusinessCategory,
+    categoryUpdateError,
   }
 }

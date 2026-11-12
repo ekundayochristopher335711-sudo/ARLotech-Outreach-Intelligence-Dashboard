@@ -46,7 +46,7 @@ export interface OutreachSignature {
 }
 
 export const DEFAULT_OUTREACH_SIGNATURE: OutreachSignature = {
-  senderName: 'Ekundayo Christopher',
+  senderName: 'ARLOTECH',
   jobTitle: 'Lead Web Developer',
   businessName: 'Arlotech Digital Solutions',
   website: 'arlotech.com.ng',

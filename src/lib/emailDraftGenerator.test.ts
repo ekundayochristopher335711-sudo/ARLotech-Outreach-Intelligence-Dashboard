@@ -95,7 +95,7 @@ describe('professional email draft generation', () => {
 
     expect(result.body).toContain("A review of AK Plumbing and Heating's website highlighted one area that may be worth a closer look.")
     expect(result.body).not.toContain('business phone number is easy to find')
-    expect(result.body).toContain('Ekundayo Christopher')
+    expect(result.body).toContain('ARLOTECH')
     expect(result.body).toContain('Lead Web Developer')
     expect(result.body).toContain('arlotech.com.ng')
     expect(result.body).toContain('info@arlotech.com.ng')
