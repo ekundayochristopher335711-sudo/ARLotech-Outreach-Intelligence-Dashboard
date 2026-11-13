@@ -645,13 +645,13 @@ export function EmailDraftsPage() {
             includeReport: preview.has_website_report,
           })
           if (result.prospect.website !== prospect.website) {
-            throw new Error(`${prospect.business_name}: the AI response did not match the saved website URL.`)
+            throw new Error('the AI response did not match the saved website URL.')
           }
           if (
             prospect.business_name_verified &&
             result.prospect.businessName !== prospect.business_name
           ) {
-            throw new Error(`${prospect.business_name}: the AI response did not match the verified business name.`)
+            throw new Error('the AI response did not match the verified business name.')
           }
           generatedDraft = result
           aiConfidence = result.personalizationConfidence
@@ -660,8 +660,7 @@ export function EmailDraftsPage() {
           aiSenderBusiness = result.sender.business
           aiSenderEmail = result.sender.email
           generatedAnalysisId = result.analysisId
-          const errors = validateAiPreview(generatedDraft, prospect, preview.has_website_report)
-          if (errors.length) throw new Error(`${prospect.business_name}: ${errors.join(' ')}`)
+          validateAiPreview(generatedDraft, prospect, preview.has_website_report)
         } else if (followUpStage !== 'none') {
           const previousEmail = sentEmailRows.find((message) => message.prospect_id === prospect.id)
           if (!previousEmail) throw new Error(`No previously sent email is available for ${prospect.business_name}'s follow-up.`)
@@ -686,10 +685,10 @@ export function EmailDraftsPage() {
             !!analysis && hasMatchingWebsiteAnalysis(prospect, analysis),
             generatedSubject,
           )
-          if (validation.errors.length) throw new Error(`${prospect.business_name}: ${validation.errors.join(' ')}`)
+          if (validation.errors.length) throw new Error(validation.errors.join(' '))
         }
         if (generatedSubject.length > 200 || generatedDraft.body.length > 12_000) {
-          throw new Error(`${prospect.business_name}'s generated email exceeds the sending limits. Shorten it before preparing the batch.`)
+          throw new Error('the generated email exceeds the sending limits. Shorten it before preparing the batch.')
         }
         return {
           preview: {

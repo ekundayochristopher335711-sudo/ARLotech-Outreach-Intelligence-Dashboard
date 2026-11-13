@@ -4,6 +4,7 @@ import {
   getGenericEmailContentViolations,
   normalizeEmailSalutation,
   normalizePersonalizedEmailContent,
+  decodeHtmlEntities,
 } from "./copyRules.ts";
 
 const cors = {
@@ -632,6 +633,11 @@ Do not include raw URLs, unsupported claims, internal audit references, or first
     ).find((item: { type?: string }) => item.type === "output_text")?.text;
     if (!outputText) throw new Error("The AI returned no structured email draft.");
     const modelOutput = JSON.parse(outputText);
+    if (Array.isArray(modelOutput.subject_suggestions)) {
+      modelOutput.subject_suggestions = modelOutput.subject_suggestions.map((s) =>
+        typeof s === "string" ? decodeHtmlEntities(s) : s,
+      );
+    }
     if (
       (action === "generate" || (action === "rewrite" && input.rewrite_action === "custom")) &&
       modelOutput &&

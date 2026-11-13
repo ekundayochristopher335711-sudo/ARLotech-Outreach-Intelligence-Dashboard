@@ -9,6 +9,31 @@ const requiredAttachmentSentence = "We’ve attached the website review PDF for 
 const feedbackRequestPattern =
   /\b(?:feedback|goals?|priorities|thoughts|views|share|tell us|let us know)\b|\b(?:what|how|which|where|when)\b.{0,160}\b(?:website|site|visitors?|customers?|business|help|want|hope|like|need|experience|services?|booking|contact)\b/i;
 
+const htmlEntities: Record<string, string> = {
+  '&amp;': '&',
+  '&lt;': '<',
+  '&gt;': '>',
+  '&quot;': '"',
+  '&#39;': "'",
+  '&apos;': "'",
+  '&nbsp;': ' ',
+}
+
+function decodeHtmlEntities(value: string): string {
+  return value.replace(/&[#a-zA-Z0-9]+;/g, (entity) => {
+    if (entity in htmlEntities) return htmlEntities[entity as keyof typeof htmlEntities]
+    const numericMatch = entity.match(/^#(\d+);$/)
+    if (numericMatch) {
+      return String.fromCharCode(Number(numericMatch[1]))
+    }
+    const hexMatch = entity.match(/^#x([0-9a-fA-F]+);$/)
+    if (hexMatch) {
+      return String.fromCharCode(Number(`0x${hexMatch[1]}`))
+    }
+    return entity
+  })
+}
+
 export function normalizeEmailSalutation(body: string, contactName: string): string {
   const signatureStart = body.search(/\n\n(?:kind regards|best regards|regards|sincerely|thanks),?\s*\n/i);
   const content = signatureStart < 0 ? body.trim() : body.slice(0, signatureStart).trim();
@@ -26,9 +51,10 @@ export function normalizePersonalizedEmailContent(
   includeReport: boolean,
   contactName = "",
 ): string {
-  const signatureStart = body.search(/\n\n(?:kind regards|best regards|regards|sincerely|thanks),?\s*\n/i);
-  const content = signatureStart < 0 ? body : body.slice(0, signatureStart);
-  const signature = signatureStart < 0 ? "" : body.slice(signatureStart);
+  const decodedBody = decodeHtmlEntities(body)
+  const signatureStart = decodedBody.search(/\n\n(?:kind regards|best regards|regards|sincerely|thanks),?\s*\n/i);
+  const content = signatureStart < 0 ? decodedBody : decodedBody.slice(0, signatureStart);
+  const signature = signatureStart < 0 ? "" : decodedBody.slice(signatureStart);
   const sentences = content.match(/[^.!?]+(?:[.!?]+|$)/g) ?? [content];
   const statements: string[] = [];
   const feedbackQuestions = sentences
