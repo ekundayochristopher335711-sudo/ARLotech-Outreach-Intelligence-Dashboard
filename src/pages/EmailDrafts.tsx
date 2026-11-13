@@ -428,8 +428,8 @@ export function EmailDraftsPage() {
     businessName: signature.businessName === 'Arlotech Digital Solutions'
       ? emailProfile?.company_name || signature.businessName
       : signature.businessName,
-    senderName: 'ARLOTECH',
-    email: 'info@arlotech.com.ng',
+    senderName: signature.senderName,
+    email: signature.email,
   }
 
   const outreachProspectRows = outreachProspects as OutreachProspect[]
