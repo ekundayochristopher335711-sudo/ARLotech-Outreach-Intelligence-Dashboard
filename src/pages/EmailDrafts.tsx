@@ -1439,17 +1439,14 @@ export function EmailDraftsPage() {
 
   const savePreviewDraftMutation = useMutation({
     mutationFn: async (preview: GeneratedOutreachPreview) => {
-      if (preview.aiApproach) {
-        const prospect = outreachProspectRows.find((item) => item.id === preview.prospect_id)
-        if (!prospect) throw new Error('This prospect is no longer available.')
-        if (!preview.subject.trim() || preview.subject.length > 200) {
-          throw new Error('Choose a non-empty subject within the 200-character limit before saving.')
-        }
-        const validationErrors = validateAiPreview({
-          ...preview.generatedDraft,
-          body: preview.body,
-        }, prospect, preview.has_website_report)
-        if (validationErrors.length) throw new Error(validationErrors.join(' '))
+      if (!outreachProspectRows.some((item) => item.id === preview.prospect_id)) {
+        throw new Error('This prospect is no longer available.')
+      }
+      if (!preview.subject.trim() || preview.subject.length > 200) {
+        throw new Error('Choose a non-empty subject within the 200-character limit before saving.')
+      }
+      if (!preview.body.trim() || preview.body.length > 12_000) {
+        throw new Error('Enter an email body within the 12,000-character limit before saving.')
       }
       const userId = await getCurrentUserId()
       const values = {
