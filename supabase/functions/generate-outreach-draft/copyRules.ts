@@ -19,7 +19,7 @@ const htmlEntities: Record<string, string> = {
   '&nbsp;': ' ',
 }
 
-function decodeHtmlEntities(value: string): string {
+export function decodeHtmlEntities(value: string): string {
   return value.replace(/&[#a-zA-Z0-9]+;/g, (entity) => {
     if (entity in htmlEntities) return htmlEntities[entity as keyof typeof htmlEntities]
     const numericMatch = entity.match(/^#(\d+);$/)

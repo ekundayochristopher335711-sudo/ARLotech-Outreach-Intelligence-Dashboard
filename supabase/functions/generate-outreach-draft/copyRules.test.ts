@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  decodeHtmlEntities,
   getGenericCopyViolation,
   getGenericEmailContentViolations,
   normalizeEmailSalutation,
@@ -7,6 +8,12 @@ import {
 } from "./copyRules.ts";
 
 describe("personalized email copy rules", () => {
+  it("decodes HTML entities in generated copy", () => {
+    expect(decodeHtmlEntities("We&#39;ve improved the site &amp; mobile layout.")).toBe(
+      "We've improved the site & mobile layout.",
+    );
+  });
+
   it("rejects internal audit IDs and labels", () => {
     expect(getGenericCopyViolation("We can improve the layout (visual-1).")).toBe("internal_reference");
     expect(getGenericCopyViolation("Finding 2 suggests a clearer call to action.")).toBe("internal_reference");
