@@ -1,6 +1,13 @@
 const PHONE_CANDIDATE_PATTERN = /(?<![\w])(?:\+|00)?\d(?:[\d\s()./\-\u2010-\u2015\u2212]{4,}\d)(?![\w])/g
 const PHONE_LINK_PATTERN = /tel:([^"'<>\s]+)/gi
+const STRUCTURED_PHONE_PATTERN = /["'](?:telephone|phone|mobile|mobilePhone)["']\s*:\s*["']([^"']{5,60})["']/gi
 const HTML_ENTITY_PATTERN = /&(#(?:x[\da-f]+|\d+)|[a-z][a-z\d]+);/gi
+const PHONE_CONTEXT_BEFORE_PATTERN =
+  /\b(?:phone|telephone|tel|mobile|cell(?:ular)?|call(?: us)?|whats?app|contact(?: us)?|reach us)(?:\s+(?:us|at|on|number))?[\s:()[\].,-]{0,20}$/i
+const PHONE_CONTEXT_AFTER_PATTERN =
+  /^[\s:()[\].,-]{0,20}\b(?:phone|telephone|tel|mobile|cell(?:ular)?|whats?app)\b/i
+const DATE_CANDIDATE_PATTERN =
+  /^\s*(?:\d{4}[-/.]\d{1,2}[-/.]\d{1,2}|\d{1,2}[-/.]\d{1,2}[-/.]\d{2,4})\s*$/
 
 const HTML_PHONE_ENTITIES: Record<string, string> = {
   amp: '&',
@@ -29,7 +36,28 @@ function decodeHtmlEntities(value: string): string {
 }
 
 function phoneSearchText(source: string): string {
-  return decodeHtmlEntities(source.replace(/<[^>]*>/g, ' ')).replace(/\s+/g, ' ')
+  return decodeHtmlEntities(
+    source
+      .replace(/<(script|style|noscript|template)\b[^>]*>[\s\S]*?<\/\1>/gi, ' ')
+      .replace(/<[^>]*>/g, ' '),
+  ).replace(/\s+/g, ' ')
+}
+
+function phoneReferenceText(source: string): string[] {
+  const references = [phoneSearchText(source)]
+  for (const match of source.matchAll(PHONE_LINK_PATTERN)) {
+    let value = decodeHtmlEntities(match[1].split('?', 1)[0])
+    try {
+      value = decodeURIComponent(value)
+    } catch {
+      // Keep HTML-decoded phone links when percent-encoding is malformed.
+    }
+    references.push(value)
+  }
+  for (const match of source.matchAll(STRUCTURED_PHONE_PATTERN)) {
+    references.push(decodeHtmlEntities(match[1]))
+  }
+  return references
 }
 
 interface PhoneCountry {
@@ -107,7 +135,7 @@ function phoneCountryFromPage(pageUrl: string, language: string | null, sources:
   const languageCountry = PHONE_COUNTRIES.find(({ region }) => region === languageRegion)
   if (languageCountry) return languageCountry
 
-  const pageText = sources.join('\n')
+  const pageText = sources.flatMap(phoneReferenceText).join('\n')
   const countryMatches = PHONE_COUNTRIES.filter(({ names, callingCode }) =>
     names.some((name) => {
       const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
@@ -171,12 +199,30 @@ export function extractPhoneNumbers(sources: string[], pageUrl: string, language
   }
 
   for (const source of sources) {
+    for (const match of source.matchAll(STRUCTURED_PHONE_PATTERN)) {
+      const phone = normalizePhoneCandidate(decodeHtmlEntities(match[1]), country)
+      if (phone) phones.add(phone)
+    }
+  }
+
+  for (const source of sources) {
     const text = phoneSearchText(source)
-    for (const candidateSource of text === source ? [source] : [text, source]) {
-      for (const match of candidateSource.matchAll(PHONE_CANDIDATE_PATTERN)) {
-        const phone = normalizePhoneCandidate(match[0], country)
-        if (phone) phones.add(phone)
-      }
+    for (const match of text.matchAll(PHONE_CANDIDATE_PATTERN)) {
+      if (DATE_CANDIDATE_PATTERN.test(match[0])) continue
+
+      const before = text.slice(Math.max(0, match.index - 50), match.index)
+      const after = text.slice(match.index + match[0].length, match.index + match[0].length + 30)
+      const digits = match[0].replace(/\D/g, '')
+      const hasPhoneContext =
+        PHONE_CONTEXT_BEFORE_PATTERN.test(before) || PHONE_CONTEXT_AFTER_PATTERN.test(after)
+      const hasInternationalPrefix = /^\s*(?:\+|00)/.test(match[0])
+      const plausibleFormattedLocalNumber =
+        country !== null && /[\s()./\-\u2010-\u2015\u2212]/.test(match[0]) && digits.length >= 9 && digits.length <= 12
+
+      if (!hasPhoneContext && !hasInternationalPrefix && !plausibleFormattedLocalNumber) continue
+
+      const phone = normalizePhoneCandidate(match[0], country)
+      if (phone) phones.add(phone)
     }
   }
 

@@ -89,4 +89,28 @@ describe('extractPhoneNumbers', () => {
       null,
     )).toEqual(['+12025550148'])
   })
+
+  it('ignores dates and unlabelled reference numbers while keeping a labelled phone', () => {
+    expect(extractPhoneNumbers(
+      ['Registration number: 1234567890; Registered: 2026-11-14. Phone: +234 803 123 4567.'],
+      'https://example.com',
+      null,
+    )).toEqual(['+2348031234567'])
+  })
+
+  it('extracts structured telephone fields without treating script identifiers as phone numbers', () => {
+    expect(extractPhoneNumbers(
+      ['<script type="application/ld+json">{"@type":"LocalBusiness","telephone":"+44 20 7946 0958","identifier":"1234567890"}</script>'],
+      'https://example.com',
+      null,
+    )).toEqual(['+442079460958'])
+  })
+
+  it('does not let an unrelated script number override the visible country context', () => {
+    expect(extractPhoneNumbers(
+      ['<script>const example = "+1 202 555 0148"</script><p>Serving customers in Nigeria. Call 0803 123 4567.</p>'],
+      'https://example.com',
+      null,
+    )).toContain('+2348031234567')
+  })
 })
