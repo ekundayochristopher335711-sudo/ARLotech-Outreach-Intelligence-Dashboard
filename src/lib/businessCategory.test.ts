@@ -24,6 +24,17 @@ describe('inferBusinessCategory', () => {
     })?.category).toBe('Dental Care')
   })
 
+  it('uses extracted service-page evidence when the homepage is generic', () => {
+    expect(inferBusinessCategory({
+      title: 'Welcome to Example',
+      additionalPages: [{
+        title: 'Our plumbing and boiler services',
+        headings: ['H1: Plumbing repairs and central heating installation'],
+        text_excerpt: 'Our plumbers provide emergency boiler repairs.',
+      }],
+    })?.category).toBe('Plumbing and Heating')
+  })
+
   it('does not classify a site from generic or weak website text', () => {
     expect(inferBusinessCategory({
       title: 'Welcome to our business',

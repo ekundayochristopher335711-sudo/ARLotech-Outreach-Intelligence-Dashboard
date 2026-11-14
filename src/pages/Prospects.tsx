@@ -323,7 +323,10 @@ export function ProspectsPage() {
     return matchesWebsiteFilter && matchesSearch
   })
   const contactScanTargets = prospectRecords.filter(
-    (prospect) => Boolean(prospect.website && (!prospect.email || !prospect.phone)),
+    (prospect) => Boolean(
+      prospect.website?.trim() &&
+      (!prospect.email?.trim() || !prospect.phone?.trim() || !prospect.city?.trim() || !prospect.country?.trim()),
+    ),
   )
   const prospectsWithWebsites = prospectRecords.filter((prospect) => Boolean(prospect.website?.trim()))
   const allFilteredSelected =
@@ -341,12 +344,10 @@ export function ProspectsPage() {
   const analyzeProspectWebsites = useCallback(async (
     targets: Prospect[],
     {
-      createDrafts = true,
       includeVisualReview = true,
       reanalyzeAll = false,
       persistedProgress,
     }: {
-      createDrafts?: boolean
       includeVisualReview?: boolean
       reanalyzeAll?: boolean
       persistedProgress?: { userId: string; value: PersistedAnalysisProgress }
@@ -406,6 +407,7 @@ export function ProspectsPage() {
         website: prospect.website,
         contact_email: prospect.email,
         contact_phone: prospect.phone,
+        detected_business_category: prospect.business_category || undefined,
         analysis_score: outcome?.analysis_score ?? null,
         analysis_completed: outcome?.analysis_completed,
         draft_created: false,
@@ -432,7 +434,6 @@ export function ProspectsPage() {
           try {
             try {
               enrichmentResult = await enrichAndAnalyzeProspect(prospect, {
-                createDraft: createDrafts,
                 includeVisualReview,
               })
             } catch (error) {
@@ -595,7 +596,6 @@ export function ProspectsPage() {
           setIsEnriching(true)
         } else {
           void analyzeProspectWebsites(targets, {
-            createDrafts: false,
             includeVisualReview: false,
             persistedProgress: { userId, value: progress },
           })
@@ -698,7 +698,6 @@ export function ProspectsPage() {
     }
     restoredAnalysisUserId.current = userId
     await analyzeProspectWebsites(prospectsWithWebsites, {
-      createDrafts: false,
       includeVisualReview: false,
       reanalyzeAll: true,
       persistedProgress: { userId, value: progress },
@@ -774,7 +773,6 @@ export function ProspectsPage() {
     }
 
     await analyzeProspectWebsites(targets, {
-      createDrafts: false,
       includeVisualReview: false,
       persistedProgress: { userId, value: progress },
     })
@@ -810,7 +808,7 @@ export function ProspectsPage() {
 
   const handleScanMissingContacts = async () => {
     if (contactScanTargets.length === 0) {
-      toast.info('No prospects with a website and missing contact details were found.')
+      toast.info('No prospects with a website and missing contact or location details were found.')
       return
     }
 
@@ -822,6 +820,8 @@ export function ProspectsPage() {
       website: prospect.website,
       contact_email: prospect.email,
       contact_phone: prospect.phone,
+      city: prospect.city,
+      country: prospect.country,
       analysis_score: null,
       draft_created: false,
       error: 'Queued for contact lookup',
@@ -838,10 +838,12 @@ export function ProspectsPage() {
             website: prospect.website,
             contact_email: contacts.email,
             contact_phone: contacts.phone,
+            city: contacts.city,
+            country: contacts.country,
             analysis_score: null,
             draft_created: false,
-            ...(!contacts.email && !contacts.phone
-              ? { error: 'No contact details were found on the inspected pages.' }
+            ...(!contacts.email && !contacts.phone && !contacts.city && !contacts.country
+              ? { error: 'No contact or location details were found on the inspected pages.' }
               : {}),
           }
         } catch (error) {
@@ -1266,10 +1268,11 @@ export function ProspectsPage() {
               <thead className="bg-slate-50">
                 <tr>
                   <th className="px-3 py-2 text-left">Business</th>
+                  <th className="px-3 py-2 text-left">Category</th>
                   <th className="px-3 py-2 text-left">Contact email</th>
                   <th className="px-3 py-2 text-left">Contact phone</th>
+                  <th className="px-3 py-2 text-left">Location</th>
                   <th className="px-3 py-2 text-left">Score</th>
-                  <th className="px-3 py-2 text-left">Draft</th>
                   <th className="px-3 py-2 text-left">Status</th>
                 </tr>
               </thead>
@@ -1277,10 +1280,11 @@ export function ProspectsPage() {
                 {enrichmentResults.map((r) => (
                   <tr key={r.prospect_id} className="border-t border-slate-100">
                     <td className="px-3 py-2">{r.business_name}</td>
+                    <td className="px-3 py-2">{r.detected_business_category ?? 'Not detected'}</td>
                     <td className="px-3 py-2">{r.contact_email ?? '—'}</td>
                     <td className="px-3 py-2">{r.contact_phone ?? '—'}</td>
+                    <td className="px-3 py-2">{[r.city, r.country].filter(Boolean).join(', ') || '—'}</td>
                     <td className="px-3 py-2">{r.analysis_score ?? '—'}</td>
-                    <td className="px-3 py-2">{r.draft_created ? 'Created' : '—'}</td>
                     <td className="max-w-[28rem] whitespace-normal px-3 py-2">
                       {r.analysis_completed
                         ? `Analysis complete${r.error ? `; ${r.error}` : ''}`
@@ -1302,7 +1306,15 @@ export function ProspectsPage() {
                     </span>
                   )}
                 </div>
-                <p className="mt-1 break-all text-xs text-slate-500">{result.contact_email || result.contact_phone || 'Contact details unavailable'}</p>
+                <p className="mt-1 break-all text-xs text-slate-500">
+                  {[result.contact_email, result.contact_phone].filter(Boolean).join(' · ') || 'Contact details unavailable'}
+                </p>
+                <p className="mt-1 break-words text-xs text-slate-500">
+                  Category: {result.detected_business_category || 'Not detected from website text'}
+                </p>
+                <p className="mt-1 break-words text-xs text-slate-500">
+                  Location: {[result.city, result.country].filter(Boolean).join(', ') || 'Not detected'}
+                </p>
                 <p className="mt-2 break-words text-xs leading-5 text-slate-600">
                   {result.analysis_completed
                     ? `Analysis complete${result.error ? `; ${result.error}` : ''}`

@@ -46,6 +46,11 @@ export async function generateAiOutreachDraft(input: {
   tone: OutreachTone
   length: 'short' | 'standard' | 'detailed'
   senderContext?: string
+  senderProfile: {
+    name: string
+    business: string
+    email: string
+  }
   followUpStage?: FollowUpStage
   includeReport?: boolean
 }) {
@@ -57,6 +62,11 @@ export async function generateAiOutreachDraft(input: {
       tone: input.tone,
       length: input.length,
       sender_context: input.senderContext?.slice(0, 600) ?? '',
+      sender_profile: {
+        name: input.senderProfile.name.slice(0, 100),
+        business: input.senderProfile.business.slice(0, 100),
+        email: input.senderProfile.email.slice(0, 254),
+      },
       follow_up_stage: input.followUpStage ?? 'none',
       include_report: input.includeReport ?? false,
     },

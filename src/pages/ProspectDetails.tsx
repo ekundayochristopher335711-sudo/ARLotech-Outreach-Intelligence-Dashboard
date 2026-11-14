@@ -228,6 +228,12 @@ export function ProspectDetails() {
     },
     onSuccess: (result: Awaited<ReturnType<typeof analyzeWebsite>>) => {
       toast.success('Website analysis refreshed')
+      if (result.detectedBusinessCategory) {
+        toast.success(`Website category detected and saved: ${result.detectedBusinessCategory}`)
+      }
+      if (result.categoryUpdateError) {
+        toast.warning(`Website analysis completed, but the detected business category could not be saved: ${result.categoryUpdateError}`)
+      }
       if (result.contactUpdateError) {
         toast.warning(`Website analysis completed, but prospect contact details could not be updated: ${result.contactUpdateError}`)
       }

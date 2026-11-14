@@ -141,6 +141,12 @@ export function WebsiteIntelligencePage() {
         : result.prospectCreated
           ? 'Analysis complete and prospect added'
           : 'Analysis complete and linked to existing prospect')
+      if (result.detectedBusinessCategory) {
+        toast.success(`Website category detected and saved: ${result.detectedBusinessCategory}`)
+      }
+      if (result.categoryUpdateError) {
+        toast.warning(`Website analysis completed, but the detected business category could not be saved: ${result.categoryUpdateError}`)
+      }
       if (result.contactUpdateError) {
         toast.warning(`Website analysis completed, but prospect contact details could not be updated: ${result.contactUpdateError}`)
       }

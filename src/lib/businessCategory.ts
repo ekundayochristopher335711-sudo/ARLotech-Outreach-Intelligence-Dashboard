@@ -4,6 +4,12 @@ export interface BusinessCategoryWebsiteContent {
   headings?: Record<string, string[]>
   textExcerpt?: string
   schema?: string[]
+  additionalPages?: Array<{
+    title?: string
+    meta_description?: string
+    headings?: string[]
+    text_excerpt?: string
+  }>
 }
 
 export interface BusinessCategoryInference {
@@ -161,6 +167,18 @@ function getTextSources(content: BusinessCategoryWebsiteContent) {
     }
   }
   if (content.textExcerpt?.trim()) sources.push({ text: content.textExcerpt.slice(0, 3000), weight: 1 })
+  for (const page of content.additionalPages ?? []) {
+    if (page.title?.trim()) sources.push({ text: page.title.trim(), weight: 2 })
+    if (page.meta_description?.trim()) sources.push({ text: page.meta_description.trim(), weight: 1 })
+    for (const heading of page.headings ?? []) {
+      const match = heading.match(/^(H[1-6]):\s*(.*)$/i)
+      const text = (match?.[2] ?? heading).trim()
+      if (!text) continue
+      const weight = match?.[1].toUpperCase() === 'H1' ? 3 : match?.[1].toUpperCase() === 'H2' ? 2 : 1
+      sources.push({ text, weight })
+    }
+    if (page.text_excerpt?.trim()) sources.push({ text: page.text_excerpt.slice(0, 1800), weight: 1 })
+  }
   return sources
 }
 

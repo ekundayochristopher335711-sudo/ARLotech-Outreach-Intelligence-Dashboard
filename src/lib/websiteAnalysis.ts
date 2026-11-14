@@ -54,6 +54,7 @@ export interface ExtractedContent {
   }
   h1Count: number
   contacts?: { emails: string[]; phones: string[] }
+  location?: { city: string; country: string } | null
 }
 
 async function collectWebsiteContext(
@@ -108,25 +109,55 @@ export async function refreshProspectContactsFromWebsite(
   prospectId: string,
   userId: string,
   contacts?: ExtractedContent['contacts'],
+  location?: ExtractedContent['location'],
 ) {
-  const updates: { email?: string; phone?: string } = {}
+  const updates: { email?: string; phone?: string; city?: string; country?: string } = {}
   const extractedEmail = contacts?.emails.find((value) =>
     /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim()),
   )
   const extractedPhone = contacts?.phones.find((value) => value.replace(/\D/g, '').length >= 7)
   if (extractedEmail) updates.email = extractedEmail.trim().toLowerCase()
   if (extractedPhone) updates.phone = extractedPhone.trim()
+  const extractedCity = location?.city.trim()
+  const extractedCountry = location?.country.trim()
+  let currentCity: string | null = null
+  let currentCountry: string | null = null
+  if (extractedCity || extractedCountry) {
+    const { data: prospect, error: prospectError } = await supabase
+      .from('prospects')
+      .select('city, country')
+      .eq('id', prospectId)
+      .eq('user_id', userId)
+      .maybeSingle()
+    if (prospectError) throw prospectError
+    if (!prospect) throw new Error('The prospect could not be found while updating its website location.')
+    currentCity = prospect.city
+    currentCountry = prospect.country
+    if (!prospect.city?.trim() && extractedCity) updates.city = extractedCity
+    if (!prospect.country?.trim() && extractedCountry) updates.country = extractedCountry
+  }
   if (Object.keys(updates).length === 0) return
 
-  const { data, error } = await supabase
+  let updateQuery = supabase
     .from('prospects')
     .update(updates)
     .eq('id', prospectId)
     .eq('user_id', userId)
-    .select('id')
-    .maybeSingle()
+  if (updates.city) {
+    updateQuery = currentCity === null
+      ? updateQuery.is('city', null)
+      : updateQuery.eq('city', currentCity)
+  }
+  if (updates.country) {
+    updateQuery = currentCountry === null
+      ? updateQuery.is('country', null)
+      : updateQuery.eq('country', currentCountry)
+  }
+  const { data, error } = await updateQuery.select('id').maybeSingle()
   if (error) throw error
-  if (!data) throw new Error('The prospect could not be found while updating website contacts.')
+  if (!data && !(extractedCity || extractedCountry)) {
+    throw new Error('The prospect could not be found while updating website contacts.')
+  }
 }
 
 export async function refreshProspectCategoryFromWebsite(
@@ -555,7 +586,7 @@ export async function analyzeWebsite(
   let categoryUpdateError: string | undefined
   if (prospectId) {
     try {
-      await refreshProspectContactsFromWebsite(prospectId, userId, content.contacts)
+      await refreshProspectContactsFromWebsite(prospectId, userId, content.contacts, content.location)
     } catch (error) {
       contactUpdateError = error instanceof Error ? error.message : 'Could not update prospect contact details.'
     }

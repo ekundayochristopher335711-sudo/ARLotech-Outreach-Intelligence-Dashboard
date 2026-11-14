@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { analyzeWebsiteMock, invokeMock, fromMock, updateMock, eqMock } = vi.hoisted(() => ({
+const { analyzeWebsiteMock, refreshProspectContactsMock, invokeMock, fromMock, updateMock, eqMock } = vi.hoisted(() => ({
   analyzeWebsiteMock: vi.fn(),
+  refreshProspectContactsMock: vi.fn(),
   invokeMock: vi.fn(),
   fromMock: vi.fn(),
   updateMock: vi.fn(),
@@ -11,6 +12,7 @@ const { analyzeWebsiteMock, invokeMock, fromMock, updateMock, eqMock } = vi.hois
 vi.mock('@/lib/websiteAnalysis', () => ({
   analyzeWebsite: analyzeWebsiteMock,
   extractContent: vi.fn(),
+  refreshProspectContactsFromWebsite: refreshProspectContactsMock,
 }))
 
 vi.mock('@/lib/supabase', () => ({
@@ -24,6 +26,7 @@ import { type Prospect } from '@/types'
 describe('enrichAndAnalyzeProspect', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    refreshProspectContactsMock.mockResolvedValue(undefined)
     fromMock.mockReturnValue({ update: updateMock })
     updateMock.mockReturnValue({ eq: eqMock })
     eqMock.mockReturnValue({ eq: eqMock })
@@ -61,10 +64,20 @@ describe('enrichAndAnalyzeProspect', () => {
     }
 
     await expect(enrichProspectContacts(prospect, {
-      contacts: { emails: ['new@example.com'], phones: ['+1 555 0199'] },
-    })).resolves.toEqual({ email: 'new@example.com', phone: '+1 555 0199' })
-    expect(fromMock).toHaveBeenCalledWith('prospects')
-    expect(updateMock).toHaveBeenCalledWith({ email: 'new@example.com', phone: '+1 555 0199' })
+      contacts: { emails: ['not an email', 'new@example.com'], phones: ['+1 555 0199'] },
+      location: { city: 'Lagos', country: 'Nigeria' },
+    })).resolves.toEqual({
+      email: 'new@example.com',
+      phone: '+1 555 0199',
+      city: 'Lagos',
+      country: 'Nigeria',
+    })
+    expect(refreshProspectContactsMock).toHaveBeenCalledWith(
+      'prospect-1',
+      'user-1',
+      { emails: ['not an email', 'new@example.com'], phones: ['+1 555 0199'] },
+      { city: 'Lagos', country: 'Nigeria' },
+    )
   })
 
   it('completes analysis when content extraction fails without repeating the failed fetch', async () => {
@@ -100,7 +113,7 @@ describe('enrichAndAnalyzeProspect', () => {
     expect(result.error).toContain('Website content extraction failed: site request failed')
   })
 
-  it('does not create an outreach draft when re-analyzing a prospect', async () => {
+  it('never saves an outreach draft automatically during website analysis', async () => {
     const prospect: Prospect = {
       id: 'prospect-1',
       user_id: 'user-1',
@@ -130,12 +143,13 @@ describe('enrichAndAnalyzeProspect', () => {
       contentExtractionError: null,
     })
 
-    const result = await enrichAndAnalyzeProspect(prospect, { createDraft: false })
+    const result = await enrichAndAnalyzeProspect(prospect)
 
     expect(analyzeWebsiteMock).toHaveBeenCalledWith(prospect.website, prospect.id, true)
     expect(result.analysis_completed).toBe(true)
     expect(result.draft_created).toBe(false)
-    expect(result.draft_reason).toBe('Draft not created for this re-analysis.')
+    expect(result.draft_reason).toBe('Drafts are only saved manually from Email Drafts.')
+    expect(fromMock).not.toHaveBeenCalled()
   })
 
   it('can skip the optional visual review during bulk re-analysis', async () => {
@@ -168,7 +182,7 @@ describe('enrichAndAnalyzeProspect', () => {
       contentExtractionError: null,
     })
 
-    await enrichAndAnalyzeProspect(prospect, { createDraft: false, includeVisualReview: false })
+    await enrichAndAnalyzeProspect(prospect, { includeVisualReview: false })
 
     expect(analyzeWebsiteMock).toHaveBeenCalledWith(prospect.website, prospect.id, false)
   })

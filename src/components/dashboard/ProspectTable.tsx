@@ -38,6 +38,7 @@ export function ProspectTable({
         const suppressionSource = prospect.email
           ? suppressionSources?.get(prospect.email.trim().toLowerCase())
           : undefined
+        const location = [prospect.city, prospect.country].filter(Boolean).join(', ')
         return (
         <div
           key={prospect.id}
@@ -72,10 +73,15 @@ export function ProspectTable({
               {showManualContactActions && (
                 <p className="break-all text-xs text-slate-500">{prospect.phone || 'No phone number'}</p>
               )}
-              {prospect.city && (
+              {location && (
                 <p className="mt-0.5 flex items-center gap-1 break-words text-xs text-slate-400">
                   <MapPin className="h-3 w-3 shrink-0" />
-                  {prospect.city}
+                  {location}
+                </p>
+              )}
+              {prospect.business_category && (
+                <p className="mt-1 break-words text-xs font-medium text-arlotech">
+                  Category: {prospect.business_category}
                 </p>
               )}
               {analysisErrors?.get(prospect.id) && (
