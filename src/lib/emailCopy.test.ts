@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { emailFindingImpact, emailFindingTitle } from './emailCopy'
+import { emailFindingImpact, emailFindingTitle, invitesWebsiteFeedback } from './emailCopy'
 
 describe('evidence-aware email finding copy', () => {
   it('does not describe an image aspect-ratio issue as a loading problem', () => {
@@ -18,5 +18,16 @@ describe('evidence-aware email finding copy', () => {
     const finding = { audit_id: 'doctype', title: 'Page has the HTML doctype' }
     expect(emailFindingTitle(finding)).toContain('older browser display rules')
     expect(emailFindingImpact(finding)).toContain('checked visually')
+  })
+})
+
+describe('website feedback questions', () => {
+  it('accepts natural prospect-specific questions about visitor goals', () => {
+    expect(invitesWebsiteFeedback('Which part of your website would you like visitors to find more easily?')).toBe(true)
+    expect(invitesWebsiteFeedback('What would you like your website to help visitors do?')).toBe(true)
+  })
+
+  it('continues to reject unrelated questions', () => {
+    expect(invitesWebsiteFeedback('Would you have time for a call next week?')).toBe(false)
   })
 })

@@ -91,8 +91,15 @@ const findingCopies: Array<[RegExp, FindingCopy]> = [
 const technicalOrPressuringLanguage =
   /\b(?:Lighthouse|PageSpeed|LCP|FCP|TBT|CLS|INP|JavaScript|CSS|HTML|DOM|WCAG|SEO|API|KiB|KB|ms|milliseconds?|viewport|payload|metric|canonical|robots\.txt|meta description|score|render.blocking|failed|failure|broken|defective|critical|severe|poor|urgent|crisis)\b|\b\d+(?:\.\d+)?\s*(?:ms|milliseconds?|seconds?|s|KiB|KB)\b/i
 
+const feedbackRequestPattern =
+  /\b(?:feedback|goals?|priorities|thoughts|views|share|tell us|let us know)\b|\b(?:what|how|which|where|when)\b.{0,160}\b(?:website|site|visitors?|customers?|business|help|want|hope|like|need|experience|services?|booking|contact)\b/i
+
 export function containsEmailJargon(value: string) {
   return technicalOrPressuringLanguage.test(value)
+}
+
+export function invitesWebsiteFeedback(value: string) {
+  return feedbackRequestPattern.test(value)
 }
 
 export function containsExternalAuditReference(value: string) {

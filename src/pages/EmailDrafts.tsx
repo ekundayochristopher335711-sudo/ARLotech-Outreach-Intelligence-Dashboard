@@ -32,7 +32,7 @@ import {
 } from '@/lib/emailDraftGenerator'
 import type { Campaign, EmailDraft, Prospect, WebsiteAnalysis } from '@/types'
 import { assessEmailQuality } from '@/lib/growthIntelligence'
-import { containsEmailJargon, containsExternalAuditReference } from '@/lib/emailCopy'
+import { containsEmailJargon, containsExternalAuditReference, invitesWebsiteFeedback } from '@/lib/emailCopy'
 import { getOutreachFunctionError } from '@/lib/outreachFunctionError'
 import { mapWithConcurrency } from '@/lib/mapWithConcurrency'
 import {
@@ -230,7 +230,7 @@ function validateAiPreview(
   if (!/\b(?:clear(?:ly|er)?|professional(?:ly)?|easier|easy|visitors|get in touch|find|navigate|book|contact|access)\b/i.test(body)) {
     errors.push('Explain a realistic benefit of the website services.')
   }
-  if (!/\bfeedback\b/i.test(body) && !/\b(?:share|tell us|let us know)\b.{0,100}\b(?:goals|priorities|thoughts|views|website)\b/i.test(body)) {
+  if (!invitesWebsiteFeedback(body)) {
     errors.push('Invite the recipient to share feedback about their website goals.')
   }
   if (/we (?:user )?tested your website|our user testing|conversion test(?:ing)? showed/i.test(body)) {
