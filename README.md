@@ -155,6 +155,7 @@ Set the signing secret shown in that webhook's details as a Supabase Edge Functi
 npx supabase secrets set RESEND_WEBHOOK_SECRET="whsec_your_webhook_signing_secret"
 npx supabase db push --linked
 npx supabase functions deploy resend-inbound
+npx supabase functions deploy send-reply
 ```
 
 The receiver verifies Resend's signature, retrieves the message body from Resend, and links it to the most recent sent message from the same sender address. Replies without a matching recorded outbound recipient are acknowledged but not stored. After setup, send a new test email and reply to it; confirm that the webhook delivery succeeds in Resend and that the message appears on the Replies page. Replies to older messages continue to go to the address shown in those messages. Keep the signing secret server-side; never add it to Vite environment variables or frontend code.

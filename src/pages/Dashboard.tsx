@@ -80,7 +80,7 @@ export function DashboardPage() {
     data: prospects,
     isLoading: prospectsLoading,
   } = useQuery({
-    queryKey: ['/prospects'],
+    queryKey: ['/prospects', 'dashboard-preview'],
     queryFn: async () => {
       const userId = await getCurrentUserId()
       const { data, error } = await supabase

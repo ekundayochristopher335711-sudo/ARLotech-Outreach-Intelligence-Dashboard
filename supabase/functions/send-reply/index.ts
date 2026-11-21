@@ -2,6 +2,7 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { replyEmailHtml } from '../_shared/outreachEmailTemplate.ts'
 import { resolveReplyToAddress } from '../send-outreach/eligibility.ts'
+import { createReplyIdempotencyKey } from './helpers.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -114,6 +115,7 @@ serve(async (req) => {
       headers: {
         Authorization: `Bearer ${resendApiKey}`,
         'Content-Type': 'application/json',
+        'Idempotency-Key': await createReplyIdempotencyKey(userId, inboundMessage.id, replyBody),
       },
       body: JSON.stringify({
         from: fromEmail,
@@ -140,6 +142,18 @@ serve(async (req) => {
         ? resendBody.message
         : `Resend rejected the reply (${resendResponse.status}).`
       return jsonResponse({ error: detail }, 502)
+    }
+
+    const { data: existingMessage, error: existingMessageError } = await supabase
+      .from('email_messages')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('provider', 'resend')
+      .eq('provider_message_id', resendBody.id)
+      .maybeSingle()
+    if (existingMessageError) console.error('Could not check existing reply history:', existingMessageError)
+    if (existingMessage) {
+      return jsonResponse({ sent: true, already_recorded: true })
     }
 
     const sentAt = new Date().toISOString()

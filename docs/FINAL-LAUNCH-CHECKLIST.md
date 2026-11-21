@@ -37,12 +37,14 @@ npx supabase functions deploy pagespeed-insights
 npx supabase functions deploy analyze-website-visuals
 npx supabase functions deploy generate-outreach-draft
 npx supabase functions deploy send-outreach
+npx supabase functions deploy send-reply
 npx supabase functions deploy resend-inbound
 npx supabase functions deploy unsubscribe
 ```
 
 - [ ] Configure each required server-side secret using the names documented in the README and the function's source.
 - [ ] Configure the Resend sender domain and reply/receiving webhook if email sending and replies are being tested.
+- [ ] Deploy `send-reply` when the Replies page will be used to answer inbound messages.
 - [ ] Configure the OpenAI key server-side if AI draft generation and visual analysis are being tested.
 - [ ] Configure Web Push keys only if browser push notifications are being used.
 - [ ] Do not deploy an Edge Function until its required secrets and provider settings are ready.

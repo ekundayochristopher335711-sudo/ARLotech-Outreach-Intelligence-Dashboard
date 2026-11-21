@@ -8,11 +8,12 @@ import { Button } from '@/components/ui/Button'
 import { getCurrentUserId, supabase } from '@/lib/supabase'
 import { recommendNextOutreachAction, scoreProspectOpportunity } from '@/lib/growthIntelligence'
 import { loadArlotechLogoDataUrl } from '@/lib/brandAssets'
+import { calculateReplyRate, type EmailMetricMessage } from '@/lib/emailMetrics'
 import { toast } from 'sonner'
 
 type ProspectRow = { id: string; business_name: string; email: string | null; website: string | null; business_category: string | null; status: string; do_not_contact: boolean; created_at: string }
 type AuditRow = { prospect_id: string | null; overall_score: number | null; performance_score: number | null; seo_score: number | null; accessibility_score: number | null; best_practices_score: number | null; created_at?: string | null }
-type MessageRow = { direction: string; status: string; sent_at: string | null; received_at: string | null; prospect_id: string | null; body: string | null }
+type MessageRow = EmailMetricMessage & { sent_at: string | null; received_at: string | null; body: string | null }
 
 export function GrowthCenterPage() {
   const [proposalProspect, setProposalProspect] = useState('')
@@ -32,7 +33,7 @@ export function GrowthCenterPage() {
       const [prospects, audits, messages, sequences] = await Promise.all([
         supabase.from('prospects').select('id,business_name,email,website,business_category,status,do_not_contact,created_at').eq('user_id', userId),
         supabase.from('website_analyses').select('prospect_id,overall_score,performance_score,seo_score,accessibility_score,best_practices_score,created_at').eq('user_id', userId).eq('analysis_status', 'completed'),
-        supabase.from('email_messages').select('direction,status,sent_at,received_at,prospect_id,body').eq('user_id', userId),
+        supabase.from('email_messages').select('direction,status,thread_id,prospect_id,recipient_email,sender_email,sent_at,received_at,body').eq('user_id', userId),
         supabase.from('follow_up_sequences').select('id,prospect_id,status,next_action_at').eq('user_id', userId),
       ])
       for (const result of [prospects, audits, messages, sequences]) if (result.error) throw result.error
@@ -56,15 +57,15 @@ export function GrowthCenterPage() {
   const ranked = useMemo(() => (data?.prospects || []).map(prospect => ({ prospect, ...scoreProspectOpportunity(prospect, auditByProspect.get(prospect.id)) })).filter(x => x.eligible).sort((a,b) => b.score - a.score), [data?.prospects, auditByProspect])
   const sent = (data?.messages || []).filter(m => m.direction === 'outbound' && m.status === 'sent').length
   const replies = (data?.messages || []).filter(m => m.direction === 'inbound' || m.status === 'replied').length
-  const replyRate = sent ? Math.round((replies / sent) * 100) : 0
+  const replyRate = calculateReplyRate(data?.messages || [])
   const won = (data?.prospects || []).filter(p => p.status === 'Won').length
   const pipelineStages = ['New', 'Ready for Outreach', 'Contacted', 'Replied', 'Interested', 'Meeting Booked', 'Won'].map(status => ({ status, count: (data?.prospects || []).filter(p => p.status === status).length }))
-  const failedSends = (data?.messages || []).filter(m => ['failed', 'bounced', 'undelivered'].includes(m.status.toLowerCase())).length
+  const failedSends = (data?.messages || []).filter(m => ['failed', 'bounced', 'undelivered'].includes(m.status?.toLowerCase() || '')).length
   const meetings = (data?.prospects || []).filter(p => p.status === 'Meeting Booked').length
   const interested = (data?.prospects || []).filter(p => p.status === 'Interested').length
   const due = (data?.sequences || []).filter((s: {status: string; next_action_at: string | null}) => s.status === 'Active' && s.next_action_at && Date.parse(s.next_action_at) <= (data?.asOf ?? 0)).length
   const linkedProspects = (data?.prospects || []).filter(p => (data?.messages || []).some(m => m.prospect_id === p.id && m.direction === 'outbound'))
-  const repliedProspects = linkedProspects.filter(p => (data?.messages || []).some(m => m.prospect_id === p.id && (m.direction === 'inbound' || m.status.toLowerCase() === 'replied')))
+  const repliedProspects = linkedProspects.filter(p => (data?.messages || []).some(m => m.prospect_id === p.id && (m.direction === 'inbound' || m.status?.toLowerCase() === 'replied')))
   const latestMessageFor = (id: string, direction: string) => (data?.messages || []).filter(m => m.prospect_id === id && m.direction === direction).sort((a,b) => new Date(b.received_at || b.sent_at || 0).getTime() - new Date(a.received_at || a.sent_at || 0).getTime())[0]
   const followUpRecommendations = (data?.prospects || []).map(prospect => { const inbound = latestMessageFor(prospect.id, 'inbound'); const outbound = latestMessageFor(prospect.id, 'outbound'); return { prospect, ...recommendNextOutreachAction({ status: prospect.status, do_not_contact: prospect.do_not_contact, latestInbound: inbound?.body, latestOutboundAt: outbound?.sent_at }) } }).filter(item => item.safeToDraft || item.action === 'Stop outreach' || item.action === 'Pause and investigate').slice(0, 8)
 

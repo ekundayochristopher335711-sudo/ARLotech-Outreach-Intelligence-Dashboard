@@ -3,6 +3,7 @@ import { format } from 'date-fns'
 import { BarChart3, Mail, MessageCircle, Users } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { getCurrentUserId, supabase } from '@/lib/supabase'
+import { calculateReplyRate, type EmailMetricMessage } from '@/lib/emailMetrics'
 
 interface DailyActivity {
   date: string
@@ -34,6 +35,7 @@ export function AnalyticsDashboard() {
         dueCountResult,
         sentActivityResult,
         replyActivityResult,
+        replyRateMessagesResult,
       ] = await Promise.all([
         supabase.from('prospects').select('id', { count: 'exact', head: true }).eq('user_id', userId),
         supabase.from('campaigns').select('id', { count: 'exact', head: true }).eq('user_id', userId),
@@ -42,9 +44,10 @@ export function AnalyticsDashboard() {
         supabase.from('follow_up_sequences').select('id', { count: 'exact', head: true }).eq('user_id', userId).eq('status', 'Active').lte('next_action_at', now.toISOString()),
         supabase.from('email_messages').select('sent_at').eq('user_id', userId).eq('direction', 'outbound').eq('status', 'sent').gte('sent_at', chartStart.toISOString()),
         supabase.from('email_messages').select('received_at, direction, status').eq('user_id', userId).gte('received_at', replyWindowStart).or('direction.eq.inbound,status.eq.replied'),
+        supabase.from('email_messages').select('direction,status,thread_id,prospect_id,recipient_email,sender_email').eq('user_id', userId),
       ])
 
-      const results = [prospectsResult, campaignsResult, sentCountResult, replyCountResult, dueCountResult, sentActivityResult, replyActivityResult]
+      const results = [prospectsResult, campaignsResult, sentCountResult, replyCountResult, dueCountResult, sentActivityResult, replyActivityResult, replyRateMessagesResult]
       const failedResult = results.find((result) => result.error)
       if (failedResult?.error) throw failedResult.error
 
@@ -75,7 +78,7 @@ export function AnalyticsDashboard() {
         sent,
         replies,
         due: dueCountResult.count || 0,
-        replyRate: sent > 0 ? Math.round((replies / sent) * 100) : 0,
+        replyRate: calculateReplyRate((replyRateMessagesResult.data || []) as EmailMetricMessage[]),
         dailyActivity: days,
       }
     },
