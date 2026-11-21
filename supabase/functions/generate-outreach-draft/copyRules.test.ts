@@ -132,4 +132,30 @@ describe("personalized email copy rules", () => {
     expect((body.match(/\?/g) ?? []).length).toBe(1);
     expect(getGenericEmailContentViolations(body)).toEqual([]);
   });
+
+  it("does not force first-contact pitch rules onto follow-ups", () => {
+    const body = normalizePersonalizedEmailContent(
+      "Hello Ada. Thanks for considering the website improvements we discussed. If it is useful, reply with a suitable time and we can continue the conversation.",
+      false,
+      "Ada Lovelace",
+      "follow_up",
+    );
+
+    expect(body).toContain("Hello Ada Lovelace,");
+    expect(body).toContain("reply with a suitable time");
+    expect(body).not.toContain("We design and improve websites to help visitors understand services and get in touch more easily.");
+    expect(getGenericEmailContentViolations(body, false, "follow_up")).toEqual([]);
+  });
+
+  it("keeps attachment truthfulness for follow-ups", () => {
+    const body = normalizePersonalizedEmailContent(
+      "Hello. Following up on the attached report. Could you let us know whether a short conversation would help?",
+      false,
+      "",
+      "follow_up",
+    );
+
+    expect(body).not.toMatch(/attached|report/i);
+    expect(getGenericEmailContentViolations(body, false, "follow_up")).toEqual([]);
+  });
 });

@@ -9,6 +9,8 @@ const requiredAttachmentSentence = "We’ve attached the website review PDF for 
 const feedbackRequestPattern =
   /\b(?:feedback|goals?|priorities|thoughts|views|share|tell us|let us know)\b|\b(?:what|how|which|where|when)\b.{0,160}\b(?:website|site|visitors?|customers?|business|help|want|hope|like|need|experience|services?|booking|contact)\b/i;
 
+export type EmailIntent = 'first_contact' | 'follow_up'
+
 const htmlEntities: Record<string, string> = {
   '&amp;': '&',
   '&lt;': '<',
@@ -50,6 +52,7 @@ export function normalizePersonalizedEmailContent(
   body: string,
   includeReport: boolean,
   contactName = "",
+  intent: EmailIntent = 'first_contact',
 ): string {
   const decodedBody = decodeHtmlEntities(body)
   const signatureStart = decodedBody.search(/\n\n(?:kind regards|best regards|regards|sincerely|thanks),?\s*\n/i);
@@ -66,9 +69,9 @@ export function normalizePersonalizedEmailContent(
     const sentence = rawSentence.trim();
     if (
       !sentence ||
-      sentence.includes("?") ||
-      /\b(?:would love to learn|love to learn|look forward to hearing|hear your thoughts|what you would like|what you want|what you hope|website goals|website priorities)\b/i.test(sentence) ||
-      /\b(?:we(?:'d| would) (?:like|appreciate)|we welcome|would welcome|would appreciate|share|tell us|let us know)\b.{0,80}\b(?:feedback|thoughts|goals|priorities)\b/i.test(sentence) ||
+      (intent === 'first_contact' && sentence.includes("?")) ||
+      (intent === 'first_contact' && /\b(?:would love to learn|love to learn|look forward to hearing|hear your thoughts|what you would like|what you want|what you hope|website goals|website priorities)\b/i.test(sentence)) ||
+      (intent === 'first_contact' && /\b(?:we(?:'d| would) (?:like|appreciate)|we welcome|would welcome|would appreciate|share|tell us|let us know)\b.{0,80}\b(?:feedback|thoughts|goals|priorities)\b/i.test(sentence)) ||
       (!includeReport && /\b(?:attached|attachment|attaching|attach|pdf|report)\b/i.test(sentence))
     ) {
       continue;
@@ -86,12 +89,13 @@ export function normalizePersonalizedEmailContent(
   const hasBenefit = realisticBenefitPattern.test(statementText);
   const hasAttachedReport = /(?:attached pdf|pdf.{0,30}attached|we[’']ve attached|we have attached|please see the attached)/i.test(statementText);
   const requiredStatements = [...statements];
-  if (!describesService || !hasBenefit) requiredStatements.push(requiredServiceSentence);
+  if (intent === 'first_contact' && (!describesService || !hasBenefit)) requiredStatements.push(requiredServiceSentence);
   if (includeReport && !hasAttachedReport) requiredStatements.push(requiredAttachmentSentence);
-  return normalizeEmailSalutation(
-    `${[...requiredStatements, feedbackQuestion].join(" ")}${signature}`,
-    contactName,
-  );
+  if (intent === 'first_contact') requiredStatements.push(feedbackQuestion);
+  if (intent === 'follow_up' && !requiredStatements.length) {
+    requiredStatements.push('We would be glad to continue the conversation when it is useful for your team.');
+  }
+  return normalizeEmailSalutation(`${requiredStatements.join(" ")}${signature}`, contactName);
 }
 
 export function getGenericCopyViolation(copy: string): "internal_reference" | "first_person_singular" | null {
@@ -100,17 +104,25 @@ export function getGenericCopyViolation(copy: string): "internal_reference" | "f
   return null;
 }
 
-export function getGenericEmailContentViolations(body: string, includeReport = false): string[] {
+export function getGenericEmailContentViolations(
+  body: string,
+  includeReport = false,
+  intent: EmailIntent = 'first_contact',
+): string[] {
   const violations: string[] = [];
   const describesService =
     /\bwe\b.{0,160}\b(?:design|build|develop|improve)\b.{0,100}\bwebsites?\b/i.test(body) ||
     /\b(?:design|build|develop|improve)\b.{0,100}\bwebsites?\b.{0,100}\b(?:we|our)\b/i.test(body);
-  if (!describesService) violations.push("Describe what Arlotech does: website design, development, or improvement.");
-  if (!realisticBenefitPattern.test(body)) {
-    violations.push("Explain a realistic general benefit, such as clearer presentation or easier navigation/contact.");
-  }
-  if (!feedbackRequestPattern.test(body)) {
-    violations.push("Ask the recipient for feedback about their website goals or priorities.");
+  if (intent === 'first_contact') {
+    if (!describesService) violations.push("Describe what Arlotech does: website design, development, or improvement.");
+    if (!realisticBenefitPattern.test(body)) {
+      violations.push("Explain a realistic general benefit, such as clearer presentation or easier navigation/contact.");
+    }
+    if (!feedbackRequestPattern.test(body)) {
+      violations.push("Ask the recipient for feedback about their website goals or priorities.");
+    }
+  } else if (!/\?|\b(?:reply|respond|share|confirm|let us know|available|schedule|arrange|send)\b/i.test(body)) {
+    violations.push("Include a clear next step for the follow-up conversation.");
   }
   const mentionsAttachment = /(?:attached pdf|pdf.{0,30}attached|we[’']ve attached|we have attached|please see the attached)/i.test(body);
   if (includeReport && !mentionsAttachment) {

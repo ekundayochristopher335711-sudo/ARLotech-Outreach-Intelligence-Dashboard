@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Check, Copy, Mail, Paperclip, Pencil, Plus, Send, Sparkles, Trash2, X } from 'lucide-react'
+import { Check, Copy, Mail, Pencil, Plus, Send, Sparkles, Trash2, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
@@ -20,7 +20,6 @@ import {
   generateProfessionalEmailDraft,
   DEFAULT_OUTREACH_SIGNATURE,
   OUTREACH_STRATEGIES,
-  rewriteProfessionalEmail,
   validateProfessionalEmailDraft,
   type FollowUpStage,
   type GeneratedEmailDraft,
@@ -28,7 +27,6 @@ import {
   type OutreachSignature,
   type OutreachStrategy,
   type OutreachTone,
-  type RewriteAction,
 } from '@/lib/emailDraftGenerator'
 import type { Campaign, EmailDraft, Prospect, WebsiteAnalysis } from '@/types'
 import { assessEmailQuality } from '@/lib/growthIntelligence'
@@ -279,18 +277,11 @@ export function EmailDraftsPage() {
   const [savedDraftComplianceConfirmed, setSavedDraftComplianceConfirmed] = useState(false)
   const [savedDraftBatchId, setSavedDraftBatchId] = useState('')
   const [savedDraftSendResults, setSavedDraftSendResults] = useState<Record<string, OutreachSendResult>>({})
-  const [generatorProspectId, setGeneratorProspectId] = useState(() => searchParams.get('prospectId') || '')
   const [generatorStrategy, setGeneratorStrategy] = useState<OutreachStrategy>('general_review')
   const [generatorTone, setGeneratorTone] = useState<OutreachTone>('professional')
   const [generatorLength, setGeneratorLength] = useState<OutreachLength>('short')
   const [senderContext, setSenderContext] = useState('')
   const [followUpStage, setFollowUpStage] = useState<FollowUpStage>('none')
-  const [followUpMessageId, setFollowUpMessageId] = useState('')
-  const [generatedDraft, setGeneratedDraft] = useState<GeneratedEmailDraft | null>(null)
-  const [generatedSubject, setGeneratedSubject] = useState('')
-  const [generatedBody, setGeneratedBody] = useState('')
-  const [generatedComplianceConfirmed, setGeneratedComplianceConfirmed] = useState(false)
-  const [generatedSendResult, setGeneratedSendResult] = useState<OutreachSendResult | null>(null)
   const [signature, setSignature] = useState<OutreachSignature>(readSignature)
 
   const { data: drafts, isLoading, error } = useQuery({
@@ -337,7 +328,7 @@ export function EmailDraftsPage() {
   const prospectOptions = (prospects as Pick<Prospect, 'id' | 'business_name' | 'email' | 'do_not_contact'>[])
     .filter((prospect) => !!prospect.email?.trim())
 
-  const { data: emailProfile, error: emailProfileError } = useQuery({
+  const { data: emailProfile } = useQuery({
     queryKey: ['/profile', 'email-signature'],
     queryFn: async () => {
       const userId = await getCurrentUserId()
@@ -457,27 +448,6 @@ export function EmailDraftsPage() {
       prospect.do_not_contact &&
       prospect.email?.trim().toLowerCase() === manualRecipient.trim().toLowerCase(),
   )
-  const selectedGeneratorProspect = outreachProspectRows.find((prospect) => prospect.id === generatorProspectId)
-  const selectedGeneratorAnalysis = selectedGeneratorProspect
-    ? analysisByProspect.get(selectedGeneratorProspect.id)
-    : undefined
-  const matchingGeneratorAnalysis = selectedGeneratorProspect && selectedGeneratorAnalysis &&
-    hasMatchingWebsiteAnalysis(selectedGeneratorProspect, selectedGeneratorAnalysis)
-    ? selectedGeneratorAnalysis
-    : undefined
-  const originalFollowUpMessage = sentEmailRows.find((message) => message.id === followUpMessageId)
-  const generatedValidation = generatedDraft && selectedGeneratorProspect
-    ? validateProfessionalEmailDraft(
-        {
-          ...generatedDraft,
-          body: generatedBody,
-          wordCount: generatedBody.trim().split(/\s+/).filter(Boolean).length,
-        },
-        selectedGeneratorProspect,
-        !!matchingGeneratorAnalysis,
-        generatedSubject,
-      )
-    : null
   const selectedManualProspect = prospectOptions.find((prospect) => prospect.id === prospectId)
   const draftQuality = assessEmailQuality({
     subject,
@@ -550,10 +520,6 @@ export function EmailDraftsPage() {
     }
     return null
   }
-
-  const generatedSendBlockReason = selectedGeneratorProspect
-    ? getOutreachBlockReason(selectedGeneratorProspect)
-    : null
 
   const requestedProspectId = searchParams.get('prospectId')
   const requestedProspect = emailOutreachProspectRows.find((item) => item.id === requestedProspectId)
@@ -1141,92 +1107,6 @@ export function EmailDraftsPage() {
     onError: (error: Error) => toast.error(error.message || 'Could not send this email.'),
   })
 
-  const generatedSendMutation = useMutation({
-    mutationFn: async () => {
-      if (!selectedGeneratorProspect) throw new Error('Select a prospect before sending.')
-      if (!generatedSubject.trim() || !generatedBody.trim()) {
-        throw new Error('Add a subject and message before sending.')
-      }
-      if (generatedValidation?.errors.length) {
-        throw new Error(generatedValidation.errors.join(' '))
-      }
-      if (!generatedComplianceConfirmed) {
-        throw new Error('Confirm that you reviewed the recipient and have a lawful basis to contact them.')
-      }
-      if (generatedSendBlockReason) throw new Error(generatedSendBlockReason)
-      if (followUpStage !== 'none' && !originalFollowUpMessage) {
-        throw new Error('Select the previously sent email before sending this follow-up.')
-      }
-
-      const attachmentContent = selectedGeneratorProspect.website && matchingGeneratorAnalysis
-        ? await createAuditPdfAttachment(matchingGeneratorAnalysis, selectedGeneratorProspect)
-        : null
-      if (attachmentContent && attachmentContent.length > MAX_ATTACHMENT_BASE64_LENGTH) {
-        throw new Error('The website PDF is over the 525 KB attachment limit. Download the report and send it separately.')
-      }
-      const safeFilename = selectedGeneratorProspect.business_name
-        .replace(/[^a-z0-9-]/gi, '-')
-        .replace(/^-+|-+$/g, '')
-        .slice(0, 60)
-        .toLowerCase() || 'prospect'
-      const functionClient = supabase as typeof supabase & {
-        functions: {
-          invoke: (
-            name: string,
-            options: { body: unknown },
-          ) => Promise<{ data: unknown; error: Error | null }>
-        }
-      }
-      const inlineLogo = await createInlineEmailLogo()
-      const { data, error } = await functionClient.functions.invoke('send-outreach', {
-        body: {
-          batchId: crypto.randomUUID(),
-          complianceConfirmed: generatedComplianceConfirmed,
-          inlineLogo,
-          senderName: effectiveSignature.senderName,
-          emails: [{
-            prospect_id: selectedGeneratorProspect.id,
-            subject: generatedSubject.trim(),
-            body: generatedBody.trim(),
-            ...(attachmentContent
-              ? {
-                  attachment: {
-                    filename: `website-review-${safeFilename}.pdf`,
-                    content: attachmentContent,
-                  },
-                }
-              : {}),
-          }],
-        },
-      })
-      if (error) throw new Error(await getOutreachFunctionError(error))
-      if (!isSendOutreachResponse(data) || data.results.length !== 1) {
-        const message = data && typeof data === 'object' && 'error' in data && typeof data.error === 'string'
-          ? data.error
-          : 'The send function returned an invalid response.'
-        throw new Error(message)
-      }
-      const result = data.results[0]
-      if (!result) throw new Error('The send function returned no result for this email.')
-      return result
-    },
-    onSuccess: async (result: OutreachSendResult) => {
-      setGeneratedSendResult(result)
-      if (result.status === 'sent') {
-        toast.success(`Email sent to ${result.recipient_email || selectedGeneratorProspect?.email}.`)
-      } else {
-        toast.error(result.error || 'The email was not sent.')
-      }
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['/email-messages'] }),
-        queryClient.invalidateQueries({ queryKey: ['/email-messages', 'outreach-sent'] }),
-        queryClient.invalidateQueries({ queryKey: ['/prospects'] }),
-        queryClient.invalidateQueries({ queryKey: ['/dashboard/metrics'] }),
-      ])
-    },
-    onError: (error: Error) => toast.error(error.message || 'Could not send this email.'),
-  })
-
   const savedDraftSendMutation = useMutation({
     mutationFn: async (draftsToSend: EmailDraft[]): Promise<SavedDraftSendMutationResult> => {
       if (!savedDraftComplianceConfirmed) {
@@ -1519,62 +1399,6 @@ export function EmailDraftsPage() {
     setProspectId(draft.prospect_id || '')
     setDraftAnalysisId(draft.website_analysis_id || '')
     setShowForm(true)
-  }
-
-  const generateDraft = () => {
-    if (!selectedGeneratorProspect) {
-      toast.error('Select a prospect before generating an email.')
-      return
-    }
-    const missingFollowUpContext = followUpStage !== 'none' && !originalFollowUpMessage
-    try {
-      const result = followUpStage !== 'none' && originalFollowUpMessage
-        ? generateFollowUpDraft(
-            originalFollowUpMessage,
-            selectedGeneratorProspect,
-            followUpStage,
-            effectiveSignature,
-            !!selectedGeneratorProspect.website && !!matchingGeneratorAnalysis,
-          )
-        : generateProfessionalEmailDraft({
-            prospect: selectedGeneratorProspect,
-            analysis: matchingGeneratorAnalysis,
-            strategy: generatorStrategy,
-            tone: generatorTone,
-            length: generatorLength,
-            includeReport: !!selectedGeneratorProspect.website && !!matchingGeneratorAnalysis,
-            signature: effectiveSignature,
-            senderContext,
-          })
-      setGeneratedDraft(missingFollowUpContext
-          ? {
-            ...result,
-            qualityChecks: [
-              ...result.qualityChecks,
-              'No previously sent email was available, so this was written as a new outreach email instead.',
-            ],
-          }
-          : result)
-      setGeneratedSubject(result.subjectSuggestions[0] || '')
-      setGeneratedBody(result.body)
-      setGeneratedComplianceConfirmed(false)
-      setGeneratedSendResult(null)
-      if (missingFollowUpContext) {
-        setFollowUpStage('none')
-        setFollowUpMessageId('')
-      }
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Could not generate an email.')
-    }
-  }
-
-  const copyGeneratedDraft = async () => {
-    try {
-      await navigator.clipboard.writeText(`Subject: ${generatedSubject}\n\n${generatedBody}`)
-      toast.success('Email copied')
-    } catch (error) {
-      toast.error(error instanceof Error ? `Could not copy email: ${error.message}` : 'Could not copy email.')
-    }
   }
 
   const saveSignature = () => {

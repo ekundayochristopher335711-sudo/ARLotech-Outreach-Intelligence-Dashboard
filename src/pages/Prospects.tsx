@@ -532,8 +532,6 @@ export function ProspectsPage() {
     const userId = session?.user.id
     if (!userId) {
       restoredAnalysisUserId.current = null
-      setHasPersistedAnalysisQueue(false)
-      setIsAnalysisPaused(false)
       return
     }
     if (!prospects || restoredAnalysisUserId.current === userId) return
@@ -548,7 +546,10 @@ export function ProspectsPage() {
     }
     if (!progress) return
 
+    // These updates restore state from persisted localStorage; the effect is the external-state synchronization boundary.
+    // oxlint-disable-next-line react/set-state-in-effect
     setHasPersistedAnalysisQueue(progress.active)
+    // oxlint-disable-next-line react/set-state-in-effect
     setIsAnalysisPaused(progress.active && progress.paused === true)
     let updatedMissingOutcomes = false
     const targets = progress.prospect_ids.flatMap((id) => {
@@ -987,6 +988,9 @@ export function ProspectsPage() {
     }
   }
 
+  const visibleHasPersistedAnalysisQueue = Boolean(session?.user.id) && hasPersistedAnalysisQueue
+  const visibleIsAnalysisPaused = Boolean(session?.user.id) && isAnalysisPaused
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -1215,13 +1219,13 @@ export function ProspectsPage() {
                   {contactScanMode
                     ? `Looking up contacts… ${enrichmentProgress.completed}/${enrichmentProgress.total}`
                     : isEnriching
-                      ? isAnalysisPaused
+                      ? visibleIsAnalysisPaused
                         ? `Pausing after this batch… ${enrichmentProgress.completed}/${enrichmentProgress.total}`
                         : `Analyzing websites… ${enrichmentProgress.completed}/${enrichmentProgress.total}`
                       : `Processed: ${enrichmentProgress.completed} · Remaining: ${Math.max(0, enrichmentProgress.total - enrichmentProgress.completed)}`}
                 </span>
               )}
-              {hasPersistedAnalysisQueue && isEnriching && !isAnalysisPaused && (
+              {visibleHasPersistedAnalysisQueue && isEnriching && !visibleIsAnalysisPaused && (
                 <Button
                   type="button"
                   size="sm"
@@ -1234,7 +1238,7 @@ export function ProspectsPage() {
                   Pause
                 </Button>
               )}
-              {hasPersistedAnalysisQueue && isAnalysisPaused && (
+              {visibleHasPersistedAnalysisQueue && visibleIsAnalysisPaused && (
                 <Button
                   type="button"
                   size="sm"
@@ -1248,7 +1252,7 @@ export function ProspectsPage() {
                   {isEnriching ? 'Pausing…' : 'Resume'}
                 </Button>
               )}
-              {!isEnriching && !isAnalysisPaused && (
+              {!isEnriching && !visibleIsAnalysisPaused && (
                 <Button
                   type="button"
                   size="sm"

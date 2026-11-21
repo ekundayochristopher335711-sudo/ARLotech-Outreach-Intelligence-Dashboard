@@ -29,3 +29,6 @@ dist-ssr
 .vercel
 .env*
 !.env.example
+
+# Source archives must not ship as public static assets.
+public/*.zip

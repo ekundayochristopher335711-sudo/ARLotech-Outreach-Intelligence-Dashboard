@@ -9,6 +9,7 @@ Use this checklist before connecting the app to live prospect data or sending re
 - [ ] Never place the Supabase service-role key, Resend API key, OpenAI key, webhook signing secret, unsubscribe signing secret, or Web Push private key in a `VITE_` variable.
 - [ ] If a secret was ever committed, pasted into a public place, or included in a shared ZIP, rotate it before launch.
 - [ ] Confirm production and local environments point to the intended Supabase project.
+- [ ] Confirm no source-code archives or other internal build artifacts are present under `public/`.
 
 ## 2. Apply database migrations
 
@@ -71,10 +72,13 @@ Use a test prospect and a website you are authorized to review. Do not begin wit
 - [ ] Run a website audit and inspect the findings against the actual page and screenshots.
 - [ ] Generate the PDF and confirm the page count, screenshots, coverage statement, score, and findings are accurate.
 - [ ] Generate an email draft and confirm every website-specific claim is supported by the saved audit.
+- [ ] Test a first-contact draft and a follow-up draft; confirm follow-ups keep continuity without repeating the full first-contact pitch.
 - [ ] Confirm the draft does not say a PDF is attached unless the PDF is actually attached to the send.
+- [ ] Open the generated PDF and inspect long names, multi-page sections, screenshots, score/coverage wording, and the footer before sending it.
 - [ ] Save and edit a draft; verify it remains unsent until explicitly sent.
 - [ ] Create a follow-up task, change its status, add a relationship note, and confirm the events appear in the prospect timeline.
 - [ ] Create a proposal record and change its status; confirm the timeline updates.
+- [ ] Save a proposal draft from Growth Center, export the PDF, and confirm the saved record remains a draft until an operator changes its status.
 - [ ] Verify that a `Do Not Contact` prospect and suppressed email address remain blocked from sending.
 - [ ] Send one test email to an address you control, then verify the sent record, reply handling, and unsubscribe flow.
 - [ ] Check that no automatic follow-up email is sent: follow-up tasks are reminders for a person to act.

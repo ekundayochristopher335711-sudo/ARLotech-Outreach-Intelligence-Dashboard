@@ -43,3 +43,9 @@
 - Added a prospect engagement timeline that combines saved activity-log events and outbound/inbound email message records, ordered chronologically. It displays only events with a recorded timestamp and does not infer opens, delivery, or engagement that the database has not recorded.
 - Added the visual-design category to the per-audit score breakdown where the stored category score is available.
 - No database migration was required; the additions use existing user-scoped Supabase tables and existing row-level security.
+## Launch hardening follow-up
+
+- Separated first-contact and follow-up AI email rules so follow-ups preserve conversation continuity instead of repeating the first-touch pitch.
+- Added proposal-draft persistence from Growth Center using the existing prospect relationship table.
+- Hardened proposal PDF wrapping and filenames for long prospect names and multi-page sections.
+- Removed tracked source ZIP archives from public static assets and added an ignore rule to prevent reintroduction.
