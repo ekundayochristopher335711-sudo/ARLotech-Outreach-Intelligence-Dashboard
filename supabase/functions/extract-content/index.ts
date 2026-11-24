@@ -1,14 +1,13 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { assertSafeExternalUrl, isPublicIpAddress } from './safety.ts'
 import { extractNavigationPages } from './navigation.ts'
-import { extractPhoneNumbers } from './phoneNumbers.ts'
 import { extractBusinessLocation } from './location.ts'
-import { extractEmailAddresses } from './emailAddresses.ts'
+import { findContactPageUrls } from './contactPages.ts'
+import { extractContactDetails } from './contactDetails.ts'
 
 const MAX_HTML_BYTES = 2_000_000
 const MAX_REDIRECTS = 5
 const FETCH_TIMEOUT_MS = 10_000
-const MAX_CONTACT_PAGES = 3
 const httpClient = Deno.createHttpClient({ allowHttp1: true, allowHttp2: false })
 
 const corsHeaders = {
@@ -182,33 +181,6 @@ async function fetchSameOriginScripts(html: string, pageUrl: string): Promise<st
   }))
 }
 
-function findContactPageUrls(html: string, pageUrl: string): string[] {
-  const origin = new URL(pageUrl).origin
-  const urls = new Set<string>()
-  for (const [, attributes, body] of html.matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a>/gi)) {
-    const rawHref = attributes.match(/(?:^|\s)href\s*=\s*(["'])(.*?)\1/i)?.[2]
-    if (!rawHref) continue
-    const label = `${body.replace(/<[^>]*>/g, ' ')} ${rawHref}`.replace(/\s+/g, ' ')
-    if (!/\b(contact|about|team|staff|people|meet|imprint|legal)\b/i.test(label)) continue
-
-    try {
-      const target = new URL(rawHref.replace(/&amp;/gi, '&'), pageUrl)
-      if (
-        target.origin !== origin ||
-        !['http:', 'https:'].includes(target.protocol) ||
-        target.username ||
-        target.password
-      ) continue
-      target.hash = ''
-      urls.add(target.href)
-    } catch {
-      continue
-    }
-    if (urls.size >= MAX_CONTACT_PAGES) break
-  }
-  return [...urls]
-}
-
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
@@ -236,11 +208,11 @@ serve(async (req) => {
         return null
       }
     }))
-    const contactSources = [
+    const htmlContactSources = [
       html,
       ...contactPages.flatMap((page) => page ? [page.html] : []),
-      ...(await fetchSameOriginScripts(html, finalUrl)),
     ]
+    const scriptContactSources = await fetchSameOriginScripts(html, finalUrl)
 
     const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)
     const title = titleMatch ? titleMatch[1].replace(/\s+/g, ' ').trim() : null
@@ -324,8 +296,7 @@ serve(async (req) => {
 
     const favicon = linkRel(html, 'icon') || linkRel(html, 'shortcut icon')
 
-    const emails = extractEmailAddresses(contactSources)
-    const phones = extractPhoneNumbers(contactSources, finalUrl, lang)
+    const contacts = extractContactDetails(htmlContactSources, scriptContactSources, finalUrl, lang)
 
     const result = {
       url,
@@ -358,8 +329,8 @@ serve(async (req) => {
       schema: schemaScripts,
       schemaInspection,
       h1Count: headings.h1.length,
-      contacts: { emails, phones },
-      location: extractBusinessLocation(contactSources),
+      contacts,
+      location: extractBusinessLocation(htmlContactSources),
     }
 
     return new Response(JSON.stringify(result), {

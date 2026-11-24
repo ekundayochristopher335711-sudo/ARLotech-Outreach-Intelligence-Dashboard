@@ -98,6 +98,14 @@ describe('extractPhoneNumbers', () => {
     )).toEqual(['+2348031234567'])
   })
 
+  it('does not treat a sequence of publication years as a local phone number', () => {
+    expect(extractPhoneNumbers(
+      ['Annual reports: 2011 2017 2018 and awards: 2019 2024 2025.'],
+      'https://example.co.uk',
+      'en-GB',
+    )).toEqual([])
+  })
+
   it('extracts structured telephone fields without treating script identifiers as phone numbers', () => {
     expect(extractPhoneNumbers(
       ['<script type="application/ld+json">{"@type":"LocalBusiness","telephone":"+44 20 7946 0958","identifier":"1234567890"}</script>'],

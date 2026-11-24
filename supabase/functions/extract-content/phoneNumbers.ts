@@ -180,6 +180,15 @@ function normalizePhoneCandidate(value: string, country: PhoneCountry | null): s
   return withoutExtension.replace(/\s+/g, ' ').trim()
 }
 
+function isYearSequence(value: string): boolean {
+  const groups = value.match(/\d+/g) ?? []
+  return groups.length >= 2 && groups.every((group) => {
+    if (group.length !== 4) return false
+    const year = Number(group)
+    return year >= 1900 && year <= 2099
+  })
+}
+
 export function extractPhoneNumbers(sources: string[], pageUrl: string, language: string | null): string[] {
   const country = phoneCountryFromPage(pageUrl, language, sources)
   const phones = new Set<string>()
@@ -209,6 +218,7 @@ export function extractPhoneNumbers(sources: string[], pageUrl: string, language
     const text = phoneSearchText(source)
     for (const match of text.matchAll(PHONE_CANDIDATE_PATTERN)) {
       if (DATE_CANDIDATE_PATTERN.test(match[0])) continue
+      if (isYearSequence(match[0])) continue
 
       const before = text.slice(Math.max(0, match.index - 50), match.index)
       const after = text.slice(match.index + match[0].length, match.index + match[0].length + 30)
